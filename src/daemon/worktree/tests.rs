@@ -47,6 +47,48 @@ async fn create_and_remove_worktree() {
 }
 
 #[tokio::test]
+async fn create_detached_hides_worktrees_via_info_exclude() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().to_path_buf();
+    git_init_with_commit(&repo).await;
+
+    // Two creations must leave the exclude file with exactly one entry.
+    create_detached(&repo, "t_a", None).await.unwrap();
+    create_detached(&repo, "t_b", None).await.unwrap();
+
+    let status = tokio::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&repo)
+        .output()
+        .await
+        .unwrap();
+    let status = String::from_utf8_lossy(&status.stdout);
+    assert!(
+        !status.contains(".worktrees"),
+        "worktrees must not show as untracked, got: {status:?}"
+    );
+
+    let exclude = tokio::process::Command::new("git")
+        .args(["rev-parse", "--git-path", "info/exclude"])
+        .current_dir(&repo)
+        .output()
+        .await
+        .unwrap();
+    let raw = String::from_utf8_lossy(&exclude.stdout).trim().to_string();
+    let path = if std::path::Path::new(&raw).is_absolute() {
+        std::path::PathBuf::from(raw)
+    } else {
+        repo.join(raw)
+    };
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(
+        text.lines().filter(|l| l.trim() == ".worktrees/").count(),
+        1,
+        "exclude must hold one .worktrees/ line, got: {text:?}"
+    );
+}
+
+#[tokio::test]
 async fn branched_worktree_inherits_source_state() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().to_path_buf();

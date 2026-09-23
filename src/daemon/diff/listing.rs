@@ -123,3 +123,38 @@ fn walk_files(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::testsupport::{git, init_repo};
+    use super::*;
+
+    #[test]
+    fn worktrees_paths_are_ignored() {
+        assert!(is_ignored_path(".worktrees/t_a/src/main.rs"));
+        assert!(is_ignored_path(".worktrees/t_a/"));
+    }
+
+    #[tokio::test]
+    async fn list_files_skips_task_worktrees() {
+        let dir = std::env::temp_dir().join(format!("wf-listing-wt-{}", uuid::Uuid::new_v4()));
+        init_repo(&dir).await;
+        let repo = dir.to_str().unwrap();
+        std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+        git(&dir, &["add", "."]).await;
+        git(&dir, &["commit", "-q", "-m", "init"]).await;
+
+        let nested = dir.join(".worktrees").join("t_abc");
+        init_repo(&nested).await;
+        std::fs::write(nested.join("secret.txt"), "x\n").unwrap();
+
+        let files = list_files(repo, true).await.unwrap();
+        assert!(
+            !files.iter().any(|f| f.path.contains(".worktrees")),
+            "task worktrees must not appear in the tree: {:?}",
+            files.iter().map(|f| &f.path).collect::<Vec<_>>()
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}

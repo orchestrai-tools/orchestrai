@@ -37,6 +37,10 @@ pub async fn create_detached(
     task_id: &str,
     base_branch: Option<&str>,
 ) -> Result<Worktree> {
+    if let Err(e) = ensure_worktrees_excluded(base_repo).await {
+        eprintln!("[daemon] could not add .worktrees/ to info/exclude: {e:#}");
+    }
+
     let wt_dir = base_repo.join(".worktrees").join(task_id);
     let branch = format!("warpforge/task/{task_id}");
 
@@ -77,6 +81,63 @@ pub async fn create_detached(
         branch,
         base_branch: base,
     })
+}
+
+/// List `.worktrees/` in the repo's `info/exclude` so task checkouts never show
+/// as untracked in the user's checkout. Uses the per-clone exclude file, never
+/// the user's `.gitignore` (ADR 0015). Idempotent; creates the file if missing.
+async fn ensure_worktrees_excluded(base_repo: &Path) -> Result<()> {
+    let output = tokio::process::Command::new("git")
+        .args(["rev-parse", "--git-path", "info/exclude"])
+        .current_dir(base_repo)
+        .output()
+        .await
+        .context("failed to run git rev-parse --git-path")?;
+    if !output.status.success() {
+        anyhow::bail!("git rev-parse --git-path failed (exit {})", output.status);
+    }
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if raw.is_empty() {
+        anyhow::bail!("git rev-parse --git-path returned no path");
+    }
+    // `--git-path` prints a path relative to the cwd when the git dir is inside
+    // it (the common case); it is absolute for a linked worktree's common dir.
+    let exclude = if Path::new(&raw).is_absolute() {
+        PathBuf::from(raw)
+    } else {
+        base_repo.join(raw)
+    };
+    append_exclude_line(&exclude).await
+}
+
+/// Append `.worktrees/` to an exclude file if absent, creating it if missing.
+async fn append_exclude_line(exclude: &Path) -> Result<()> {
+    const LINE: &str = ".worktrees/";
+    let existing = match tokio::fs::read_to_string(exclude).await {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            return Err(e).with_context(|| format!("reading {}", exclude.display()));
+        }
+    };
+    if existing.lines().any(|l| l.trim() == LINE) {
+        return Ok(());
+    }
+    if let Some(parent) = exclude.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    let mut text = existing;
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str(LINE);
+    text.push('\n');
+    tokio::fs::write(exclude, text)
+        .await
+        .with_context(|| format!("writing {}", exclude.display()))?;
+    Ok(())
 }
 
 /// [`create_detached`] for a conversation branch: branch from `base_branch`

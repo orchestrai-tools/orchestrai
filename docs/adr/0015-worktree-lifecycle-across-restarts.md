@@ -67,3 +67,7 @@ back to an unisolated run without telling the user.
    remove are handed to a spawned task; the handler only edits its maps.
 5. **A checkout failure is never silent.** It blocks the task or fails the
    pipeline with the git error attached.
+6. **Worktrees are hidden via `info/exclude`, never via `.gitignore`.** Creation
+   appends `.worktrees/` to the repo's exclude file (idempotently) and never
+   touches the user's `.gitignore`; the file tree and search also skip
+   `.worktrees` independently of it.

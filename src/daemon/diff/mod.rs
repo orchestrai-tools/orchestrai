@@ -45,7 +45,14 @@ pub use working::{
 /// Build/dependency directories, skipped at any depth. Keeping them costs
 /// ~162k entries on this repo alone, and the editor tree never wants them —
 /// but other .gitignore'd files (`.env` and friends) stay listed.
-pub(super) const HEAVY_DIRS: &[&str] = &[".git", "node_modules", "target", "dist", ".next"];
+pub(super) const HEAVY_DIRS: &[&str] = &[
+    ".git",
+    ".worktrees",
+    "node_modules",
+    "target",
+    "dist",
+    ".next",
+];
 
 /// OS / editor junk never shown in the file tree.
 const IGNORED_NAMES: &[&str] = &[
