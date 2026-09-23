@@ -64,6 +64,8 @@ A task can run in [its own worktree](/guides/tasks-and-backlog/#isolated-worktre
 
 That sounds like an implementation detail. It isn't: it's the difference between "the diff I reviewed is the diff I committed" and a class of bug where changes land in a checkout you weren't looking at.
 
+One merge is the exception: **Merge into &lt;base&gt;** on the task's branch menu is about the base branch, not the worktree. It fast-forwards or writes a merge commit on the base and never changes your own checkout unless the base branch is the one checked out there — and then only if that checkout is clean. See [Isolated worktrees](/guides/tasks-and-backlog/#isolated-worktrees).
+
 <Aside type="tip" title="And none of it blocks">
   Committing, pushing, merging, switching branches, saving a file, and opening a pull request all run alongside the rest of the app. Until recently each of them held everything else — agent replies, approvals, your other tasks — while it waited on git.
 </Aside>

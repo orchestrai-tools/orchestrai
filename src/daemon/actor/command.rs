@@ -129,11 +129,12 @@ pub enum Command {
         workflow_child: bool,
         reply: oneshot::Sender<bool>,
     },
-    /// A worktree merge finished and its checkout is gone; drop it from the
-    /// manager and clear the task's worktree.
+    /// A worktree merge finished with removal requested; stop the task's
+    /// terminals and session, remove its checkout, mark it Done, and reply.
     WorktreeMerged {
         task_id: String,
-        project: String,
+        message: String,
+        reply: oneshot::Sender<Result<String, String>>,
     },
     /// Test-only: replace the worktree remover so a test can hold a removal
     /// open and prove the actor does not await it.
@@ -285,9 +286,12 @@ pub enum Command {
         id: String,
         title: String,
     },
-    /// Merge a task's worktree branch back into its base branch and clean up.
+    /// Merge a task's worktree branch back into its base branch. When
+    /// `remove_worktree` is true, remove the checkout and delete the branch
+    /// after a successful merge.
     MergeWorktree {
         task_id: String,
+        remove_worktree: bool,
         reply: oneshot::Sender<Result<String, String>>,
     },
     /// List active worktrees for a project.

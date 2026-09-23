@@ -181,6 +181,7 @@ mod tests {
             blocked_kind: None,
             config_options: vec![],
             worktree: None,
+            base_branch: None,
             orchestration_graph: None,
             parent_task_id: None,
             workflow_run: None,

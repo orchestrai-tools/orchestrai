@@ -133,10 +133,11 @@ pub(super) async fn task_set_title(
 pub(super) async fn task_merge_worktree(
     handle: &DaemonHandle,
     task_id: String,
+    remove_worktree: bool,
 ) -> Result<serde_json::Value, wire::RpcError> {
-    let result = handle.merge_worktree(&task_id).await;
+    let result = handle.merge_worktree(&task_id, remove_worktree).await;
     match result {
-        Ok(branch) => Ok(json!({ "ok": true, "branch": branch })),
+        Ok(message) => Ok(json!({ "ok": true, "message": message })),
         Err(e) => Err(wire::RpcError {
             code: wire::ErrorCode::Internal,
             message: e,

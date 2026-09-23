@@ -27,7 +27,8 @@ pub(super) fn init(conn: &Connection) -> Result<()> {
             files_changed   INTEGER NOT NULL,
             blocked_reason  TEXT,
             config_options  TEXT NOT NULL DEFAULT '[]',
-            worktree        TEXT
+            worktree        TEXT,
+            base_branch     TEXT
         );
         CREATE TABLE IF NOT EXISTS session_updates (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,6 +149,9 @@ pub(super) fn init(conn: &Connection) -> Result<()> {
     );
     // Migration: add worktree column for tasks running in isolated git worktrees.
     let _ = conn.execute("ALTER TABLE tasks ADD COLUMN worktree TEXT", []);
+    // Migration: record the branch a task's worktree forked from, so a merge
+    // after a restart targets the real base instead of the root's branch.
+    let _ = conn.execute("ALTER TABLE tasks ADD COLUMN base_branch TEXT", []);
     // Migration: add parent_task_id for orchestrator sub-agent tasks.
     let _ = conn.execute("ALTER TABLE tasks ADD COLUMN parent_task_id TEXT", []);
     // Migration: add title for human-readable task labels.

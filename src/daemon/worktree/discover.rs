@@ -7,21 +7,27 @@ use super::{Worktree, WorktreeManager};
 
 impl WorktreeManager {
     /// Rebuild tracked worktrees from persisted tasks at boot (ADR 0015).
+    /// `tasks` carries each recorded task's `(id, path, persisted base branch)`.
     /// `None` porcelain (git failed) adopts and clears nothing; only an
     /// unlisted path that is also gone from disk is reported for clearing.
-    pub fn restore(&mut self, tasks: &[(String, String)], porcelain: Option<&str>) -> Vec<String> {
+    pub fn restore(
+        &mut self,
+        tasks: &[(String, String, Option<String>)],
+        porcelain: Option<&str>,
+    ) -> Vec<String> {
         let Some(porcelain) = porcelain else {
             return Vec::new();
         };
         let listed = parse_worktree_list(porcelain);
         // The repo's own checkout is the first entry; its current branch is the
-        // best guess available for what a restored worktree branched from.
-        let base_branch = listed
+        // best guess available for what a worktree branched from when the task
+        // was created before the base was persisted (ADR 0015).
+        let guess = listed
             .first()
             .and_then(|w| w.branch.clone())
             .unwrap_or_else(|| "main".to_string());
         let mut missing = Vec::new();
-        for (task_id, recorded) in tasks {
+        for (task_id, recorded, persisted_base) in tasks {
             let path = Path::new(recorded);
             match listed.iter().find(|w| paths_equal(&w.path, path)) {
                 Some(w) => {
@@ -35,7 +41,9 @@ impl WorktreeManager {
                             task_id: task_id.clone(),
                             path: path.to_path_buf(),
                             branch,
-                            base_branch: base_branch.clone(),
+                            // Prefer the fork point recorded at creation; the
+                            // root's branch is only a fallback for old tasks.
+                            base_branch: persisted_base.clone().unwrap_or_else(|| guess.clone()),
                         },
                     );
                 }

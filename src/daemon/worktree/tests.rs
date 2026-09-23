@@ -185,8 +185,13 @@ async fn restore_adopts_live_worktrees_and_reports_missing() {
             (
                 "t_live".to_string(),
                 live.path.to_string_lossy().into_owned(),
+                None,
             ),
-            ("t_gone".to_string(), gone.to_string_lossy().into_owned()),
+            (
+                "t_gone".to_string(),
+                gone.to_string_lossy().into_owned(),
+                None,
+            ),
         ],
         Some(&porcelain),
     );
@@ -212,7 +217,11 @@ async fn restore_without_porcelain_adopts_and_clears_nothing() {
 
     let mut mgr = WorktreeManager::new(repo);
     let missing = mgr.restore(
-        &[("t_a".to_string(), recorded.to_string_lossy().into_owned())],
+        &[(
+            "t_a".to_string(),
+            recorded.to_string_lossy().into_owned(),
+            None,
+        )],
         None,
     );
 
@@ -232,7 +241,11 @@ async fn restore_keeps_an_unlisted_path_that_still_exists() {
 
     let mut mgr = WorktreeManager::new(repo);
     let missing = mgr.restore(
-        &[("t_orphan".to_string(), dir.to_string_lossy().into_owned())],
+        &[(
+            "t_orphan".to_string(),
+            dir.to_string_lossy().into_owned(),
+            None,
+        )],
         Some(""),
     );
 
@@ -254,7 +267,11 @@ async fn restore_clears_an_unlisted_path_that_is_gone() {
 
     let mut mgr = WorktreeManager::new(repo);
     let missing = mgr.restore(
-        &[("t_gone".to_string(), gone.to_string_lossy().into_owned())],
+        &[(
+            "t_gone".to_string(),
+            gone.to_string_lossy().into_owned(),
+            None,
+        )],
         Some(""),
     );
 

@@ -75,53 +75,13 @@ impl WorktreeManager {
         Ok(())
     }
 
-    /// Merge the worktree's branch back into its base branch.
+    /// Merge the worktree's branch back into its base branch. Delegates to the
+    /// safe, manager-free path so there is one merge implementation.
     pub async fn merge(&self, task_id: &str) -> Result<MergeResult> {
         let wt = self
             .worktrees
             .get(task_id)
             .with_context(|| format!("no worktree for task {task_id}"))?;
-
-        // Switch to base branch.
-        let status = tokio::process::Command::new("git")
-            .args(["checkout", &wt.base_branch])
-            .current_dir(&self.base_repo)
-            .status()
-            .await
-            .context("failed to checkout base branch")?;
-
-        if !status.success() {
-            return Ok(MergeResult::Error("failed to checkout base branch".into()));
-        }
-
-        // Merge the worktree branch.
-        let output = tokio::process::Command::new("git")
-            .args(["merge", &wt.branch, "--no-edit"])
-            .current_dir(&self.base_repo)
-            .output()
-            .await
-            .context("failed to run git merge")?;
-
-        if output.status.success() {
-            Ok(MergeResult::Ok {
-                branch: wt.branch.clone(),
-            })
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            if stderr.contains("CONFLICT") || stderr.contains("conflict") {
-                // Abort the failed merge.
-                let _ = tokio::process::Command::new("git")
-                    .args(["merge", "--abort"])
-                    .current_dir(&self.base_repo)
-                    .status()
-                    .await;
-                Ok(MergeResult::Conflict {
-                    message: stderr,
-                    branch: wt.branch.clone(),
-                })
-            } else {
-                Ok(MergeResult::Error(stderr))
-            }
-        }
+        super::merge::merge_detached(&self.base_repo, &wt.path, &wt.branch, &wt.base_branch).await
     }
 }

@@ -97,7 +97,7 @@ The task's **Terminal** tab opens in its worktree. The project's services keep r
 
 If the worktree cannot be created — a full disk, say — the task does not quietly fall back to your checkout. It waits in **Needs you** with git's error; send a message to run it in the project checkout instead, or delete it. Deleting a task removes its worktree, including after Warpforge restarts or updates.
 
-When the work is good, the worktree's branch merges back into its base and the worktree is removed. A task without a worktree just works in the project checkout, which is often what you want for a quick change.
+When the work is good, **Merge into &lt;base&gt;** in the task's branch menu brings it back. Warpforge fast-forwards the base when it has not moved, or writes a merge commit otherwise, and it never changes your own checkout unless the base branch is the one checked out there — and then only if that checkout is clean. A conflict leaves every branch untouched and tells you to update the task branch from the base first. By default the worktree and its branch are removed after a successful merge and the task is marked **Done**, because the merged work is finished; clear **Remove the worktree after merging** to keep both and leave the task as it is. Prefer a pull request? Push the branch and open one as usual. A task without a worktree just works in the project checkout, which is often what you want for a quick change.
 
 ### Review, then commit
 

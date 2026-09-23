@@ -232,10 +232,15 @@ impl DaemonHandle {
             .unwrap_or_else(|_| Err(anyhow::anyhow!("daemon closed")))
     }
 
-    pub async fn merge_worktree(&self, task_id: &str) -> Result<String, String> {
+    pub async fn merge_worktree(
+        &self,
+        task_id: &str,
+        remove_worktree: bool,
+    ) -> Result<String, String> {
         let (tx, rx) = oneshot::channel();
         self.send(Command::MergeWorktree {
             task_id: task_id.to_string(),
+            remove_worktree,
             reply: tx,
         })
         .await;

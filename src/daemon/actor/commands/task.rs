@@ -121,6 +121,7 @@ impl Daemon {
                     Ok((project, wt)) => {
                         if let Some(task) = self.tasks.get_mut(&task_id) {
                             task.worktree = Some(wt.path.to_string_lossy().to_string());
+                            task.base_branch = Some(wt.base_branch.clone());
                             let updated = task.clone();
                             self.persist(&updated);
                             self.emit(Event::TaskUpdated(updated));

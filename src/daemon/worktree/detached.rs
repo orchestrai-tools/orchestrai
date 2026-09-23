@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use super::{MergeResult, Worktree};
+use super::Worktree;
 
 /// A detached worktree removal, boxed so the daemon can hold one as a field
 /// and a test can swap in a slow remover (see `Daemon::spawn_worktree_removal`).
@@ -161,51 +161,6 @@ pub async fn create_branched_detached(
             format!("failed to copy working state into branched worktree {task_id}")
         })?;
     Ok(wt)
-}
-
-/// Merge `branch` into `base_branch` without a manager, so the git work can run
-/// off the daemon actor. The caller records the outcome.
-pub async fn merge_detached(
-    base_repo: &Path,
-    branch: &str,
-    base_branch: &str,
-) -> Result<MergeResult> {
-    let status = tokio::process::Command::new("git")
-        .args(["checkout", base_branch])
-        .current_dir(base_repo)
-        .status()
-        .await
-        .context("failed to checkout base branch")?;
-    if !status.success() {
-        return Ok(MergeResult::Error("failed to checkout base branch".into()));
-    }
-
-    let output = tokio::process::Command::new("git")
-        .args(["merge", branch, "--no-edit"])
-        .current_dir(base_repo)
-        .output()
-        .await
-        .context("failed to run git merge")?;
-
-    if output.status.success() {
-        return Ok(MergeResult::Ok {
-            branch: branch.to_string(),
-        });
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    if stderr.contains("CONFLICT") || stderr.contains("conflict") {
-        // Abort the failed merge.
-        let _ = tokio::process::Command::new("git")
-            .args(["merge", "--abort"])
-            .current_dir(base_repo)
-            .status()
-            .await;
-        return Ok(MergeResult::Conflict {
-            message: stderr,
-            branch: branch.to_string(),
-        });
-    }
-    Ok(MergeResult::Error(stderr))
 }
 
 /// Remove a worktree and delete its branch, without a manager. The caller drops

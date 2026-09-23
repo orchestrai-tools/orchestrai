@@ -4,20 +4,27 @@ import {
   Download,
   GitBranch,
   GitCommitVertical,
+  GitMerge,
   Loader2,
   Plus,
   Search,
   Send,
 } from "lucide-react";
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
 
 import { daemon } from "../../daemon";
-import type { GitBranchList, GitOpResult } from "../../protocol";
+import type { GitBranchList, GitOpResult, TaskInfo } from "../../protocol";
 import { daemonQuery } from "../../query";
 import { useUi } from "../../store/ui";
 import { BranchActionsDialog, type BranchAction } from "./BranchActionsDialog";
 import { BranchList } from "./BranchList";
+import {
+  GitMenuAction,
+  handleGitOpError,
+  handleGitOpResult,
+  invalidateAll,
+} from "./gitMenu";
+import { MergeWorktreeDialog } from "./MergeWorktreeDialog";
 import {
   buildBranchTree,
   defaultOpenFolders,
@@ -25,73 +32,23 @@ import {
   type BranchRow,
 } from "./branchTree";
 
-function handleGitOpResult(r: GitOpResult) {
-  switch (r.status) {
-    case "up_to_date":
-      toast.info(r.message);
-      break;
-    case "ok":
-      toast.success(r.message);
-      break;
-    case "conflict":
-      toast.error(r.message, {
-        description: r.conflicts.length > 0 ? r.conflicts.join(", ") : undefined,
-      });
-      break;
-    case "error":
-      toast.error(r.message);
-      break;
-  }
-}
-
-const handleGitOpError = (e: Error) => toast.error(e.message);
-
-function invalidateAll(queryClient: ReturnType<typeof useQueryClient>, taskId: string) {
-  void queryClient.invalidateQueries({ queryKey: ["diff", taskId] });
-  void queryClient.invalidateQueries({ queryKey: ["fileList", taskId] });
-  void queryClient.invalidateQueries({ queryKey: ["branches", taskId] });
-}
-
-function GitMenuAction({
-  disabled,
-  icon,
-  label,
-  onClick,
-  shortcut,
-}: {
-  disabled?: boolean;
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  shortcut: string;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[13px] hover:bg-accent/50 disabled:opacity-50"
-    >
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="flex-1">{label}</span>
-      <kbd className="font-sans text-[10px] text-muted-foreground">{shortcut}</kbd>
-    </button>
-  );
-}
-
 export function GitWorkspaceControls({
   taskId,
   branch,
+  task,
   onOpenCommit,
   onOpenPush,
 }: {
   taskId: string;
   branch: string | null;
+  /** The open task, when it has one — used to offer the worktree merge. */
+  task?: TaskInfo;
   onOpenCommit: () => void;
   onOpenPush: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [mergeOpen, setMergeOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const repositoryOperation = useUi((s) => s.repositoryOperation);
@@ -110,6 +67,9 @@ export function GitWorkspaceControls({
   const showCommit = !normalizedSearch || "commit changes".includes(normalizedSearch);
   const showPush = !normalizedSearch || "push changes".includes(normalizedSearch);
   const showNewBranch = !normalizedSearch || "new branch".includes(normalizedSearch);
+  const canMergeWorktree = Boolean(task?.worktree && task?.baseBranch);
+  const showMerge =
+    canMergeWorktree && (!normalizedSearch || "merge worktree into base".includes(normalizedSearch));
 
   useEffect(() => {
     if (!open) {
@@ -267,6 +227,13 @@ export function GitWorkspaceControls({
       },
     ],
     [
+      "merge-worktree",
+      () => {
+        setOpen(false);
+        setMergeOpen(true);
+      },
+    ],
+    [
       "rename",
       () => {
         const t = actionRef.current;
@@ -394,7 +361,7 @@ export function GitWorkspaceControls({
               </label>
             </div>
             <div className="min-h-0 overflow-y-auto p-1.5">
-              {(showNewBranch || showSync || showCommit || showPush) && (
+              {(showNewBranch || showSync || showCommit || showPush || showMerge) && (
                 <div className="space-y-0.5 pb-1.5">
                   {showNewBranch && (
                     <GitMenuAction
@@ -442,10 +409,22 @@ export function GitWorkspaceControls({
                       }}
                     />
                   )}
+                  {showMerge && (
+                    <GitMenuAction
+                      icon={<GitMerge className="size-3.5" />}
+                      label={`Merge into ${task?.baseBranch}…`}
+                      shortcut=""
+                      disabled={busy}
+                      onClick={() => {
+                        setOpen(false);
+                        setMergeOpen(true);
+                      }}
+                    />
+                  )}
                 </div>
               )}
 
-              {(showNewBranch || showSync || showCommit || showPush) && (
+              {(showNewBranch || showSync || showCommit || showPush || showMerge) && (
                 <div className="mx-1 border-t" />
               )}
               {!branchesQuery.isLoading && (
@@ -478,6 +457,14 @@ export function GitWorkspaceControls({
         onComplete={() => invalidateAll(queryClient, taskId)}
         onClose={() => setAction(null)}
       />
+      {task && (
+        <MergeWorktreeDialog
+          open={mergeOpen}
+          onOpenChange={setMergeOpen}
+          task={task}
+          onMerged={() => invalidateAll(queryClient, taskId)}
+        />
+      )}
     </span>
   );
 }

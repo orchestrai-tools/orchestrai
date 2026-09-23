@@ -51,6 +51,7 @@ export function TaskStatusStrip({
         <GitWorkspaceControls
           taskId={task.id}
           branch={branch}
+          task={task}
           onOpenCommit={onOpenCommit}
           onOpenPush={onOpenPush}
         />

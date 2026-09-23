@@ -16,17 +16,20 @@ use std::path::{Path, PathBuf};
 mod detached;
 mod discover;
 mod manager;
+mod merge;
+
+#[cfg(test)]
+mod merge_tests;
 
 #[cfg(test)]
 mod tests;
 
+pub use detached::{create_branched_detached, create_detached, default_remover};
 #[cfg(test)]
-pub use detached::RemoveFn;
-pub use detached::{
-    create_branched_detached, create_detached, default_remover, merge_detached, remove_detached,
-};
+pub use detached::{remove_detached, RemoveFn};
 #[cfg(test)]
 pub use discover::parse_worktree_list;
+pub use merge::merge_detached;
 
 /// Metadata about one worktree.
 #[derive(Debug, Clone)]
@@ -100,9 +103,25 @@ impl WorktreeManager {
     }
 }
 
+/// What a worktree merge did, or why it did nothing. A refusal is a user
+/// mistake ("commit first", "nothing to merge"); an error is a git failure.
 #[derive(Debug)]
 pub enum MergeResult {
-    Ok { branch: String },
-    Conflict { message: String, branch: String },
+    /// The base had no commits the branch lacked, so the ref moved to it.
+    FastForward {
+        branch: String,
+    },
+    /// A real merge commit was created on the base.
+    Merged {
+        branch: String,
+        commit: String,
+    },
+    /// The two lines conflict. Every ref is left unchanged.
+    Conflict {
+        files: Vec<String>,
+        message: String,
+    },
+    /// The merge was not attempted, with a message to show the user.
+    Refused(String),
     Error(String),
 }

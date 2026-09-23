@@ -16,9 +16,9 @@ impl Store {
             INSERT INTO tasks
                 (id, session_id, project, prompt, agent, status, tags, title,
                  created_at, updated_at, files_changed, blocked_reason, config_options, worktree,
-                 parent_task_id, settled_override, settled_at, snoozed_until, snoozed_at,
-                 account_id, backlog_item_id, blocked_kind, model, origin)
-            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)
+                 base_branch, parent_task_id, settled_override, settled_at, snoozed_until,
+                 snoozed_at, account_id, backlog_item_id, blocked_kind, model, origin)
+            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)
             ON CONFLICT(id) DO UPDATE SET
                 session_id=excluded.session_id,
                 status=excluded.status,
@@ -29,6 +29,7 @@ impl Store {
                 blocked_reason=excluded.blocked_reason,
                 config_options=excluded.config_options,
                 worktree=excluded.worktree,
+                base_branch=excluded.base_branch,
                 settled_override=excluded.settled_override,
                 settled_at=excluded.settled_at,
                 snoozed_until=excluded.snoozed_until,
@@ -53,6 +54,7 @@ impl Store {
                 task.blocked_reason,
                 config_options,
                 task.worktree,
+                task.base_branch,
                 task.parent_task_id,
                 task.settled_override,
                 task.settled_at,
@@ -77,7 +79,7 @@ impl Store {
             "SELECT id, session_id, project, prompt, agent, status, tags, \
              created_at, updated_at, files_changed, blocked_reason, config_options, worktree, \
              parent_task_id, title, settled_override, settled_at, snoozed_until, snoozed_at, \
-             account_id, backlog_item_id, blocked_kind, model, origin \
+             account_id, backlog_item_id, blocked_kind, model, origin, base_branch \
              FROM tasks",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -104,6 +106,7 @@ impl Store {
                 blocked_kind: parse_blocked_kind(row.get(21)?),
                 config_options: serde_json::from_str(&config_options_json).unwrap_or_default(),
                 worktree: row.get(12)?,
+                base_branch: row.get(24)?,
                 orchestration_graph: None,
                 workflow_run: None,
                 parent_task_id: row.get(13)?,

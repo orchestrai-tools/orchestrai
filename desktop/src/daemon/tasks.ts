@@ -47,6 +47,20 @@ export function TaskMethods<TBase extends Constructor<CoreClient>>(Base: TBase) 
       await this.request("task.setTitle", { task_id: taskId, title });
     }
 
+    /**
+     * Merge a task's worktree branch back into its base branch. When
+     * `removeWorktree` is true the checkout and branch are removed afterwards.
+     * Returns a message naming what happened (fast-forward or merge commit);
+     * rejects with git's reason on a conflict or refusal.
+     */
+    async mergeWorktree(taskId: string, removeWorktree: boolean): Promise<string> {
+      const result = (await this.request("task.mergeWorktree", {
+        task_id: taskId,
+        remove_worktree: removeWorktree,
+      })) as { message?: string } | null;
+      return result?.message ?? "Merged";
+    }
+
     async deleteTask(taskId: string) {
       await this.request("task.delete", { task_id: taskId });
     }

@@ -134,6 +134,7 @@ pub fn task_info(t: &Task) -> wire::TaskInfo {
         blocked_kind: t.blocked_kind,
         config_options: t.config_options.clone(),
         worktree: t.worktree.clone(),
+        base_branch: t.base_branch.clone(),
         orchestration_graph: t.orchestration_graph.clone(),
         parent_task_id: t.parent_task_id.clone(),
         workflow_run: t.workflow_run.clone(),

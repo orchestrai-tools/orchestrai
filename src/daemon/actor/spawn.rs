@@ -397,10 +397,14 @@ fn restore_worktrees(
 ) -> HashMap<String, WorktreeManager> {
     let mut managers = HashMap::new();
     for project in projects {
-        let recorded: Vec<(String, String)> = tasks
+        let recorded: Vec<(String, String, Option<String>)> = tasks
             .values()
             .filter(|t| t.project == project.name)
-            .filter_map(|t| t.worktree.clone().map(|path| (t.id.clone(), path)))
+            .filter_map(|t| {
+                t.worktree
+                    .clone()
+                    .map(|path| (t.id.clone(), path, t.base_branch.clone()))
+            })
             .collect();
         if recorded.is_empty() {
             continue;

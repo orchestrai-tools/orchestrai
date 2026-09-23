@@ -41,6 +41,11 @@ pub struct TaskInfo {
     /// `null` / omitted when the task runs in the project's main working dir.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
+    /// The branch this task's worktree forked from, when it runs isolated.
+    /// Persisted so a merge after a daemon restart targets the real base
+    /// rather than whatever branch the root checkout happens to be on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_branch: Option<String>,
     /// Orchestration graph for parent orchestrator tasks. Contains child nodes
     /// (workers/reviewers) each with their own task_id for navigation.
     #[serde(default, skip_serializing_if = "Option::is_none")]

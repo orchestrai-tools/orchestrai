@@ -43,6 +43,8 @@ export interface TaskInfo {
   configOptions?: ConfigOption[];
   /** Path to the git worktree for this task, if isolated. */
   worktree?: string | null;
+  /** Branch this task's worktree forked from, when it is isolated. */
+  baseBranch?: string | null;
   /** Orchestration graph for parent orchestrator tasks, and for workflow parents. */
   orchestrationGraph?: OrchGraphInfo | null;
   /** Live pipeline state when this task is a workflow parent. */

@@ -253,10 +253,15 @@ pub enum Method {
     /// Override a task's title (e.g. after async title generation completes).
     #[serde(rename = "task.setTitle")]
     TaskSetTitle { task_id: String, title: String },
-    /// Merge a task's worktree branch back into its base branch and remove
-    /// the worktree. No-op if the task has no worktree.
+    /// Merge a task's worktree branch back into its base branch. When
+    /// `remove_worktree` (default true) the checkout and branch are removed
+    /// after a successful merge. Errors if the task has no worktree.
     #[serde(rename = "task.mergeWorktree")]
-    TaskMergeWorktree { task_id: String },
+    TaskMergeWorktree {
+        task_id: String,
+        #[serde(default = "default_true")]
+        remove_worktree: bool,
+    },
     /// List active worktrees for a project.
     #[serde(rename = "task.listWorktrees")]
     TaskListWorktrees { project: String },

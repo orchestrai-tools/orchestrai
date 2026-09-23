@@ -66,6 +66,11 @@ pub struct Task {
     /// Path to the git worktree for this task, if it runs isolated.
     /// `None` = run in the project's main working directory.
     pub worktree: Option<String>,
+    /// The branch this task's worktree forked from, recorded at creation so a
+    /// merge after a restart targets the real base rather than the root's
+    /// current branch (ADR 0015). `None` for a task without a worktree, or one
+    /// created before this was persisted.
+    pub base_branch: Option<String>,
     /// Orchestration graph for parent orchestrator tasks.
     pub orchestration_graph: Option<warpforge_protocol::OrchGraphInfo>,
     /// Live workflow pipeline state for workflow parent tasks. Derived from
@@ -122,6 +127,7 @@ impl Task {
             blocked_kind: None,
             config_options: Vec::new(),
             worktree: None,
+            base_branch: None,
             orchestration_graph: None,
             workflow_run: None,
             parent_task_id: None,

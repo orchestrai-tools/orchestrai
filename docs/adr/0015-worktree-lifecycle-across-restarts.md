@@ -53,6 +53,29 @@ model and overrides, held in memory until the retry). A workflow parent is
 finalized with `WorkflowOutcome::Error`, which does the same. It must not fall
 back to an unisolated run without telling the user.
 
+## Amendment — Merge-back (2026-09-23)
+
+The task records the branch its worktree forked from (`base_branch`, persisted
+at creation), so a merge after a restart targets the real base rather than the
+root checkout's branch at boot. Boot restore prefers the persisted value and
+keeps the old guess only as a fallback for tasks created before it existed.
+
+`merge_detached` never runs `git checkout`. It refuses when the task worktree is
+dirty (untracked files included — they would be left out of the merge) or the
+branch has no commits beyond base, and while the task has a turn in progress.
+When the base is checked out in the root or another worktree it requires that
+checkout to be clean of tracked changes (`--untracked-files=no`; git itself
+refuses if an untracked file would be overwritten) and merges there; otherwise
+it fast-forwards with `git update-ref`, or writes a merge commit with
+`git merge-tree --write-tree` + `git commit-tree` + `git update-ref` when the
+lines diverged. `git merge-tree --write-tree` needs git 2.38+; older git gets a
+clear error for that path only. The client chooses whether a successful merge
+also removes the worktree (default yes). When removed, the task's terminals are
+killed and its live session cancelled and dropped before the checkout goes away,
+then the task is marked `Done` — the merged work is finished. When kept, the
+session and status are left alone and the task keeps its `worktree` and
+`base_branch`.
+
 ## Invariants
 
 1. **`daemon/worktree/` — the manager is a cache, not the source of truth.** The
@@ -71,3 +94,9 @@ back to an unisolated run without telling the user.
    appends `.worktrees/` to the repo's exclude file (idempotently) and never
    touches the user's `.gitignore`; the file tree and search also skip
    `.worktrees` independently of it.
+7. **A merge never changes the HEAD or the working files of a checkout that is
+   not on the base branch.** It runs only in the checkout that has the base
+   checked out, and only when that checkout is clean; every other merge is a ref
+   update with no checkout.
+8. **A conflict leaves every ref unchanged.** No partial merge commit, no moved
+   branch, and the base checkout is aborted back to its pre-merge state.
