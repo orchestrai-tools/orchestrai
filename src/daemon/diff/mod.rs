@@ -54,6 +54,19 @@ pub(super) const HEAVY_DIRS: &[&str] = &[
     ".next",
 ];
 
+/// True for a project-relative path that is a task-worktree directory or lives
+/// inside one: the current `.warpforge/worktrees` or the legacy `.worktrees`.
+/// Matched as a full path, never by the bare name `worktrees` — [`HEAVY_DIRS`]
+/// matches names at any depth, so a bare `worktrees` entry would hide every
+/// unrelated `worktrees/` folder in a project.
+pub(super) fn is_worktree_path(path: &str) -> bool {
+    let path = path.trim_start_matches("./");
+    path == crate::daemon::worktree::WORKTREES_REL
+        || path.starts_with(&format!("{}/", crate::daemon::worktree::WORKTREES_REL))
+        || path == ".worktrees"
+        || path.starts_with(".worktrees/")
+}
+
 /// OS / editor junk never shown in the file tree.
 const IGNORED_NAMES: &[&str] = &[
     ".DS_Store",

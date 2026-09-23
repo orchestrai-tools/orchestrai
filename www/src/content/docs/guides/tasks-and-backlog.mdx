@@ -91,7 +91,7 @@ Queue actions are inline on the row, and the tab you were last on is remembered.
 
 ### Isolated worktrees
 
-A task can run in **its own git worktree** while staying attached to the same project. Two agents on two tasks then edit two checkouts — no stashing, no branch juggling, no collisions. Worktrees live in a hidden `.worktrees/` folder inside the project, and Warpforge lists it in git's `info/exclude` so it never appears in `git status` or gets swept up by `git add .`.
+A task can run in **its own git worktree** while staying attached to the same project. Two agents on two tasks then edit two checkouts — no stashing, no branch juggling, no collisions. Worktrees live in `.warpforge/worktrees/` inside the project, alongside its committed config, and a `.gitignore` in that folder keeps them out of `git status` and `git add .` — your own `.gitignore` and `.git` are never touched. (Tasks created by older versions keep their checkouts where they were; Warpforge still uses and hides those.)
 
 The task's **Terminal** tab opens in its worktree. The project's services keep running from the project checkout, though, so restarting one does not pick up the task's edits — the agent is told this when it starts, and `list_runtime` names the checkout each service runs from.
 

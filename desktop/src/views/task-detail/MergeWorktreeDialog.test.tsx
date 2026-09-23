@@ -25,7 +25,7 @@ function task(): TaskInfo {
     updatedAt: 0,
     filesChanged: 1,
     blockedReason: null,
-    worktree: "/repo/.worktrees/t_abc",
+    worktree: "/repo/.warpforge/worktrees/t_abc",
     baseBranch: "main",
   };
 }

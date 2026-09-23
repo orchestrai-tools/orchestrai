@@ -22,8 +22,12 @@ fn cwd_resolves_to_the_deepest_registered_project() {
         pick("/w/outer/packages/inner/src").as_deref(),
         Some("inner")
     );
-    // A task worktree lives under its project root.
+    // A task worktree lives under its project root, at either location.
     assert_eq!(pick("/w/outer/.worktrees/t_1").as_deref(), Some("outer"));
+    assert_eq!(
+        pick("/w/outer/.warpforge/worktrees/t_1/src").as_deref(),
+        Some("outer")
+    );
     // A sibling sharing a name prefix is not a parent directory.
     assert_eq!(pick("/w/outer-sibling/src").as_deref(), Some("sibling"));
     assert_eq!(pick("/tmp/unregistered"), None);

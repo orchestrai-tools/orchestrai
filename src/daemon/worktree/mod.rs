@@ -1,10 +1,11 @@
 //! Git worktree isolation: each task can optionally run in its own worktree so
 //! parallel tasks don't conflict on the same working tree.
 //!
-//! A worktree is created under `<project>/.worktrees/<task_id>` on a branch
-//! `warpforge/task/<task_id>` (derived from the current HEAD). When the task
-//! completes the worktree can be merged back and removed, or left for manual
-//! inspection.
+//! A worktree is created under `<project>/.warpforge/worktrees/<task_id>` on a
+//! branch `warpforge/task/<task_id>` (derived from the current HEAD). When the
+//! task completes the worktree can be merged back and removed, or left for
+//! manual inspection. Older tasks may still have checkouts under the legacy
+//! `<project>/.worktrees/<task_id>`; those paths are used exactly as recorded.
 //!
 //! Split by topic: [`manager`] holds the manager's git operations, [`detached`]
 //! the manager-free versions that run off the actor, and [`discover`] the boot
@@ -30,6 +31,17 @@ pub use detached::{remove_detached, RemoveFn};
 #[cfg(test)]
 pub use discover::parse_worktree_list;
 pub use merge::merge_detached;
+
+/// Project-relative directory new task worktrees live under. One constant so
+/// the location is named once; `.warpforge/` is committed project config, and
+/// a `.gitignore` inside `worktrees/` keeps the checkouts out of git.
+pub(crate) const WORKTREES_REL: &str = ".warpforge/worktrees";
+
+/// The directory a task's isolated checkout is created at. Legacy tasks keep
+/// whatever path was recorded on them; this is only for new creations.
+pub(crate) fn worktree_path(base_repo: &Path, task_id: &str) -> PathBuf {
+    base_repo.join(WORKTREES_REL).join(task_id)
+}
 
 /// Metadata about one worktree.
 #[derive(Debug, Clone)]

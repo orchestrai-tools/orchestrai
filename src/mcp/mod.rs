@@ -126,7 +126,8 @@ fn project_from_cwd() -> Option<String> {
 
 /// The deepest registered root containing `cwd`. Deepest rather than first so a
 /// project nested inside another resolves to the inner one; a task worktree
-/// under `<project>/.worktrees/<task>` resolves to its project.
+/// under `<project>/.warpforge/worktrees/<task>` (or legacy `.worktrees/`)
+/// resolves to its project.
 fn pick_project(roots: &[(String, PathBuf)], cwd: &Path) -> Option<String> {
     roots
         .iter()

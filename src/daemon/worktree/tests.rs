@@ -36,6 +36,13 @@ async fn create_and_remove_worktree() {
     let wt = mgr.create("t_abc123", None).await.unwrap();
     assert!(wt.path.exists());
     assert!(wt.branch.contains("t_abc123"));
+    assert!(
+        wt.path
+            .to_string_lossy()
+            .contains(".warpforge/worktrees/t_abc123"),
+        "new worktrees live under .warpforge/worktrees: {}",
+        wt.path.display()
+    );
     assert!(mgr.has_worktree("t_abc123"));
 
     let list = mgr.list();
@@ -47,14 +54,92 @@ async fn create_and_remove_worktree() {
 }
 
 #[tokio::test]
-async fn create_detached_hides_worktrees_via_info_exclude() {
+async fn create_detached_lands_under_warpforge_and_stays_out_of_git() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().to_path_buf();
     git_init_with_commit(&repo).await;
 
-    // Two creations must leave the exclude file with exactly one entry.
+    let a = create_detached(&repo, "t_a", None).await.unwrap();
+    let b = create_detached(&repo, "t_b", None).await.unwrap();
+    assert!(a
+        .path
+        .starts_with(repo.join(".warpforge").join("worktrees")));
+    assert!(b
+        .path
+        .starts_with(repo.join(".warpforge").join("worktrees")));
+
+    // The `.gitignore` is written once, with the comment and a single `*`.
+    let ignore = repo.join(".warpforge").join("worktrees").join(".gitignore");
+    let text = std::fs::read_to_string(&ignore).unwrap();
+    assert_eq!(
+        text.lines().filter(|l| l.trim() == "*").count(),
+        1,
+        "{text:?}"
+    );
+    assert!(
+        text.contains("Created by Warpforge automatically"),
+        "{text:?}"
+    );
+
+    // Neither the worktrees nor the ignore file show up in the root checkout.
+    let status = tokio::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&repo)
+        .output()
+        .await
+        .unwrap();
+    let status = String::from_utf8_lossy(&status.stdout);
+    assert!(
+        status.trim().is_empty(),
+        "the root checkout must read clean, got: {status:?}"
+    );
+}
+
+/// Legacy tasks recorded under `.worktrees/` still delete: the manager removes
+/// the checkout and its branch from wherever it actually is.
+#[tokio::test]
+async fn removes_a_legacy_worktrees_checkout() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().to_path_buf();
+    git_init_with_commit(&repo).await;
+
+    let legacy = repo.join(".worktrees").join("t_legacy");
+    let status = tokio::process::Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            "-b",
+            "warpforge/task/t_legacy",
+            legacy.to_str().unwrap(),
+            "HEAD",
+        ])
+        .current_dir(&repo)
+        .status()
+        .await
+        .unwrap();
+    assert!(status.success());
+    assert!(legacy.exists());
+
+    let mut mgr = WorktreeManager::new(repo.clone());
+    mgr.adopt(Worktree {
+        task_id: "t_legacy".to_string(),
+        path: legacy.clone(),
+        branch: "warpforge/task/t_legacy".to_string(),
+        base_branch: "master".to_string(),
+    });
+    mgr.remove("t_legacy").await.unwrap();
+    assert!(!legacy.exists(), "the legacy checkout is removed");
+}
+
+#[tokio::test]
+async fn create_detached_hides_legacy_worktrees_via_info_exclude() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().to_path_buf();
+    git_init_with_commit(&repo).await;
+
+    // A legacy `.worktrees/` dir present: creation adds the exclude line.
+    std::fs::create_dir_all(repo.join(".worktrees")).unwrap();
     create_detached(&repo, "t_a", None).await.unwrap();
-    create_detached(&repo, "t_b", None).await.unwrap();
 
     let status = tokio::process::Command::new("git")
         .args(["status", "--porcelain"])
@@ -65,7 +150,7 @@ async fn create_detached_hides_worktrees_via_info_exclude() {
     let status = String::from_utf8_lossy(&status.stdout);
     assert!(
         !status.contains(".worktrees"),
-        "worktrees must not show as untracked, got: {status:?}"
+        "legacy worktrees must not show as untracked, got: {status:?}"
     );
 
     let exclude = tokio::process::Command::new("git")

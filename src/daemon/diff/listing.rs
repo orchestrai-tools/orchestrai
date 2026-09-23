@@ -6,7 +6,7 @@ use tokio::process::Command;
 use warpforge_protocol as wire;
 
 use super::working::working_diff;
-use super::{HEAVY_DIRS, IGNORED_NAMES};
+use super::{is_worktree_path, HEAVY_DIRS, IGNORED_NAMES};
 
 /// Project files for the editor tree. Prefer git's view (tracked +
 /// untracked); fall back to a small filesystem walk for non-git projects.
@@ -74,6 +74,9 @@ pub async fn list_files(repo: &str, include_ignored: bool) -> Result<Vec<wire::P
 }
 
 pub fn is_ignored_path(path: &str) -> bool {
+    if is_worktree_path(path) {
+        return true;
+    }
     if path.split('/').any(|part| HEAVY_DIRS.contains(&part)) {
         return true;
     }
@@ -108,6 +111,11 @@ fn walk_files(
             continue;
         }
         if path.is_dir() {
+            if let Ok(rel) = path.strip_prefix(root) {
+                if is_worktree_path(&rel.to_string_lossy().replace('\\', "/")) {
+                    continue;
+                }
+            }
             walk_files(root, &path, out)?;
         } else if path.is_file() {
             if let Ok(rel) = path.strip_prefix(root) {
@@ -133,6 +141,10 @@ mod tests {
     fn worktrees_paths_are_ignored() {
         assert!(is_ignored_path(".worktrees/t_a/src/main.rs"));
         assert!(is_ignored_path(".worktrees/t_a/"));
+        assert!(is_ignored_path(".warpforge/worktrees/t_a/src/main.rs"));
+        assert!(is_ignored_path(".warpforge/worktrees/t_a/"));
+        // A bare `worktrees` folder elsewhere is not Warpforge's, and must stay.
+        assert!(!is_ignored_path("src/worktrees/mod.rs"));
     }
 
     #[tokio::test]
@@ -151,6 +163,29 @@ mod tests {
         let files = list_files(repo, true).await.unwrap();
         assert!(
             !files.iter().any(|f| f.path.contains(".worktrees")),
+            "task worktrees must not appear in the tree: {:?}",
+            files.iter().map(|f| &f.path).collect::<Vec<_>>()
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn list_files_skips_new_location_task_worktrees() {
+        let dir = std::env::temp_dir().join(format!("wf-listing-wt2-{}", uuid::Uuid::new_v4()));
+        init_repo(&dir).await;
+        let repo = dir.to_str().unwrap();
+        std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+        git(&dir, &["add", "."]).await;
+        git(&dir, &["commit", "-q", "-m", "init"]).await;
+
+        let nested = dir.join(".warpforge").join("worktrees").join("t_abc");
+        init_repo(&nested).await;
+        std::fs::write(nested.join("secret.txt"), "x\n").unwrap();
+
+        let files = list_files(repo, true).await.unwrap();
+        assert!(
+            !files.iter().any(|f| f.path.contains("worktrees")),
             "task worktrees must not appear in the tree: {:?}",
             files.iter().map(|f| &f.path).collect::<Vec<_>>()
         );

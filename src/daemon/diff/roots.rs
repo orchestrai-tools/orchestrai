@@ -5,15 +5,11 @@ use anyhow::Result;
 use warpforge_protocol as wire;
 
 use super::working::current_branch;
-use super::{git, HEAVY_DIRS};
+use super::{git, is_worktree_path, HEAVY_DIRS};
 
 /// How deep under a root to look for nested git checkouts. Bounded so a huge
 /// `node_modules`-free tree can't turn this into an unbounded walk.
 const MAX_NESTED_DEPTH: usize = 4;
-
-/// Warpforge's own worktree dir: task checkouts, never a working root. Without
-/// this, any repo with a live task shows the multi-root tree for no reason.
-const SKIPPED_DIRS: &[&str] = &[".worktrees"];
 
 /// This repo's toplevel plus any nested git checkouts found under it (plain
 /// nested repos, not necessarily submodules), each with its branch and
@@ -106,8 +102,16 @@ fn find_nested_git_dirs(
         }
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if HEAVY_DIRS.contains(&name.as_ref()) || SKIPPED_DIRS.contains(&name.as_ref()) {
+        if HEAVY_DIRS.contains(&name.as_ref()) {
             continue;
+        }
+        // Task checkouts (`.warpforge/worktrees`, legacy `.worktrees`) are never
+        // working roots. Without this, any repo with a live task shows the
+        // multi-root tree for no reason.
+        if let Ok(rel) = path.strip_prefix(base) {
+            if is_worktree_path(&rel.to_string_lossy().replace('\\', "/")) {
+                continue;
+            }
         }
         if path != base && path.join(".git").exists() {
             // A nested repo's own nested repos would need their own `git.roots`
@@ -265,6 +269,25 @@ mod tests {
         git(&dir, &["commit", "-q", "-m", "init"]).await;
 
         let nested = dir.join(".worktrees").join("t_abc");
+        init_repo(&nested).await;
+
+        let roots = git_roots(repo).await.unwrap();
+        assert_eq!(roots.len(), 1, "task worktree is not a root");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn git_roots_skips_new_location_task_worktrees() {
+        // The new location, `.warpforge/worktrees/`, is also not a root.
+        let dir = std::env::temp_dir().join(format!("wf-roots-wt2-{}", uuid::Uuid::new_v4()));
+        init_repo(&dir).await;
+        let repo = dir.to_str().unwrap();
+        std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+        git(&dir, &["add", "."]).await;
+        git(&dir, &["commit", "-q", "-m", "init"]).await;
+
+        let nested = dir.join(".warpforge").join("worktrees").join("t_abc");
         init_repo(&nested).await;
 
         let roots = git_roots(repo).await.unwrap();

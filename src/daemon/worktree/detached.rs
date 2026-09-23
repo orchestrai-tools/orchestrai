@@ -37,11 +37,21 @@ pub async fn create_detached(
     task_id: &str,
     base_branch: Option<&str>,
 ) -> Result<Worktree> {
-    if let Err(e) = ensure_worktrees_excluded(base_repo).await {
-        eprintln!("[daemon] could not add .worktrees/ to info/exclude: {e:#}");
+    // New worktrees live under `.warpforge/worktrees/`, kept out of git by a
+    // `.gitignore` inside that folder. Best-effort: a checkout with no worktree
+    // is worse than one whose folder is briefly visible.
+    if let Err(e) = ensure_worktrees_gitignore(base_repo).await {
+        eprintln!("[daemon] could not write .warpforge/worktrees/.gitignore: {e:#}");
+    }
+    // Legacy tasks may still have checkouts under `.worktrees/`; hide those
+    // via info/exclude, but only when that directory actually exists.
+    if base_repo.join(".worktrees").is_dir() {
+        if let Err(e) = ensure_worktrees_excluded(base_repo).await {
+            eprintln!("[daemon] could not add .worktrees/ to info/exclude: {e:#}");
+        }
     }
 
-    let wt_dir = base_repo.join(".worktrees").join(task_id);
+    let wt_dir = super::worktree_path(base_repo, task_id);
     let branch = format!("warpforge/task/{task_id}");
 
     let base = match base_branch {
@@ -63,7 +73,7 @@ pub async fn create_detached(
             "add",
             "-b",
             &branch,
-            wt_dir.to_str().unwrap_or(".worktrees/task"),
+            wt_dir.to_str().unwrap_or(".warpforge/worktrees/task"),
             &base,
         ])
         .current_dir(base_repo)
@@ -83,9 +93,32 @@ pub async fn create_detached(
     })
 }
 
-/// List `.worktrees/` in the repo's `info/exclude` so task checkouts never show
-/// as untracked in the user's checkout. Uses the per-clone exclude file, never
-/// the user's `.gitignore` (ADR 0015). Idempotent; creates the file if missing.
+/// Write `.warpforge/worktrees/.gitignore` (content `*`) so new task checkouts
+/// never show as untracked in the user's checkout. Uses a `.gitignore` inside
+/// the worktrees folder — never the user's root `.gitignore` or `.git`
+/// (ADR 0015). Idempotent; the caller treats failure as best-effort.
+async fn ensure_worktrees_gitignore(base_repo: &Path) -> Result<()> {
+    let dir = base_repo.join(super::WORKTREES_REL);
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .with_context(|| format!("creating {}", dir.display()))?;
+    let ignore = dir.join(".gitignore");
+    const CONTENT: &str = "# Created by Warpforge automatically.\n*\n";
+    match tokio::fs::read_to_string(&ignore).await {
+        Ok(existing) if existing.lines().any(|l| l.trim() == "*") => return Ok(()),
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e).with_context(|| format!("reading {}", ignore.display())),
+    }
+    tokio::fs::write(&ignore, CONTENT)
+        .await
+        .with_context(|| format!("writing {}", ignore.display()))?;
+    Ok(())
+}
+
+/// List `.worktrees/` in the repo's `info/exclude` for legacy checkouts. Uses
+/// the per-clone exclude file, never the user's `.gitignore` (ADR 0015).
+/// Idempotent; creates the file if missing.
 async fn ensure_worktrees_excluded(base_repo: &Path) -> Result<()> {
     let output = tokio::process::Command::new("git")
         .args(["rev-parse", "--git-path", "info/exclude"])
@@ -242,10 +275,11 @@ pub(super) async fn copy_working_state(source: &Path, target: &Path) -> Result<(
         let src = source.join(line);
         // `git ls-files --others` reports a nested checkout as one directory
         // entry rather than its contents, and every worktree lives inside the
-        // project at `.worktrees/<task>`. So when the source is the project
-        // checkout itself, its own worktrees show up here — copying one would
-        // fail outright, and copying it successfully would be worse. Nothing
-        // that is not a plain file belongs in a branch's starting state.
+        // project under `.warpforge/worktrees/<task>` (or the legacy
+        // `.worktrees/<task>`). So when the source is the project checkout
+        // itself, its own worktrees show up here — copying one would fail
+        // outright, and copying it successfully would be worse. Nothing that is
+        // not a plain file belongs in a branch's starting state.
         if !src.is_file() {
             continue;
         }

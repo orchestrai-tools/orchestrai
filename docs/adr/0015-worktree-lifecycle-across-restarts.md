@@ -76,6 +76,29 @@ then the task is marked `Done` — the merged work is finished. When kept, the
 session and status are left alone and the task keeps its `worktree` and
 `base_branch`.
 
+## Amendment — Worktree location (2026-09-23)
+
+New task worktrees live at `<project>/.warpforge/worktrees/<task_id>`, not at a
+root-level `.worktrees/`. `.warpforge/` is committed project config
+(`workspace.yaml`, workflows), so keeping the checkouts there means they are
+cleaned up with the project and inherit its agent trust, and they no longer
+collide with a project that happens to use `.worktrees/` for something else.
+The location is named once (`worktree::worktree_path` / `WORKTREES_REL`).
+
+Creation writes `<project>/.warpforge/worktrees/.gitignore` with `*` and a
+`# Created by Warpforge automatically.` comment, idempotently and best-effort
+(failure is logged, never blocks the checkout). This is a `.gitignore` inside
+the worktrees folder — not the user's root `.gitignore`, and not `.git` — which
+is the one exception to invariant 6. Legacy tasks keep their recorded
+`.worktrees/<task_id>` paths exactly as they are: nothing is migrated or moved,
+and the `info/exclude` line is added only when a `.worktrees/` directory
+actually exists.
+
+The file tree and `git.roots` skip both locations, matched as a path
+(`.warpforge/worktrees` or `.worktrees`), never by the bare name `worktrees`:
+`HEAVY_DIRS` matches names at any depth, so a bare entry would hide an
+unrelated `worktrees/` folder.
+
 ## Invariants
 
 1. **`daemon/worktree/` — the manager is a cache, not the source of truth.** The
@@ -90,10 +113,11 @@ session and status are left alone and the task keeps its `worktree` and
    remove are handed to a spawned task; the handler only edits its maps.
 5. **A checkout failure is never silent.** It blocks the task or fails the
    pipeline with the git error attached.
-6. **Worktrees are hidden via `info/exclude`, never via `.gitignore`.** Creation
-   appends `.worktrees/` to the repo's exclude file (idempotently) and never
-   touches the user's `.gitignore`; the file tree and search also skip
-   `.worktrees` independently of it.
+6. **Worktrees are hidden without touching the user's `.gitignore` or `.git`.**
+   New worktrees carry a `.gitignore` inside `.warpforge/worktrees/` (`*`);
+   legacy `.worktrees/` checkouts are hidden via `info/exclude`, added only when
+   that directory exists. The file tree and search skip both locations
+   independently of either mechanism.
 7. **A merge never changes the HEAD or the working files of a checkout that is
    not on the base branch.** It runs only in the checkout that has the base
    checked out, and only when that checkout is clean; every other merge is a ref
