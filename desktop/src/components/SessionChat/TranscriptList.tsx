@@ -51,6 +51,7 @@ export function renderTranscriptItem({ item }: { item: TranscriptListRow }) {
   return (
     <div
       key={item.id}
+      data-row-id={item.id}
       className={cn(
         "min-w-0 overflow-x-clip pb-3",
         isUser ? "ml-auto max-w-[90%] w-full" : "mx-auto w-full",

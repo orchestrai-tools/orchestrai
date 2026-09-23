@@ -124,6 +124,8 @@ export function deriveTranscriptRows(
    *  flags outnumber live requests — so only the current request may hold a
    *  group open. */
   pendingRequestId: string | null = null,
+  /** Updates the session cap has dropped from the front; keeps index keys stable. */
+  keyBase = 0,
 ): TranscriptListRow[] {
   const rows: TranscriptListRow[] = [];
   let group: TranscriptEntry[] = [];
@@ -131,7 +133,7 @@ export function deriveTranscriptRows(
   const pushUpdate = (entry: TranscriptEntry) => {
     rows.push({
       kind: "update",
-      id: `update:${sessionUpdateKey(entry.update, entry.mergedIndex)}`,
+      id: `update:${sessionUpdateKey(entry.update, keyBase + entry.mergedIndex)}`,
       entry,
       thinkingActive: entry.mergedIndex === thinkingIndex,
       textStreaming: entry.mergedIndex === streamingTextIndex,
@@ -147,9 +149,9 @@ export function deriveTranscriptRows(
     // why a group could refuse to stay folded once the transcript was big.
     // Anchor on the first item that has a real id (a tool call, an edit, a
     // permission) and keep the index only for a group that has none.
-    const groupId = `work:${sessionUpdateKey(first.update, first.mergedIndex)}`;
+    const groupId = `work:${sessionUpdateKey(first.update, keyBase + first.mergedIndex)}`;
     const items: ActivityItem[] = group.map((entry) => ({
-      key: sessionUpdateKey(entry.update, entry.mergedIndex),
+      key: sessionUpdateKey(entry.update, keyBase + entry.mergedIndex),
       category: categoryForUpdate(entry.update),
       entry,
     }));

@@ -6,6 +6,7 @@ import {
   distanceFromBottom,
   isNearChatBottom,
   shouldFollowAfterScroll,
+  topmostVisibleRowId,
   transcriptRestoreMode,
 } from "./chatScroll";
 
@@ -59,11 +60,32 @@ describe("transcript restore mode", () => {
     expect(transcriptRestoreMode(true, true, null)).toBe("none");
   });
 
-  it("restores nothing while reading away from the end", () => {
-    // `"all"` blanked rows out as the recycling list reused them. It had never
-    // run before the detach handlers were fixed, so the damage only surfaced
-    // once scrolling up actually stopped the follow.
-    expect(transcriptRestoreMode(false, false, null)).toBe("none");
-    expect(transcriptRestoreMode(false, false, "activity:work:tool:r1")).toBe("none");
+  it("anchors to the row at the top of the viewport while reading", () => {
+    expect(transcriptRestoreMode(false, false, null)).toBe("reading");
+    expect(transcriptRestoreMode(false, false, "activity:work:tool:r1")).toBe("reading");
+  });
+});
+
+describe("topmost visible row", () => {
+  it("picks by geometry, not by DOM order", () => {
+    const rows = [
+      { id: "c", top: 400, bottom: 600 },
+      { id: "a", top: -200, bottom: 50 },
+      { id: "b", top: 50, bottom: 200 },
+    ];
+    expect(topmostVisibleRowId(rows, 500)).toBe("a");
+  });
+
+  it("skips rows wholly above or below the viewport", () => {
+    const rows = [
+      { id: "above", top: -300, bottom: 0 },
+      { id: "below", top: 500, bottom: 700 },
+      { id: "hit", top: 499, bottom: 600 },
+    ];
+    expect(topmostVisibleRowId(rows, 500)).toBe("hit");
+  });
+
+  it("returns null when nothing intersects", () => {
+    expect(topmostVisibleRowId([{ id: "x", top: 600, bottom: 700 }], 500)).toBeNull();
   });
 });

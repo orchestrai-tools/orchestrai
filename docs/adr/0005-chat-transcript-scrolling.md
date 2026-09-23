@@ -1,6 +1,6 @@
 # 0005 — The virtualiser owns the chat scroll, and the transcript arrives whole
 
-**Status:** accepted (2026-08-30); amended 2026-09-23 (see the end)
+**Status:** accepted (2026-08-30); amended twice on 2026-09-23 (see the end)
 
 Applies to `desktop/src/components/SessionChat.tsx`, `desktop/src/lib/chatScroll.ts`
 and the `session_history` field of the daemon snapshot
@@ -49,9 +49,9 @@ the same slide from the other direction. The lesson is not "which MVCP flags",
 it is "not two owners".
 
 **Anchoring is for reading and for disclosure settle.** Once the user scrolls
-away from the end, `transcriptRestoreMode` returns `"none"` too, so the list
-runs its default size-only MVCP (anchored on the first row in view). Restoring
-every row (`"all"`) was tried and blanked rows out as the list recycled them. While a work-group disclosure settles,
+away from the end, `transcriptRestoreMode` returns `"reading"`: MVCP restores
+only the topmost visible row (second amendment). Restoring every row (`"all"`)
+was tried and blanked rows out as the list recycled them. While a work-group disclosure settles,
 MVCP restores only the toggled row (`"anchor"`, keyed on
 `work-toggle:${groupId}`) so the trigger stays under the cursor instead of the
 viewport chasing the end, and `maintainScrollAtEnd` is suspended for the two
@@ -230,7 +230,8 @@ reversal was attributed frame by frame:
   across the gap would change when groups fold, which is not a scroll fix.
 - *The fold itself* (−134px) when a group settles — kept, by constraint.
 
-**Approve while reading — not reproduced.** Approving while reading 0.5, 1 and
+**Approve while reading — not reproduced** *(corrected in the second
+amendment: it needs a transcript at the session cap)*. Approving while reading 0.5, 1 and
 3 viewports up, with short and long answers after the approval, through the
 toast and the inline button, on five transcripts: the top visible row never
 moved (Δ0px, 0 blank frames) on main or amended. The suspected mechanism does
@@ -267,3 +268,48 @@ group by hand must not move its header (measured 0px, main and amended).
     paint.
 15. **Fold timing follows `live` exactly.** A scroll fix must not delay, hold
     or animate a fold; the list absorbs the shrink.
+
+## Amended 2026-09-23 (2) — keys survive the session cap
+
+**Cause of "jumps while reading".** The desktop caps a transcript at
+`MAX_SESSION_UPDATES` (2,000 coalesced updates) and drops from the front. Row
+keys for updates without their own id are the array index (`i:${index}`), so
+once a transcript sits at the cap every streamed update shifts every such key.
+The list reads them as new rows, re-estimates their heights, its content length
+lurches, and the reader lands far up. Only transcripts at the cap do this,
+which is why the first amendment could not reproduce it on smaller ones.
+Replaying a real long session over its own history: 892px of drift before,
+1px after.
+
+**Fix.**
+
+- `SessionChat` keeps a key base: the number of updates the cap has dropped
+  since mount, found by object identity (`droppedFromFront`,
+  `lib/transcriptKeys.ts` — the cap slices, so survivors keep their identity).
+  `deriveTranscriptRows` adds it to every index key. The first eight leading
+  updates are probed, not just the first: the new front can be a fresh copy
+  when a tool frame or a permission folds into it in the same update.
+- While reading, `transcriptRestoreMode` returns `"reading"` and MVCP runs with
+  `{data: true, size: true}`, restoring only the topmost row visible by
+  geometry (`topmostVisibleRowId`), so a row trimmed from the front no longer
+  pulls the text away. The anchor is captured on detach and refreshed only by
+  the user's own scrolls; the refresh window slides with each scroll event so a
+  smooth-scroll tail still counts.
+
+**Regression on the way.** The first version probed only the first update. When
+that update had been replaced by a copy, the count came out zero, every key
+shifted by one, and cached heights were applied to the wrong rows: rows drew on
+top of each other.
+
+### Invariants (continued)
+
+16. **Keys must survive the cap trim.** A miscounted key base re-assigns cached
+    heights to the wrong rows — the list trusts `sizesKnown` by key, and a
+    container that happens to keep its size never re-measures. Any new key
+    scheme must name the same update across a front trim.
+17. **The reading anchor comes from geometry and user scrolls only.** Not from
+    DOM order (containers are recycled out of order), and never refreshed from
+    the list's own compensating scrolls, which would re-anchor mid-relayout.
+18. **Nothing may be removed above a mounted list uncompensated.** Invariant 2
+    forbids prepends; the cap's front trim is the same kind of change and is
+    safe only because of Invariants 16 and 17.

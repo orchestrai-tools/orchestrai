@@ -18,6 +18,7 @@ import {
 } from "@/lib/sessionStream";
 import { activeThinkingIndex } from "@/lib/sessionThinking";
 import { latestContextUsage } from "@/lib/sessionUsage";
+import { droppedFromFront } from "@/lib/transcriptKeys";
 
 import { daemon } from "../../daemon";
 import { useWorkflowSend } from "../../hooks/useWorkflowSend";
@@ -173,6 +174,11 @@ export function SessionChat({
   // Only the session's current request may hold a group open: the per-call
   // flags outlive abandoned requests, and those groups must stay foldable.
   const pendingRequestId = pendingPermission(merged)?.request_id ?? null;
+  // The session cap drops updates from the front; index keys must not shift
+  // with it, or every row reads as new to the list and is re-estimated.
+  const [trimmed, setTrimmed] = useState({ updates: merged, keyBase: 0 });
+  const keyBase = trimmed.keyBase + droppedFromFront(trimmed.updates, merged);
+  if (trimmed.updates !== merged) setTrimmed({ updates: merged, keyBase });
   const transcriptRows = useMemo(
     () =>
       deriveTranscriptRows(
@@ -182,8 +188,10 @@ export function SessionChat({
         streamingTextIndex,
         sessionLive,
         pendingRequestId,
+        keyBase,
       ),
     [
+      keyBase,
       merged,
       pendingRequestId,
       sessionLive,

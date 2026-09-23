@@ -1,7 +1,7 @@
 import type { LegendListRef } from "@legendapp/list/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { transcriptRestoreMode } from "@/lib/chatScroll";
+import { type RowRect, topmostVisibleRowId, transcriptRestoreMode } from "@/lib/chatScroll";
 import type { TranscriptListRow } from "@/lib/sessionStream";
 
 import {
@@ -32,6 +32,9 @@ export function useTranscriptFollow({
   const disclosureSettlingRef = useRef(false);
   followingRef.current = following;
   disclosureSettlingRef.current = disclosureSettling;
+  const readingAnchorRef = useRef<string | null>(null);
+  const readingFrameRef = useRef(0);
+  const lastUserScrollRef = useRef(0);
 
   // Hoisted out of the JSX: a hook in a prop expression works only for as long
   // as nothing wraps that element in a condition, and breaks silently when
@@ -42,7 +45,7 @@ export function useTranscriptFollow({
     return {
       ...CHAT_MVCP_ANCHOR,
       shouldRestorePosition: (row: TranscriptListRow) =>
-        mode === "anchor" ? row.id === disclosureAnchorKey.current : true,
+        row.id === (mode === "anchor" ? disclosureAnchorKey.current : readingAnchorRef.current),
     };
     // `disclosureSettling` flips when the anchor is set/cleared; the callback
     // reads `.current` directly, so these are the deps that stabilize it.
@@ -63,6 +66,37 @@ export function useTranscriptFollow({
     node.scrollTop = node.scrollHeight;
     previousScrollRef.current = node.scrollTop;
   }, []);
+
+  const captureReadingAnchor = useCallback(() => {
+    const node = listRef.current?.getScrollableNode() as HTMLElement | null | undefined;
+    if (!node) return;
+    const viewportTop = node.getBoundingClientRect().top;
+    const rows: RowRect[] = [];
+    for (const element of node.querySelectorAll<HTMLElement>("[data-row-id]")) {
+      const rect = element.getBoundingClientRect();
+      rows.push({
+        id: element.dataset.rowId ?? "",
+        top: rect.top - viewportTop,
+        bottom: rect.bottom - viewportTop,
+      });
+    }
+    readingAnchorRef.current = topmostVisibleRowId(rows, node.clientHeight);
+  }, []);
+
+  const scheduleReadingAnchor = useCallback(() => {
+    if (readingFrameRef.current) return;
+    readingFrameRef.current = requestAnimationFrame(() => {
+      readingFrameRef.current = 0;
+      captureReadingAnchor();
+    });
+  }, [captureReadingAnchor]);
+
+  useLayoutEffect(() => {
+    if (following) readingAnchorRef.current = null;
+    else captureReadingAnchor();
+  }, [captureReadingAnchor, following]);
+
+  useEffect(() => () => cancelAnimationFrame(readingFrameRef.current), []);
 
   const onTranscriptScroll = useCallback(() => {
     const state = listRef.current?.getState();
@@ -88,7 +122,15 @@ export function useTranscriptFollow({
     // for the scrollbar drag, which produces no such event.
     const draggedRecently = performance.now() - lastPointerRef.current < GESTURE_WINDOW_MS;
     if (draggedRecently && state.scroll < prev - 1) setFollowing(false);
-  }, []);
+    // Only a scroll the user drove moves the reading anchor. The window slides
+    // with each scroll so a smooth-scroll tail still counts; the list's own
+    // compensating scrolls arrive long after it has closed.
+    const now = performance.now();
+    if (draggedRecently || now - lastUserScrollRef.current < GESTURE_WINDOW_MS) {
+      lastUserScrollRef.current = now;
+      if (!followingRef.current) scheduleReadingAnchor();
+    }
+  }, [scheduleReadingAnchor]);
 
   const resumeLatest = useCallback(() => {
     setFollowing(true);
@@ -122,6 +164,7 @@ export function useTranscriptFollow({
   const lastWheelUpRef = useRef(0);
   const onWheelCapture = useCallback(
     (event: React.WheelEvent) => {
+      lastUserScrollRef.current = performance.now();
       if (event.deltaY >= 0) return;
       lastWheelUpRef.current = performance.now();
       cancelLiveFollow();
@@ -136,6 +179,7 @@ export function useTranscriptFollow({
     (event: React.TouchEvent) => {
       const nextY = event.touches[0]?.clientY;
       if (nextY === undefined) return;
+      lastUserScrollRef.current = performance.now();
       if (touchYRef.current !== null && nextY > touchYRef.current + 1) {
         lastWheelUpRef.current = performance.now();
         cancelLiveFollow();
@@ -146,6 +190,7 @@ export function useTranscriptFollow({
   );
   const pauseFollowingOnNavigationKey = useCallback(
     (event: React.KeyboardEvent) => {
+      lastUserScrollRef.current = performance.now();
       if (["ArrowUp", "Home", "PageUp"].includes(event.key)) cancelLiveFollow();
     },
     [cancelLiveFollow],
