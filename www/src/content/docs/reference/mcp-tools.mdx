@@ -38,6 +38,8 @@ Lists the project's services and port-forwards with live status, allocated ports
 
 **Reach for it first.** It's the discovery call — names, ports, and the `logSeq` cursor the log tools take. An agent that guesses `localhost:3000` is wrong in Warpforge, where every project gets [its own port range](/guides/projects-and-runtime/#no-port-roulette).
 
+Each service also reports its `checkout` — the directory it runs from. Services run from the project root, so an agent working in a [task worktree](/guides/tasks-and-backlog/#isolated-worktrees) is not testing its own edits by restarting them.
+
 ```
 list_runtime(project?)
 ```

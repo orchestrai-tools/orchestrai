@@ -93,6 +93,8 @@ Queue actions are inline on the row, and the tab you were last on is remembered.
 
 A task can run in **its own git worktree** while staying attached to the same project. Two agents on two tasks then edit two checkouts — no stashing, no branch juggling, no collisions.
 
+The task's **Terminal** tab opens in its worktree. The project's services keep running from the project checkout, though, so restarting one does not pick up the task's edits — the agent is told this when it starts, and `list_runtime` names the checkout each service runs from.
+
 When the work is good, the worktree's branch merges back into its base and the worktree is removed. A task without a worktree just works in the project checkout, which is often what you want for a quick change.
 
 ### Review, then commit
