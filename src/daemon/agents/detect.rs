@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use warpforge_protocol as wire;
 
-use super::manage::{install_command, registry_is_baseline, update_command};
+use super::manage::{can_reinstall, install_command, registry_is_baseline, update_command};
 use super::KnownAgent;
 
 /// Ceiling for a local probe (`which`, `<binary> --version`, `npm ls -g`).
@@ -270,6 +270,7 @@ async fn detect_one(agent: &'static KnownAgent, check_latest: bool) -> wire::Det
             latest_version: None,
             status: "missing".to_string(),
             can_manage: install.is_some(),
+            can_reinstall: can_reinstall(None, agent.npm_package),
             install_command: install,
             update_command: None,
         };
@@ -308,6 +309,10 @@ async fn detect_one(agent: &'static KnownAgent, check_latest: bool) -> wire::Det
         latest_version: latest,
         status,
         can_manage: update.is_some(),
+        can_reinstall: can_reinstall(
+            path.as_deref().map(package_manager_for_path),
+            agent.npm_package,
+        ),
         update_command: update,
         install_command: None,
     }

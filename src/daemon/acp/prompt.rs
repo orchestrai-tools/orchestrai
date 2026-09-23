@@ -81,7 +81,7 @@ pub(super) fn send_prompt(
             // Carry the agent's own words — without them this is the one failure
             // in the session that tells the user nothing at all.
             reporter.report(format!(
-                "The agent rejected the ACP session/prompt request.{}",
+                "The agent rejected the ACP session/prompt request: {}",
                 acp_error_detail(&response)
             ));
             let _ = kill_tx.send(());

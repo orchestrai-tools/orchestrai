@@ -9,6 +9,23 @@ import type {
 import type { CoreClient } from "./client";
 import type { Constructor } from "./types";
 
+/** Result of an install/update, including whether the agent was proven to start. */
+export interface InstallAgentResult {
+  ok: boolean;
+  command: string;
+  output: string;
+  /** The daemon ran the agent's ACP handshake after installing and it answered. */
+  verified: boolean;
+  /** Why the agent could not start, when `verified` is false. */
+  verifyError: string | null;
+  /** The one-line reason to show, when the failure is a broken install. */
+  summary: string | null;
+  /** The failure is a broken install (missing native binary), not a config issue. */
+  brokenInstall: boolean;
+  /** A clean reinstall was run automatically to repair a broken install. */
+  repaired: boolean;
+}
+
 export function AgentMethods<TBase extends Constructor<CoreClient>>(Base: TBase) {
   return class extends Base {
     async detectAgents(): Promise<DetectedAgent[]> {
@@ -94,14 +111,11 @@ export function AgentMethods<TBase extends Constructor<CoreClient>>(Base: TBase)
       return agents;
     }
 
-    /** Install or update an agent's global package. Resolves with the command's
-     *  success flag and captured output. */
-    async installAgent(id: string): Promise<{ ok: boolean; command: string; output: string }> {
-      const result = (await this.request("agents.install", { id })) as {
-        ok: boolean;
-        command: string;
-        output: string;
-      };
+    /** Install or update an agent's global package, then verify it starts.
+     *  `clean` skips straight to a removal + reinstall — the repair for an
+     *  install whose platform optional dependencies are missing. */
+    async installAgent(id: string, clean = false): Promise<InstallAgentResult> {
+      const result = (await this.request("agents.install", { id, clean })) as InstallAgentResult;
       return result;
     }
 

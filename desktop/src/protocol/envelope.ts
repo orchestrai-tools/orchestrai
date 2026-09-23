@@ -19,6 +19,7 @@ export interface RpcError {
     | "not_found"
     | "conflict"
     | "agent_unavailable"
+    | "agent_broken_install"
     | "internal"
     | "updating";
   message: string;

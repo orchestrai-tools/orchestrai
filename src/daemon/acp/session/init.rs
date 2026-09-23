@@ -66,7 +66,8 @@ pub(super) async fn handshake(session: &Session, agent_name: &str) -> Result<Ini
     };
     if init.get("error").is_some() {
         session.reporter.report(format!(
-            "Agent command '{agent_name}' rejected the ACP initialize request."
+            "Agent command '{agent_name}' rejected the ACP initialize request: {}",
+            acp_error_detail(&init)
         ));
         let _ = session.kill_tx.send(());
         return Err(());
@@ -155,7 +156,7 @@ pub(super) async fn handshake(session: &Session, agent_name: &str) -> Result<Ini
                 session.reporter.report_kind(
                     format!(
                         "Agent command '{agent_name}' rejected ACP session/load for saved \
-                         session '{sid}'.{detail}"
+                         session '{sid}': {detail}"
                     ),
                     kind,
                 );
@@ -199,7 +200,7 @@ pub(super) async fn handshake(session: &Session, agent_name: &str) -> Result<Ini
                 if v.get("error").is_some() {
                     let detail = acp_error_detail(&v);
                     session.reporter.report(format!(
-                        "Agent command '{agent_name}' rejected the ACP session/new request.{detail}"
+                        "Agent command '{agent_name}' rejected the ACP session/new request: {detail}"
                     ));
                     let _ = session.kill_tx.send(());
                     return Err(());

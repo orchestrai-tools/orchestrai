@@ -59,15 +59,54 @@ pub(super) async fn agents_update(
     Ok(json!(null))
 }
 
-pub(super) async fn agents_install(id: String) -> Result<serde_json::Value, wire::RpcError> {
-    let Some(command) = crate::daemon::agents::manage_command(&id).await else {
+pub(super) async fn agents_install(
+    handle: &DaemonHandle,
+    id: String,
+    clean: bool,
+) -> Result<serde_json::Value, wire::RpcError> {
+    use crate::daemon::agents::{install_agent, InstallError, InstallRequest};
+
+    let Some(context) = handle.agent_probe_context(&id).await else {
         return Err(wire::RpcError {
             code: wire::ErrorCode::InvalidRequest,
-            message: format!("no automated install/update available for agent '{id}'"),
+            message: format!("unknown agent '{id}'"),
         });
     };
-    let (ok, output) = crate::daemon::agents::run_manage_command(&command).await;
-    Ok(json!({ "ok": ok, "command": command, "output": output }))
+    let is_default_command = crate::daemon::agents::known_agent(&id)
+        .is_some_and(|agent| agent.default_acp_command == context.acp_command);
+    let request = InstallRequest {
+        id: &id,
+        clean,
+        acp_command: &context.acp_command,
+        is_default_command,
+        cwd: &context.cwd,
+        env: &context.env,
+    };
+    let outcome = match install_agent(request).await {
+        Ok(outcome) => outcome,
+        Err(InstallError::InFlight) => {
+            return Err(wire::RpcError {
+                code: wire::ErrorCode::Conflict,
+                message: format!("an install for agent '{id}' is already running"),
+            })
+        }
+        Err(InstallError::NoCommand) => {
+            return Err(wire::RpcError {
+                code: wire::ErrorCode::InvalidRequest,
+                message: format!("no automated install/update available for agent '{id}'"),
+            })
+        }
+    };
+    Ok(json!({
+        "ok": outcome.ok,
+        "command": outcome.command,
+        "output": outcome.output,
+        "verified": outcome.verified,
+        "verifyError": outcome.verify_error,
+        "summary": outcome.summary,
+        "brokenInstall": outcome.broken_install,
+        "repaired": outcome.repaired,
+    }))
 }
 
 pub(super) async fn agents_probe(
@@ -78,9 +117,21 @@ pub(super) async fn agents_probe(
         .probe_agent(&id)
         .await
         .map(|()| json!(null))
-        .map_err(|message| wire::RpcError {
-            code: wire::ErrorCode::InvalidRequest,
-            message,
+        .map_err(|message| {
+            // A broken install is a distinct code, and the row shows the one
+            // line naming the failure rather than a Node stack trace.
+            if crate::daemon::agents::broken_install(&message) {
+                wire::RpcError {
+                    code: wire::ErrorCode::AgentBrokenInstall,
+                    message: crate::daemon::agents::broken_install_summary(&message)
+                        .unwrap_or(message),
+                }
+            } else {
+                wire::RpcError {
+                    code: wire::ErrorCode::InvalidRequest,
+                    message,
+                }
+            }
         })
 }
 

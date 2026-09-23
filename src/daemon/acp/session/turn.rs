@@ -266,7 +266,7 @@ pub(super) async fn run(
                                 Ok(())
                             }
                             Ok(Some(resp)) => Err(format!(
-                                "agent rejected '{config_id}'.{}",
+                                "agent rejected '{config_id}': {}",
                                 acp_error_detail(&resp)
                             )),
                             Ok(None) => Err(format!(

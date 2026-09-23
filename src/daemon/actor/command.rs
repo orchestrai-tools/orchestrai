@@ -8,6 +8,15 @@ use crate::registry::ProjectEntry;
 use crate::daemon::actor::{ChildResult, GitEffect, ProjectRemovalError};
 use crate::daemon::task::{Task, TaskStatus};
 
+/// What a probe needs to spawn an agent: the ACP command, a representative cwd
+/// and the account environment a real session would get.
+#[derive(Debug, Clone)]
+pub struct AgentProbeContext {
+    pub acp_command: String,
+    pub cwd: std::path::PathBuf,
+    pub env: crate::daemon::accounts::AgentEnv,
+}
+
 pub enum Command {
     Projects(oneshot::Sender<Vec<ProjectEntry>>),
     Tasks(oneshot::Sender<Vec<Task>>),
@@ -721,6 +730,12 @@ pub enum Command {
     ProbeAgent {
         id: String,
         reply: Option<oneshot::Sender<Result<(), String>>>,
+    },
+    /// Resolve the command, cwd and account env a probe/session for an agent
+    /// would spawn, so an install can verify the agent actually starts.
+    AgentProbeContext {
+        id: String,
+        reply: oneshot::Sender<Option<AgentProbeContext>>,
     },
     /// A probe finished — persist the discovered models and re-emit agents.
     /// Deliberately does not carry `last_model`: writing the pre-probe value

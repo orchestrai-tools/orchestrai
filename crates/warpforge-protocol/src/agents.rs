@@ -54,6 +54,10 @@ pub struct DetectedAgent {
     pub update_command: Option<String>,
     /// Whether the daemon can run an automated install/update for this agent.
     pub can_manage: bool,
+    /// Whether a clean reinstall (remove, then install) is available — npm
+    /// agents only. brew and self-managed installs cannot be repaired this way.
+    #[serde(default)]
+    pub can_reinstall: bool,
 }
 
 /// One registered login for an agent. Carries only what the switcher shows —

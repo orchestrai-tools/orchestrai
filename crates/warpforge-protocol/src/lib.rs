@@ -98,6 +98,10 @@ pub enum ErrorCode {
     NotFound,
     Conflict,
     AgentUnavailable,
+    /// The agent is installed but cannot start — typically a global install
+    /// missing its platform optional dependencies. A client can offer a
+    /// reinstall rather than retrying the same broken binary.
+    AgentBrokenInstall,
     Internal,
     Updating,
 }

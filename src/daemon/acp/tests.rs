@@ -10,8 +10,8 @@ use warpforge_protocol as wire;
 use super::edits::{line_change_counts, line_change_hunks};
 use super::model::{resolve_model_apply, ModelApply};
 use super::process::{
-    append_stderr_chunk, is_session_gone, sanitize_stderr, ChildState, ProcessGuard,
-    STDERR_LINE_BYTES, STDERR_TOTAL_BYTES,
+    acp_error_detail, append_stderr_chunk, is_session_gone, sanitize_stderr, ChildState,
+    ProcessGuard, STDERR_LINE_BYTES, STDERR_TOTAL_BYTES,
 };
 use super::session::parse_permission;
 use super::tool::tool_title;
@@ -511,6 +511,31 @@ fn stderr_is_control_sanitized_redacted_and_bounded() {
     let invalid_utf8 = vec![0xff; STDERR_TOTAL_BYTES];
     let sanitized = sanitize_stderr(&invalid_utf8);
     assert!(sanitized.len() <= STDERR_LINE_BYTES);
+}
+
+#[test]
+fn acp_error_detail_carries_message_data_and_code() {
+    // Message only: the code, when present, is bracketed after it.
+    assert_eq!(
+        acp_error_detail(&json!({"error": {"code": -32603, "message": "boom"}})),
+        "boom [-32603]"
+    );
+    // String data is shown verbatim rather than re-quoted as JSON.
+    assert_eq!(
+        acp_error_detail(&json!({
+            "error": {"message": "native binary missing", "data": "darwin-arm64"}
+        })),
+        "native binary missing (darwin-arm64)"
+    );
+    // Structured data is rendered as compact JSON.
+    assert_eq!(
+        acp_error_detail(&json!({
+            "error": {"code": 1001, "message": "exited", "data": {"hint": "reinstall"}}
+        })),
+        "exited ({\"hint\":\"reinstall\"}) [1001]"
+    );
+    // No error object → nothing to report.
+    assert_eq!(acp_error_detail(&json!({"result": {}})), "");
 }
 
 #[tokio::test]

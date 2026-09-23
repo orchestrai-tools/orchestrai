@@ -22,6 +22,7 @@ import { agentUpdateCount, useAgentUpdates, useAgentUpdatesCount } from "./useAg
 
 const agent = (id: string, status: string): DetectedAgent => ({
   canManage: true,
+  canReinstall: true,
   defaultAcpCommand: `acp-${id}`,
   displayName: id,
   id,

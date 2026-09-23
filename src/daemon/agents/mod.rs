@@ -11,12 +11,15 @@ use warpforge_protocol as wire;
 mod detect;
 mod manage;
 
-pub use detect::{detect_agents, detect_agents_local};
 pub(crate) use detect::{
     compare_versions, first_version_token, latest_npm_version, npm_global_version,
     package_manager_for_path, probe, which, PackageManager, PROBE_TIMEOUT,
 };
-pub use manage::{manage_command, run_manage_command};
+pub use detect::{detect_agents, detect_agents_local};
+pub use manage::run_manage_command;
+pub(crate) use manage::{
+    broken_install, broken_install_summary, install_agent, InstallError, InstallRequest,
+};
 
 /// A known ACP-capable agent the daemon can detect and manage.
 pub struct KnownAgent {

@@ -37,6 +37,17 @@ fn agents_probe_roundtrip() {
     assert!(matches!(req.method, Method::AgentsProbe { id } if id == "opencode"));
 }
 
+/// A client that never mentions `clean` must get a normal update, not a
+/// reinstall: the flag has to default to false when the param is absent.
+#[test]
+fn agents_install_defaults_to_a_normal_update() {
+    let json: serde_json::Value =
+        serde_json::from_str(r#"{"id":9,"method":"agents.install","params":{"id":"claude"}}"#)
+            .unwrap();
+    let req: Request = serde_json::from_value(json).unwrap();
+    assert!(matches!(req.method, Method::AgentsInstall { id, clean } if id == "claude" && !clean));
+}
+
 #[test]
 fn git_last_commit_message_roundtrip() {
     let json: serde_json::Value = serde_json::from_str(

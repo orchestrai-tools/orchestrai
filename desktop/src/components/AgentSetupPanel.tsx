@@ -8,6 +8,7 @@ import { configRole } from "@/lib/configRole";
 import { cn } from "@/lib/utils";
 
 import { daemon } from "../daemon";
+import { DaemonRpcError } from "../daemon/rpcError";
 import type { AgentConfig, DetectedAgent } from "../protocol";
 import { AgentLogo } from "./AgentLogo";
 import { SettingsListSkeleton } from "./SettingsListSkeleton";
@@ -25,6 +26,14 @@ function lastLine(output: string): string {
   return lines[lines.length - 1]?.trim() ?? "";
 }
 
+/** An installed agent that cannot start. `summary` is the one-line reason,
+ *  `full` the untruncated text for a tooltip. */
+interface BrokenInstall {
+  summary: string;
+  full: string;
+  canReinstall: boolean;
+}
+
 /**
  * Already-configured agents render instantly as rows; detection only adds
  * version/update badges on top. Detection shells out to the npm registry and
@@ -33,6 +42,7 @@ function lastLine(output: string): string {
 function fromConfig(agent: AgentConfig): DetectedAgent {
   return {
     canManage: false,
+    canReinstall: false,
     defaultAcpCommand: agent.acpCommand,
     displayName: agent.displayName,
     id: agent.id,
@@ -70,6 +80,11 @@ export default function AgentSetupPanel({ detected, onSaved }: Props) {
   const [busy, setBusy] = useState<Set<string>>(() => new Set());
   const [probing, setProbing] = useState<Set<string>>(() => new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Agent id → why it cannot start. Kept apart from `errors` so only a real
+  // broken install offers a Reinstall.
+  const [broken, setBroken] = useState<Record<string, BrokenInstall>>({});
+  // A verify failure that is not a broken install — shown as a neutral note.
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [refreshing, setRefreshing] = useState(() => !detected && cachedAgents() === undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -130,16 +145,39 @@ export default function AgentSetupPanel({ detected, onSaved }: Props) {
     });
   };
 
-  const manage = async (id: string) => {
-    setBusy((prev) => new Set(prev).add(id));
-    setErrors((prev) => {
+  /** Drop an agent's transient errors, broken state and notes. */
+  const clearAgentState = (id: string) => {
+    const without = <T,>(prev: Record<string, T>): Record<string, T> => {
       const { [id]: _cleared, ...rest } = prev;
       return rest;
-    });
+    };
+    setErrors(without);
+    setBroken(without);
+    setNotes(without);
+  };
+
+  const manage = async (id: string, clean = false) => {
+    setBusy((prev) => new Set(prev).add(id));
+    clearAgentState(id);
     try {
-      const result = await daemon.installAgent(id);
+      const result = await daemon.installAgent(id, clean);
       if (!result.ok) {
         setErrors((prev) => ({ ...prev, [id]: lastLine(result.output) || "install failed" }));
+      } else if (!result.verified && result.verifyError) {
+        // Only a broken-install signature means the install is broken; any
+        // other failure (a login prompt, say) is a note, not a reinstall.
+        if (result.brokenInstall) {
+          setBroken((prev) => ({
+            ...prev,
+            [id]: {
+              summary: result.summary ?? result.verifyError!,
+              full: result.verifyError!,
+              canReinstall: agents.find((a) => a.id === id)?.canReinstall ?? false,
+            },
+          }));
+        } else {
+          setNotes((prev) => ({ ...prev, [id]: result.verifyError! }));
+        }
       }
       const refreshed = await daemon.detectAgents();
       setAgents(refreshed);
@@ -172,17 +210,24 @@ export default function AgentSetupPanel({ detected, onSaved }: Props) {
   const refreshModels = async (ids: string[]) => {
     if (ids.length === 0) return;
     setProbing((prev) => new Set([...prev, ...ids]));
-    setErrors((prev) => {
-      const next = { ...prev };
-      for (const id of ids) delete next[id];
-      return next;
-    });
+    for (const id of ids) clearAgentState(id);
     await Promise.all(
       ids.map(async (id) => {
         try {
           await daemon.probeAgent(id);
         } catch (e) {
-          setErrors((prev) => ({ ...prev, [id]: e instanceof Error ? e.message : String(e) }));
+          if (e instanceof DaemonRpcError && e.code === "agent_broken_install") {
+            setBroken((prev) => ({
+              ...prev,
+              [id]: {
+                summary: e.detail,
+                full: e.detail,
+                canReinstall: agents.find((a) => a.id === id)?.canReinstall ?? false,
+              },
+            }));
+          } else {
+            setErrors((prev) => ({ ...prev, [id]: e instanceof Error ? e.message : String(e) }));
+          }
         }
       }),
     );
@@ -244,6 +289,8 @@ export default function AgentSetupPanel({ detected, onSaved }: Props) {
           const modelCount = savedConfig?.models.find((o) => configRole(o) === "model")?.options
             .length;
           const isProbing = probing.has(agent.id);
+          const brokenInfo = broken[agent.id];
+          const isBroken = brokenInfo !== undefined;
           return (
             <div
               key={agent.id}
@@ -274,7 +321,11 @@ export default function AgentSetupPanel({ detected, onSaved }: Props) {
                   <AgentLogo agentId={agent.id} displayName={agent.displayName} />
                   <span className="truncate">{agent.displayName}</span>
                   {agent.installed ? (
-                    behind ? (
+                    isBroken ? (
+                      <span className="shrink-0 whitespace-nowrap rounded-full bg-warn/15 px-1.5 py-0.5 text-[11px] font-medium text-warn">
+                        {brokenInfo.canReinstall ? "needs reinstall" : "cannot start"}
+                      </span>
+                    ) : behind ? (
                       <span className="shrink-0 whitespace-nowrap rounded-full bg-warn/15 px-1.5 py-0.5 text-[11px] font-medium text-warn">
                         update available
                       </span>
@@ -315,9 +366,32 @@ export default function AgentSetupPanel({ detected, onSaved }: Props) {
                     {errors[agent.id]}
                   </p>
                 )}
+                {brokenInfo && (
+                  <p className="mt-0.5 text-[11px] text-warn" title={brokenInfo.full}>
+                    {brokenInfo.summary}
+                  </p>
+                )}
+                {notes[agent.id] && (
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{notes[agent.id]}</p>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                {agent.canManage && (!agent.installed || behind) && (
+                {isBroken && brokenInfo.canReinstall && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 whitespace-nowrap px-2 text-[13px]"
+                    disabled={isBusy}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void manage(agent.id, true);
+                    }}
+                  >
+                    {isBusy && <Loader2 className="size-3 animate-spin" />}
+                    {isBusy ? "Working…" : "Reinstall"}
+                  </Button>
+                )}
+                {agent.canManage && !isBroken && (!agent.installed || behind) && (
                   <Button
                     size="sm"
                     variant={behind ? "default" : "secondary"}

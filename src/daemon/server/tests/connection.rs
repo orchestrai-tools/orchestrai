@@ -144,6 +144,7 @@ fn the_slowest_requests_do_not_block_the_connection() {
         },
         AgentsInstall {
             id: "claude".into(),
+            clean: false,
         },
         LanguageServersInstall { id: "rust".into() },
     ] {

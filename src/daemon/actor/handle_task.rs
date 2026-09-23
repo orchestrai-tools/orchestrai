@@ -167,6 +167,21 @@ impl DaemonHandle {
         rx.await.unwrap_or_else(|_| Err("daemon stopped".into()))
     }
 
+    /// Resolve what a probe for `id` would spawn — command, cwd and account
+    /// env — so an install can verify the agent actually starts.
+    pub async fn agent_probe_context(
+        &self,
+        id: &str,
+    ) -> Option<crate::daemon::actor::AgentProbeContext> {
+        let (tx, rx) = oneshot::channel();
+        self.send(Command::AgentProbeContext {
+            id: id.into(),
+            reply: tx,
+        })
+        .await;
+        rx.await.unwrap_or(None)
+    }
+
     pub async fn session_set_config_option(
         &self,
         task_id: &str,

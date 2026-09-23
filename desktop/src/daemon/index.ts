@@ -27,6 +27,7 @@ import { TrackerMethods } from "./tracker";
 import { WorkItemMethods } from "./workItems";
 
 export { base64ToBytes, bytesToBase64 } from "./base64";
+export { DaemonRpcError } from "./rpcError";
 export { DAEMON_PROTOCOL_VERSION } from "./types";
 export type { ConnectionState, DaemonState, TerminalDataListener } from "./types";
 

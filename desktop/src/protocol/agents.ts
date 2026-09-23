@@ -26,6 +26,9 @@ export interface DetectedAgent {
   installCommand?: string;
   updateCommand?: string;
   canManage: boolean;
+  /** A clean reinstall (remove, then install) is available — npm agents only.
+   *  Absent from an older daemon's payload; treat as false. */
+  canReinstall?: boolean;
 }
 
 /**

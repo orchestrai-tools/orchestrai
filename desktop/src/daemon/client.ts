@@ -2,6 +2,7 @@ import type { DaemonEndpoint, DaemonHandshake, ServerMessage, UpdateHandoff } fr
 import { isEvent } from "../protocol";
 import { DaemonDemo } from "./demo";
 import { connectionErrorMessage, desktopVersion, discoverEndpoint } from "./discover";
+import { DaemonRpcError } from "./rpcError";
 import {
   DAEMON_PROTOCOL_VERSION,
   REQUEST_TIMEOUT_MS,
@@ -161,7 +162,7 @@ export class CoreClient extends DaemonDemo {
     this.pending.delete(msg.id);
     window.clearTimeout(pending.timer);
     if ("error" in msg) {
-      pending.reject(new Error(`${msg.error.code}: ${msg.error.message}`));
+      pending.reject(new DaemonRpcError(msg.error.code, msg.error.message));
     } else {
       pending.resolve(msg.result);
     }

@@ -19,7 +19,7 @@ Warpforge detects agents as globally installed binaries and spawns them directly
 | Cursor | `cursor-agent-acp` | `cursor-agent-acp` | `npm install -g @blowmage/cursor-agent-acp` |
 | Pi | `pi-acp` | `pi-acp` | `npm install -g @earendil-works/pi-coding-agent pi-acp` |
 
-Claude Code and Codex reach ACP through small adapter binaries. Warpforge shows whether each agent is present, which version is installed, and whether a newer one exists — and installs or updates it in one click from the agent panel. Any other ACP-compatible agent can be added with a custom command, globally or per project through `agentTemplates` — see the [configuration reference](/reference/configuration/#agenttemplates).
+Claude Code and Codex reach ACP through small adapter binaries. Warpforge shows whether each agent is present, which version is installed, and whether a newer one exists — and installs or updates it in one click from the agent panel. After an install or update it checks the agent actually starts, repairs a global install that is missing the native binary it needs, and offers a **Reinstall** button when the agent still can't. Any other ACP-compatible agent can be added with a custom command, globally or per project through `agentTemplates` — see the [configuration reference](/reference/configuration/#agenttemplates).
 
 <Aside type="tip">
   Agent capabilities vary. Image input, session resume, slash commands, model selection, and permission semantics are negotiated with each ACP implementation.

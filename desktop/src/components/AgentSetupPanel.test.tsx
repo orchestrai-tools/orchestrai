@@ -5,12 +5,14 @@ import type { PropsWithChildren, ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { agentUpdatesQueryKey } from "@/hooks/useAgentUpdates";
+import type { InstallAgentResult } from "@/daemon/agents";
+import { DaemonRpcError } from "@/daemon/rpcError";
 import type { DetectedAgent } from "@/protocol";
 
 const { daemonState, detectAgents, installAgent, probeAgent, saveAgents } = vi.hoisted(() => ({
   daemonState: { snapshot: { agents: [] as unknown[] } },
   detectAgents: vi.fn<() => Promise<DetectedAgent[]>>(),
-  installAgent: vi.fn<(id: string) => Promise<{ ok: boolean; command: string; output: string }>>(),
+  installAgent: vi.fn<(id: string, clean?: boolean) => Promise<InstallAgentResult>>(),
   probeAgent: vi.fn<(id: string) => Promise<void>>(),
   saveAgents: vi.fn<() => Promise<void>>(),
 }));
@@ -32,6 +34,7 @@ import AgentSetupPanel from "./AgentSetupPanel";
 
 const agent = (id: string, overrides: Partial<DetectedAgent> = {}): DetectedAgent => ({
   canManage: true,
+  canReinstall: true,
   defaultAcpCommand: `acp-${id}`,
   displayName: id.charAt(0).toUpperCase() + id.slice(1),
   id,
@@ -184,6 +187,168 @@ describe("AgentSetupPanel", () => {
       render(<AgentSetupPanel detected={[agent("claude", { installed: true })]} />);
 
       expect(screen.queryByRole("button", { name: "Reload models list" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("broken installs", () => {
+    const installResult = (overrides: Partial<InstallAgentResult> = {}): InstallAgentResult => ({
+      brokenInstall: false,
+      command: "npm install -g @agentclientprotocol/codex-acp@latest --include=optional",
+      ok: true,
+      output: "",
+      repaired: false,
+      summary: null,
+      verified: true,
+      verifyError: null,
+      ...overrides,
+    });
+
+    it("offers a Reinstall when an update installs but the agent will not start", async () => {
+      const codex = agent("codex", {
+        installed: true,
+        status: "behind",
+        version: "0.5.0",
+        latestVersion: "0.6.0",
+      });
+      detectAgents.mockResolvedValue([codex]);
+      installAgent.mockResolvedValue(
+        installResult({
+          brokenInstall: true,
+          summary: "Missing optional dependency @openai/codex-darwin-arm64",
+          verified: false,
+          verifyError:
+            "Codex process has exited with code 1: Missing optional dependency @openai/codex-darwin-arm64",
+        }),
+      );
+      render(<AgentSetupPanel detected={[codex]} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Update" }));
+
+      expect(await screen.findByRole("button", { name: "Reinstall" })).toBeInTheDocument();
+      expect(screen.getByText("needs reinstall")).toBeInTheDocument();
+      // The healthy badge must not stand in for a broken agent.
+      expect(screen.queryByText("update available")).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Missing optional dependency @openai/codex-darwin-arm64"),
+      ).toBeInTheDocument();
+    });
+
+    it("does not call an authentication failure a broken install", async () => {
+      const codex = agent("codex", { installed: true, status: "behind", version: "0.5.0" });
+      detectAgents.mockResolvedValue([codex]);
+      installAgent.mockResolvedValue(
+        installResult({
+          verified: false,
+          verifyError: "agent rejected session/new: Authentication required [-32000]",
+        }),
+      );
+      render(<AgentSetupPanel detected={[codex]} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Update" }));
+
+      expect(
+        await screen.findByText(/Authentication required/),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Reinstall" })).not.toBeInTheDocument();
+      expect(screen.queryByText("needs reinstall")).not.toBeInTheDocument();
+    });
+
+    it("shows just the summary when a broken agent has no reinstall path", async () => {
+      const goose = agent("goose", {
+        canReinstall: false,
+        installed: true,
+        status: "behind",
+        version: "0.5.0",
+      });
+      detectAgents.mockResolvedValue([goose]);
+      installAgent.mockResolvedValue(
+        installResult({
+          brokenInstall: true,
+          summary: "native binary not found for darwin-arm64",
+          verified: false,
+          verifyError: "goose native binary not found for darwin-arm64",
+        }),
+      );
+      render(<AgentSetupPanel detected={[goose]} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Update" }));
+
+      expect(await screen.findByText("cannot start")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Reinstall" })).not.toBeInTheDocument();
+    });
+
+    it("reinstalls cleanly when the Reinstall button is used", async () => {
+      const codex = agent("codex", { installed: true, status: "behind", version: "0.5.0" });
+      detectAgents.mockResolvedValue([codex]);
+      installAgent
+        .mockResolvedValueOnce(
+          installResult({
+            brokenInstall: true,
+            summary: "Cannot find module '@openai/codex'",
+            verified: false,
+            verifyError: "Cannot find module '@openai/codex'",
+          }),
+        )
+        .mockResolvedValueOnce(installResult({ repaired: true }));
+      render(<AgentSetupPanel detected={[codex]} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Update" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Reinstall" }));
+
+      expect(installAgent).toHaveBeenLastCalledWith("codex", true);
+      expect(screen.queryByRole("button", { name: "Reinstall" })).not.toBeInTheDocument();
+    });
+
+    it("leaves a failed reinstall not installed with the normal Install action", async () => {
+      const codex = agent("codex", { installed: true, status: "behind", version: "0.5.0" });
+      const missing = agent("codex", { installed: false, status: "missing" });
+      detectAgents.mockResolvedValue([missing]);
+      installAgent.mockResolvedValue(
+        installResult({
+          brokenInstall: true,
+          ok: false,
+          output: "npm ERR! EACCES: permission denied",
+          summary: "Missing optional dependency @openai/codex-darwin-arm64",
+          verified: false,
+          verifyError: "Missing optional dependency @openai/codex-darwin-arm64",
+        }),
+      );
+      render(<AgentSetupPanel detected={[codex]} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Update" }));
+
+      expect(await screen.findByText(/EACCES: permission denied/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Reinstall" })).not.toBeInTheDocument();
+      expect(screen.getByText("not found")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Install" })).toBeInTheDocument();
+    });
+
+    it("turns a broken-install probe failure into the Reinstall state", async () => {
+      daemonState.snapshot.agents = [
+        {
+          acpCommand: "acp-claude",
+          displayName: "Claude",
+          enabled: true,
+          id: "claude",
+          models: [],
+        },
+      ];
+      probeAgent.mockRejectedValue(
+        new DaemonRpcError(
+          "agent_broken_install",
+          "Missing optional dependency @anthropic-ai/claude-agent-sdk-darwin-arm64",
+        ),
+      );
+      render(<AgentSetupPanel detected={[agent("claude", { installed: true, version: "1.0.0" })]} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Reload models list" }));
+
+      expect(await screen.findByRole("button", { name: "Reinstall" })).toBeInTheDocument();
+      expect(screen.getByText("needs reinstall")).toBeInTheDocument();
+      expect(
+        screen.getByText("Missing optional dependency @anthropic-ai/claude-agent-sdk-darwin-arm64"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("v1.0.0")).not.toBeInTheDocument();
     });
   });
 });

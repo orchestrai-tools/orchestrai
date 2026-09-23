@@ -103,11 +103,10 @@ pub const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
 pub(super) const STDERR_LINE_BYTES: usize = 512;
 pub(super) const STDERR_TOTAL_BYTES: usize = 4096;
 
-/// Extract the JSON-RPC `error` from an agent response into a human-readable,
-/// secret-redacted suffix (leading space included) for reporting. Empty string
-/// when there is no error object. Surfaces the real reason (auth, bad cwd, …)
-/// that would otherwise be swallowed by the generic "rejected" message.
-pub(super) fn acp_error_detail(response: &Value) -> String {
+/// Render a JSON-RPC `error` object as a one-line, secret-redacted detail:
+/// message, then `data` (string verbatim, else compact JSON), then the code in
+/// brackets. Empty string when there is no error.
+pub(crate) fn acp_error_detail(response: &Value) -> String {
     let Some(err) = response.get("error") else {
         return String::new();
     };
@@ -115,17 +114,16 @@ pub(super) fn acp_error_detail(response: &Value) -> String {
         .get("message")
         .and_then(Value::as_str)
         .unwrap_or("unknown error");
-    let code = err.get("code").and_then(Value::as_i64);
-    let data = err
-        .get("data")
-        .filter(|d| !d.is_null())
-        .map(|d| d.to_string());
-    let mut detail = match code {
-        Some(code) => format!(" Agent error {code}: {message}"),
-        None => format!(" Agent error: {message}"),
-    };
-    if let Some(data) = data {
+    let mut detail = message.to_string();
+    if let Some(data) = err.get("data").filter(|d| !d.is_null()) {
+        let data = match data {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
         detail.push_str(&format!(" ({data})"));
+    }
+    if let Some(code) = err.get("code").and_then(Value::as_i64) {
+        detail.push_str(&format!(" [{code}]"));
     }
     bound_diagnostic(&redact_secrets(&detail))
 }

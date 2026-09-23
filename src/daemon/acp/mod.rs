@@ -38,6 +38,7 @@ pub use session::spawn_acp_session;
 pub use tool::pretty_mcp_tool_label;
 
 pub(crate) use model::is_model_selector;
+pub(crate) use process::acp_error_detail;
 
 /// A request from the ACP reader to evaluate a policy before executing an op.
 pub struct PolicyCheck {

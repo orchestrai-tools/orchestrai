@@ -134,7 +134,7 @@ pub(super) async fn dispatch(
         TerminalKill { terminal_id } => runtime::terminal_kill(handle, terminal_id).await,
         AgentsDetect {} => agents::agents_detect(handle).await,
         AgentsUpdate { agents } => agents::agents_update(handle, agents).await,
-        AgentsInstall { id } => agents::agents_install(id).await,
+        AgentsInstall { id, clean } => agents::agents_install(handle, id, clean).await,
         AgentsProbe { id } => agents::agents_probe(handle, id).await,
         AgentsList {} => agents::agents_list(handle).await,
         // ── Agent accounts ──

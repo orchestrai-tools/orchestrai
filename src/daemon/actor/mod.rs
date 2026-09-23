@@ -70,6 +70,7 @@ mod handle_tracker;
 #[cfg(test)]
 mod tests;
 
+pub use command::AgentProbeContext;
 pub use command::Command;
 pub use event::{ChildResult, Event, GitEffect, ProjectRemovalError};
 pub use handle::DaemonHandle;

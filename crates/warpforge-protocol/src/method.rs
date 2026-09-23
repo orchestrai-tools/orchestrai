@@ -378,10 +378,15 @@ pub enum Method {
     /// Save the user's agent configuration (from setup wizard or settings).
     #[serde(rename = "agents.update")]
     AgentsUpdate { agents: Vec<AgentConfig> },
-    /// Install or update an agent's global package (npm/brew). Runs the agent's
-    /// install/update command and returns `{ ok, output }` when it finishes.
+    /// Install or update an agent's global package (npm/brew), then verify it
+    /// starts. `clean` removes then reinstalls, repairing a broken install.
+    /// Returns `{ ok, command, output, verified, verifyError, summary, brokenInstall, repaired }`.
     #[serde(rename = "agents.install")]
-    AgentsInstall { id: String },
+    AgentsInstall {
+        id: String,
+        #[serde(default)]
+        clean: bool,
+    },
     /// Re-read an agent's model/selector list from the harness, replacing the
     /// cached one. Use after adding a provider or model outside Warpforge.
     /// Resolves once the probe finishes; the refreshed list arrives as

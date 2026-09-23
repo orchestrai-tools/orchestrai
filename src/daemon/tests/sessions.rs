@@ -532,3 +532,71 @@ async fn a_forgotten_session_is_marked_lost_and_its_id_dropped() {
     );
     assert_eq!(reloaded.session_id, None);
 }
+
+/// The probe context an install verifies with must resolve for a known agent
+/// even before it is configured, and be absent for one the daemon never heard
+/// of. This is the path `agents.install` verification rides.
+#[tokio::test]
+async fn agent_probe_context_resolves_a_default_command_for_a_known_agent() {
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let daemon = Daemon::spawn(test_projects(), store);
+    let context = daemon
+        .agent_probe_context("claude")
+        .await
+        .expect("a known agent should resolve a probe context");
+    assert_eq!(context.acp_command, "claude-agent-acp --acp");
+    assert!(daemon.agent_probe_context("nope").await.is_none());
+}
+
+/// A rejected initialize must carry the agent's own words. The missing native
+/// binary is the difference between "reinstall" and a dead end, and dropping
+/// the error object is exactly how that reason used to vanish.
+#[tokio::test]
+async fn initialize_rejection_surfaces_the_agent_error_message() {
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let daemon = Daemon::spawn(test_projects(), store);
+    let mut events = daemon.subscribe();
+
+    let mock = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/mock-acp-reject-init.mjs"
+    );
+    let agent = format!("node {mock}");
+    let task_id = daemon
+        .create_task(
+            "demo",
+            "fix the thing",
+            &agent,
+            vec![],
+            false,
+            false,
+            None,
+            vec![],
+            None,
+            std::collections::HashMap::new(),
+            None,
+        )
+        .await;
+
+    let blocked = timeout(Duration::from_secs(10), async {
+        loop {
+            if let Ok(Event::TaskUpdated(task)) = events.recv().await {
+                if task.id == task_id && task.status == TaskStatus::Blocked {
+                    break task;
+                }
+            }
+        }
+    })
+    .await
+    .expect("an initialize rejection should block the task");
+
+    let reason = blocked.blocked_reason.unwrap_or_default();
+    assert!(
+        reason.contains("rejected the ACP initialize request"),
+        "the report should name the handshake step: {reason}"
+    );
+    assert!(
+        reason.contains("Missing optional dependency @openai/codex-darwin-arm64"),
+        "the agent's own error must survive: {reason}"
+    );
+}

@@ -20,7 +20,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use warpforge_protocol as wire;
 
-use super::acp::parse_config_options;
+use super::acp::{acp_error_detail, parse_config_options};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -72,7 +72,10 @@ pub async fn probe_models(
         write_line(&mut stdin, &init_req).await?;
         let init_resp = read_response(&mut reader, 1).await?;
         if init_resp.get("error").is_some() {
-            return Err(anyhow!("agent rejected initialize"));
+            return Err(anyhow!(
+                "agent rejected initialize: {}",
+                acp_error_detail(&init_resp)
+            ));
         }
 
         let new_req = json!({
@@ -87,7 +90,10 @@ pub async fn probe_models(
         write_line(&mut stdin, &new_req).await?;
         let new_resp = read_response(&mut reader, 2).await?;
         if new_resp.get("error").is_some() {
-            return Err(anyhow!("agent rejected session/new"));
+            return Err(anyhow!(
+                "agent rejected session/new: {}",
+                acp_error_detail(&new_resp)
+            ));
         }
 
         let opts = new_resp
