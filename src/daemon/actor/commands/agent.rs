@@ -43,15 +43,25 @@ impl Daemon {
                 description,
                 cols,
                 rows,
+                task_id,
                 reply,
             } => {
-                let result = match self.project_path(&project) {
-                    Some(path) => {
-                        self.agents
-                            .spawn(&project, &path, &command, &description, cols, rows)
-                    }
-                    None => Err(anyhow::anyhow!("unknown project: {project}")),
+                let Some(root) = self.project_path(&project) else {
+                    let _ = reply.send(Err(anyhow::anyhow!("unknown project: {project}")));
+                    return;
                 };
+                // A task_id from another project must not pick its worktree:
+                // fall back to this project's root.
+                let worktree = task_id
+                    .as_deref()
+                    .and_then(|id| self.tasks.get(id))
+                    .filter(|task| task.project == project)
+                    .and_then(|task| task.worktree.clone());
+                let path =
+                    crate::daemon::actor::project::resolve_terminal_cwd(&root, worktree.as_deref());
+                let result =
+                    self.agents
+                        .spawn(&project, &path, &command, &description, cols, rows, task_id);
                 if let Ok(ref id) = result {
                     if let Some(agent) = self.agents.get(id) {
                         self.emit(Event::AgentSpawned {
@@ -68,6 +78,7 @@ impl Daemon {
                                 started_at: agent.started_at,
                                 cols,
                                 rows,
+                                task_id: agent.task_id.clone(),
                             },
                         });
                     }

@@ -305,7 +305,9 @@ export function TaskDetailPanes({ task, onOpenTask, onOpenPush, detail }: Props)
               onAppendToChat={appendLogsToChat}
             />
           )}
-          {activeSurface === "terminal" && <TerminalWorkspaceView project={task.project} />}
+          {activeSurface === "terminal" && (
+            <TerminalWorkspaceView project={task.project} taskId={task.id} />
+          )}
           {activeSurface === "browser" && (
             <BrowserSurface
               project={task.project}

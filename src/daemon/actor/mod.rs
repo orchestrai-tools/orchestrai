@@ -47,7 +47,7 @@ mod output;
 mod policy;
 mod ports;
 mod pr_assistant;
-mod project;
+pub(crate) mod project;
 mod prompt;
 mod run;
 mod session;

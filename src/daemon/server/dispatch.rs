@@ -130,7 +130,7 @@ pub(super) async fn dispatch(
         PortForwardLogs { project, name, after, limit, } => runtime::port_forward_logs(handle, project, name, after, limit).await,
         RuntimeList { project } => runtime::runtime_list(handle, project).await,
         // ── Legacy PTY terminals (the TUI's live agent panes) ──
-        TerminalSpawn { project, command, cols, rows, } => runtime::terminal_spawn(handle, project, command, cols, rows).await,
+        TerminalSpawn { project, command, cols, rows, task_id, } => runtime::terminal_spawn(handle, project, command, cols, rows, task_id).await,
         TerminalInput { terminal_id, data_b64, } => runtime::terminal_input(handle, terminal_id, data_b64).await,
         TerminalResize { terminal_id, cols, rows, } => runtime::terminal_resize(handle, terminal_id, cols, rows).await,
         TerminalKill { terminal_id } => runtime::terminal_kill(handle, terminal_id).await,

@@ -46,7 +46,11 @@ interface MockXterm {
 let currentTerminals: TerminalInfo[] = [];
 let terminalDataListeners = new Map<string, (data: Uint8Array) => void>();
 
-function terminalInfo(id: string, project = "warpforge"): TerminalInfo {
+function terminalInfo(
+  id: string,
+  project = "warpforge",
+  taskId?: string | null,
+): TerminalInfo {
   return {
     cols: 80,
     command: "sh",
@@ -54,6 +58,7 @@ function terminalInfo(id: string, project = "warpforge"): TerminalInfo {
     project,
     rows: 24,
     startedAt: 1,
+    taskId,
   };
 }
 
@@ -200,16 +205,18 @@ describe("TerminalWorkspaceView — remount ownership", () => {
   }: {
     mounted: boolean;
     project?: string;
-    taskId: string;
+    taskId?: string | null;
   }) {
     if (!mounted) return null;
-    return <TerminalWorkspaceView key={taskId} project={project} />;
+    return (
+      <TerminalWorkspaceView key={taskId ?? "project"} project={project} taskId={taskId ?? undefined} />
+    );
   }
 
   it("reattaches the same terminal after the surface is left and returned to", async () => {
-    currentTerminals = [terminalInfo("term-1")];
+    currentTerminals = [terminalInfo("term-1", "warpforge", "task-a")];
     const { rerender } = render(<RuntimeMount mounted project="warpforge" taskId="task-a" />);
-    const workspace = getTerminalWorkspace("warpforge");
+    const workspace = getTerminalWorkspace("warpforge", "task-a");
     const controller = workspace.getController("term-1");
     expect(controller).not.toBeNull();
     const terminal = controller!.term as unknown as MockXterm;
@@ -224,31 +231,18 @@ describe("TerminalWorkspaceView — remount ownership", () => {
     rerender(<RuntimeMount mounted project="warpforge" taskId="task-a" />);
     await waitFor(() => expect(terminal.element.isConnected).toBe(true));
 
-    expect(getTerminalWorkspace("warpforge").getController("term-1")).toBe(controller);
+    expect(getTerminalWorkspace("warpforge", "task-a").getController("term-1")).toBe(controller);
     expect(terminal.open).toHaveBeenCalledTimes(1);
     expect(xtermInstances).toHaveLength(1);
     expect(terminal.write).toHaveBeenCalledWith(new TextEncoder().encode("before collapse"));
   });
 
-  it("retains terminal identity and output across same-project task navigation", async () => {
-    currentTerminals = [terminalInfo("term-1")];
-    const { rerender } = render(<RuntimeMount mounted project="warpforge" taskId="task-a" />);
-    const controller = getTerminalWorkspace("warpforge").getController("term-1");
-    expect(controller).not.toBeNull();
-    const terminal = controller!.term as unknown as MockXterm;
+  it("keeps a task's terminal out of another task's view", () => {
+    currentTerminals = [terminalInfo("term-a", "warpforge", "task-a")];
+    render(<RuntimeMount mounted project="warpforge" taskId="task-b" />);
 
-    await waitFor(() => expect(terminal.element.isConnected).toBe(true));
-    terminalDataListeners.get("term-1")?.(new TextEncoder().encode("task a output"));
-
-    rerender(<RuntimeMount mounted project="warpforge" taskId="task-b" />);
-    await waitFor(() => expect(terminal.element.isConnected).toBe(true));
-    rerender(<RuntimeMount mounted project="warpforge" taskId="task-a" />);
-    await waitFor(() => expect(terminal.element.isConnected).toBe(true));
-
-    expect(getTerminalWorkspace("warpforge").getController("term-1")).toBe(controller);
-    expect(terminal.open).toHaveBeenCalledTimes(1);
-    expect(xtermInstances).toHaveLength(1);
-    expect(terminal.write).toHaveBeenCalledWith(new TextEncoder().encode("task a output"));
+    expect(screen.getByText("Interactive terminal")).toBeInTheDocument();
+    expect(screen.queryByTestId("term-a")).not.toBeInTheDocument();
   });
 });
 

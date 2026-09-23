@@ -10,10 +10,15 @@ import { getTerminalWorkspace } from "../../lib/terminalWorkspace";
 
 interface Props {
   project: string;
+  /** Task whose worktree new terminals should start in, when opened from a task. */
+  taskId?: string;
 }
 
-export const TerminalWorkspaceView = memo(function TerminalWorkspaceView({ project }: Props) {
-  const workspace = getTerminalWorkspace(project);
+export const TerminalWorkspaceView = memo(function TerminalWorkspaceView({
+  project,
+  taskId,
+}: Props) {
+  const workspace = getTerminalWorkspace(project, taskId ?? null);
 
   const terminals = useSyncExternalStore(
     workspace.subscribe,

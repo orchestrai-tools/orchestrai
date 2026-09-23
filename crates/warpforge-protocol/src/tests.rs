@@ -294,6 +294,35 @@ fn terminal_spawn_uses_provided_cols_rows() {
 }
 
 #[test]
+fn terminal_spawn_defaults_task_id_when_omitted() {
+    let old: Request = serde_json::from_str(
+        r#"{"id":1,"method":"terminal.spawn","params":{"project":"p","command":"sh"}}"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        old.method,
+        Method::TerminalSpawn { task_id: None, .. }
+    ));
+
+    let scoped: Request = serde_json::from_str(
+        r#"{"id":1,"method":"terminal.spawn","params":{"project":"p","command":"sh","task_id":"t_1"}}"#,
+    )
+    .unwrap();
+    assert!(
+        matches!(scoped.method, Method::TerminalSpawn { task_id: Some(id), .. } if id == "t_1")
+    );
+}
+
+#[test]
+fn service_info_checkout_defaults_to_empty_for_old_payloads() {
+    let old: ServiceInfo = serde_json::from_str(
+        r#"{"project":"p","name":"web","command":"npm run dev","status":"running","originalPort":3000,"allocatedPort":3001,"logSeq":0}"#,
+    )
+    .unwrap();
+    assert_eq!(old.checkout, "");
+}
+
+#[test]
 fn project_remove_defaults_to_safe_resource_guard() {
     let old: Request =
         serde_json::from_str(r#"{"id":1,"method":"project.remove","params":{"name":"demo"}}"#)
@@ -492,6 +521,7 @@ fn project_config_changed_event_roundtrip() {
             status: ServiceStatus::Stopped,
             original_port: 3000,
             allocated_port: 0,
+            checkout: "/tmp/demo".into(),
             port_pinned: false,
             log_seq: 0,
         }],

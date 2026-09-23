@@ -36,6 +36,11 @@ pub struct ServiceInfo {
     pub status: ServiceStatus,
     pub original_port: u16,
     pub allocated_port: u16,
+    /// Absolute path of the checkout the service runs from. Services always run
+    /// from the project root, so this names the tree an agent in a task worktree
+    /// is *not* editing.
+    #[serde(default)]
+    pub checkout: String,
     /// True when the service's declared port is a hard pin, not a hint.
     #[serde(default)]
     pub port_pinned: bool,
@@ -84,6 +89,10 @@ pub struct TerminalInfo {
     pub started_at: u64,
     pub cols: u16,
     pub rows: u16,
+    /// Task this terminal belongs to when opened from a task's Terminal tab.
+    /// `None` = a project-level terminal, visible outside any task.
+    #[serde(default)]
+    pub task_id: Option<String>,
 }
 
 /// A rendered vt100 screen. Row-oriented so clients don't need a terminal

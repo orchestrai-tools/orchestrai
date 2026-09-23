@@ -29,10 +29,18 @@ export class TerminalWorkspace {
   private exitedTombstones = new Set<string>();
   private closeIntentTerminals = new Set<string>();
 
-  constructor(private readonly project: string) {
+  constructor(
+    public readonly project: string,
+    private readonly taskId: string | null = null,
+  ) {
     this.unsubEvents = daemon.subscribeEvents((ev) => this.handleDaemonEvent(ev));
     this.unsubStore = daemon.subscribe(() => this.handleStoreUpdate());
     this.reconcileFromSnapshot();
+  }
+
+  /** A terminal belongs to this workspace only when both project and task match. */
+  private inScope(info: { project: string; taskId?: string | null }): boolean {
+    return info.project === this.project && (info.taskId ?? null) === this.taskId;
   }
 
   subscribe = (listener: WorkspaceListener): (() => void) => {
@@ -74,7 +82,12 @@ export class TerminalWorkspace {
   async spawn(): Promise<string | null> {
     this.spawnError = null;
     try {
-      const terminalId = await daemon.spawnTerminal(this.project, 80, 24);
+      const terminalId = await daemon.spawnTerminal(
+        this.project,
+        80,
+        24,
+        this.taskId ?? undefined,
+      );
       if (!terminalId) {
         this.spawnError = "Daemon returned no terminal id.";
         this.notify();
@@ -187,8 +200,8 @@ export class TerminalWorkspace {
 
   private getTerminalSignature(): string {
     const snap = daemon.getState().snapshot;
-    const projectTerminals = snap.terminals.filter((t) => t.project === this.project);
-    return projectTerminals
+    const scoped = snap.terminals.filter((t) => this.inScope(t));
+    return scoped
       .map((t) => t.id)
       .sort()
       .join(",");
@@ -197,9 +210,9 @@ export class TerminalWorkspace {
   private reconcileFromSnapshot() {
     if (this.disposed) return;
     const snap = daemon.getState().snapshot;
-    const projectTerminals = snap.terminals.filter((t) => t.project === this.project);
+    const scoped = snap.terminals.filter((t) => this.inScope(t));
 
-    for (const info of projectTerminals) {
+    for (const info of scoped) {
       if (!this.entries.has(info.id) && !this.exitedTombstones.has(info.id)) {
         this.attachTerminal(info);
       }
@@ -248,7 +261,7 @@ export class TerminalWorkspace {
     }
     if (ev.event === "terminal.spawned") {
       const info = ev.data;
-      if (info.project !== this.project) return;
+      if (!this.inScope(info)) return;
       if (!this.entries.has(info.id) && !this.exitedTombstones.has(info.id)) {
         this.attachTerminal(info);
         if (!this.activeId) this.activeId = info.id;
@@ -302,20 +315,29 @@ export class TerminalWorkspace {
 
 const workspaces = new Map<string, TerminalWorkspace>();
 
-export function getTerminalWorkspace(project: string): TerminalWorkspace {
-  let ws = workspaces.get(project);
+function scopeKey(project: string, taskId: string | null): string {
+  return taskId ? `task:${taskId}` : `project:${project}`;
+}
+
+export function getTerminalWorkspace(
+  project: string,
+  taskId: string | null = null,
+): TerminalWorkspace {
+  const key = scopeKey(project, taskId);
+  let ws = workspaces.get(key);
   if (!ws) {
-    ws = new TerminalWorkspace(project);
-    workspaces.set(project, ws);
+    ws = new TerminalWorkspace(project, taskId);
+    workspaces.set(key, ws);
   }
   return ws;
 }
 
 export function disposeTerminalWorkspace(project: string) {
-  const ws = workspaces.get(project);
-  if (ws) {
-    ws.dispose();
-    workspaces.delete(project);
+  for (const [key, ws] of workspaces) {
+    if (ws.project === project) {
+      ws.dispose();
+      workspaces.delete(key);
+    }
   }
 }
 

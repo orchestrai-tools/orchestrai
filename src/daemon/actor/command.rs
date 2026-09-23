@@ -100,6 +100,9 @@ pub enum Command {
         description: String,
         cols: u16,
         rows: u16,
+        /// Task the terminal belongs to, when opened from a task's Terminal tab.
+        /// Its worktree becomes the terminal's cwd when it exists on disk.
+        task_id: Option<String>,
         reply: oneshot::Sender<Result<String>>,
     },
     WriteAgent {

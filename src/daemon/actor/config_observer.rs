@@ -166,6 +166,7 @@ impl Daemon {
                                 status: wire::ServiceStatus::Stopped,
                                 original_port: service.port.unwrap_or(0),
                                 allocated_port: 0,
+                                checkout: project.path.clone(),
                                 // A pinned service that has never started is
                                 // still pinned: report from the resolved
                                 // range, not from a live process.

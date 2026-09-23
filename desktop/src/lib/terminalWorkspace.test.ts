@@ -126,6 +126,43 @@ describe("TerminalWorkspace — lifecycle", () => {
   });
 });
 
+describe("TerminalWorkspace — task scoping", () => {
+  function taskTerminal(id: string, taskId: string | null, project = "test-project"): TerminalInfo {
+    return { cols: 80, command: "sh", id, project, rows: 24, startedAt: 1, taskId };
+  }
+
+  it("two tasks of one project see only their own terminals", () => {
+    currentTerminals = [taskTerminal("term-a", "task-a"), taskTerminal("term-b", "task-b")];
+
+    const wsA = getTerminalWorkspace("test-project", "task-a");
+    const wsB = getTerminalWorkspace("test-project", "task-b");
+
+    expect(wsA.getTerminals().map((t) => t.terminalId)).toEqual(["term-a"]);
+    expect(wsB.getTerminals().map((t) => t.terminalId)).toEqual(["term-b"]);
+  });
+
+  it("the project view does not see task terminals", () => {
+    currentTerminals = [taskTerminal("term-a", "task-a"), taskTerminal("term-proj", null)];
+
+    const projectWs = getTerminalWorkspace("test-project");
+
+    expect(projectWs.getTerminals().map((t) => t.terminalId)).toEqual(["term-proj"]);
+  });
+
+  it("adoption after a snapshot respects task_id", () => {
+    const wsA = getTerminalWorkspace("test-project", "task-a");
+    const projectWs = getTerminalWorkspace("test-project");
+    expect(wsA.getTerminals()).toEqual([]);
+    expect(projectWs.getTerminals()).toEqual([]);
+
+    currentTerminals = [taskTerminal("term-a", "task-a"), taskTerminal("term-proj", null)];
+    triggerStoreUpdate();
+
+    expect(wsA.getTerminals().map((t) => t.terminalId)).toEqual(["term-a"]);
+    expect(projectWs.getTerminals().map((t) => t.terminalId)).toEqual(["term-proj"]);
+  });
+});
+
 describe("TerminalWorkspace — spawn/kill via events", () => {
   it("spawn calls daemon.spawnTerminal and terminal.spawned attaches controller", async () => {
     const ws = getTerminalWorkspace("test-project");

@@ -36,7 +36,14 @@ fn stopped_project_state_does_not_require_force() {
 async fn live_terminal_blocks_unforced_project_removal() {
     let handle = Daemon::spawn(vec![demo_project()], None);
     let terminal_id = handle
-        .spawn_agent("project-removal-test", "sleep 30", "guard test", 80, 24)
+        .spawn_agent(
+            "project-removal-test",
+            "sleep 30",
+            "guard test",
+            80,
+            24,
+            None,
+        )
         .await
         .unwrap();
 
@@ -65,6 +72,7 @@ async fn task_archive_and_delete_do_not_kill_project_terminal() {
             "task lifecycle test",
             80,
             24,
+            None,
         )
         .await
         .unwrap();
@@ -106,6 +114,97 @@ async fn task_archive_and_delete_do_not_kill_project_terminal() {
         .delete_task(&deleted_task)
         .await
         .expect("task deletion should complete");
+
+    assert!(handle
+        .snapshot()
+        .await
+        .terminals
+        .iter()
+        .any(|terminal| terminal.id == terminal_id));
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn deleting_a_task_kills_its_terminal() {
+    let handle = Daemon::spawn(vec![demo_project()], None);
+    let task = handle
+        .create_task(
+            "project-removal-test",
+            "delete me",
+            "codex",
+            Vec::new(),
+            false,
+            false,
+            None,
+            Vec::new(),
+            None,
+            HashMap::new(),
+            None,
+        )
+        .await;
+    let terminal_id = handle
+        .spawn_agent(
+            "project-removal-test",
+            "sleep 30",
+            "task terminal",
+            80,
+            24,
+            Some(task.clone()),
+        )
+        .await
+        .unwrap();
+    assert!(handle
+        .snapshot()
+        .await
+        .terminals
+        .iter()
+        .any(|terminal| terminal.id == terminal_id));
+
+    handle
+        .delete_task(&task)
+        .await
+        .expect("task deletion should complete");
+
+    assert!(!handle
+        .snapshot()
+        .await
+        .terminals
+        .iter()
+        .any(|terminal| terminal.id == terminal_id));
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn archiving_a_task_keeps_its_terminal_running() {
+    let handle = Daemon::spawn(vec![demo_project()], None);
+    let task = handle
+        .create_task(
+            "project-removal-test",
+            "archive me",
+            "codex",
+            Vec::new(),
+            false,
+            false,
+            None,
+            Vec::new(),
+            None,
+            HashMap::new(),
+            None,
+        )
+        .await;
+    let terminal_id = handle
+        .spawn_agent(
+            "project-removal-test",
+            "sleep 30",
+            "task terminal",
+            80,
+            24,
+            Some(task.clone()),
+        )
+        .await
+        .unwrap();
+
+    handle.send(Command::ArchiveTask { id: task.clone() }).await;
 
     assert!(handle
         .snapshot()

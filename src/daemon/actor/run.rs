@@ -76,6 +76,7 @@ impl Daemon {
                     started_at: a.started_at,
                     cols,
                     rows,
+                    task_id: a.task_id.clone(),
                 }
             })
             .collect();

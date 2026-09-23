@@ -48,6 +48,8 @@ pub struct Agent {
     pub command: String,
     pub description: String,
     pub status: AgentStatus,
+    /// Task this terminal belongs to when opened from a task's Terminal tab.
+    pub task_id: Option<String>,
     /// Unix timestamp (secs) when spawned — used for elapsed time display
     pub started_at: u64,
     /// Raw PTY output bytes accumulated for vt100 parsing
@@ -111,6 +113,7 @@ impl AgentManager {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         &mut self,
         project_name: &str,
@@ -119,6 +122,7 @@ impl AgentManager {
         description: &str,
         cols: u16,
         rows: u16,
+        task_id: Option<String>,
     ) -> Result<String> {
         let id = Uuid::new_v4().to_string()[..8].to_string();
         let pty_system = NativePtySystem::default();
@@ -219,6 +223,7 @@ impl AgentManager {
                 description.to_string()
             },
             status: AgentStatus::Running,
+            task_id,
             started_at,
             output: Vec::new(),
             input_tx,
@@ -325,6 +330,22 @@ impl AgentManager {
         for id in ids {
             self.kill(&id);
         }
+    }
+
+    /// Kill every terminal opened from `task_id`'s Terminal tab and return
+    /// their ids so the caller can emit the exit events. Archiving a task
+    /// leaves its terminal alone; only deletion removes the worktree under it.
+    pub fn kill_for_task(&mut self, task_id: &str) -> Vec<String> {
+        let ids: Vec<String> = self
+            .agents
+            .iter()
+            .filter(|(_, a)| a.task_id.as_deref() == Some(task_id))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &ids {
+            self.kill(id);
+        }
+        ids
     }
 
     pub fn all_ids(&self) -> Vec<String> {

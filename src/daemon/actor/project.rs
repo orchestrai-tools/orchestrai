@@ -325,7 +325,11 @@ impl Daemon {
     /// A context block describing the project's currently-running services and
     /// their live URLs — prepended to the agent's first prompt so it knows the
     /// app is already up and can hit real endpoints / run tests against it.
-    pub(crate) fn runtime_context(&self, project: &str) -> Option<String> {
+    ///
+    /// For a task that runs in its own worktree the block says plainly that the
+    /// services serve the main checkout, not the worktree, so the agent does not
+    /// read a restart as having picked up its edits.
+    pub(crate) fn runtime_context(&self, project: &str, task_id: Option<&str>) -> Option<String> {
         let mut lines: Vec<String> = self
             .services
             .all()
@@ -334,17 +338,30 @@ impl Daemon {
                     && s.allocated_port > 0
                     && matches!(s.status, ServiceStatus::Running | ServiceStatus::Starting)
             })
-            .map(|s| format!("- {} → http://localhost:{}", s.name, s.allocated_port))
+            .map(|s| runtime_service_line(&s.name, &s.status, s.allocated_port))
             .collect();
         if lines.is_empty() {
             return None;
         }
         lines.sort();
+        let checkout = self.runtime_checkout(project, task_id);
         Some(format!(
-            "[warpforge] These services are already running for this project — \
-             you can hit these endpoints and run tests against them:\n{}",
+            "[warpforge] {}\n{}",
+            runtime_checkout_note(checkout.as_ref()),
             lines.join("\n")
         ))
+    }
+
+    /// Where a worktree task's services actually run. `None` when the task does
+    /// not run in a worktree, so the services are its own checkout.
+    fn runtime_checkout(&self, project: &str, task_id: Option<&str>) -> Option<RuntimeCheckout> {
+        let task = task_id.and_then(|id| self.tasks.get(id))?;
+        let worktree = task.worktree.as_deref()?;
+        let root = self.project_path(project)?;
+        Some(RuntimeCheckout {
+            root,
+            worktree: worktree.to_string(),
+        })
     }
 
     /// Spawn an ACP agent session for a task and remember its handle. When
@@ -425,4 +442,46 @@ impl Daemon {
             .filter_map(|p| self.port_range_for(&p.name))
             .collect()
     }
+}
+
+/// The checkout a worktree task's services really run from, for the runtime
+/// preamble.
+pub(crate) struct RuntimeCheckout {
+    pub(crate) root: String,
+    pub(crate) worktree: String,
+}
+
+/// The sentence that opens the runtime context block. A worktree task is told
+/// its services serve a different checkout; every other task gets the original
+/// wording, which is true for it.
+pub(crate) fn runtime_checkout_note(checkout: Option<&RuntimeCheckout>) -> String {
+    match checkout {
+        None => "These services are already running for this project — you can hit these endpoints and run tests against them:".to_string(),
+        Some(c) => format!(
+            "These services are already running for this project, but they serve the main \
+             checkout at {} — not your worktree at {}. Restarting a service will not pick up \
+             your edits; you can still hit these endpoints to test the running app:",
+            c.root, c.worktree
+        ),
+    }
+}
+
+/// One bullet for a running/starting service. A starting service is labelled so
+/// an agent does not treat a half-up server as ready.
+pub(crate) fn runtime_service_line(name: &str, status: &ServiceStatus, port: u16) -> String {
+    match status {
+        ServiceStatus::Starting => format!("- {name} → http://localhost:{port} (starting)"),
+        _ => format!("- {name} → http://localhost:{port}"),
+    }
+}
+
+/// The working directory a task's terminal should start in: its worktree when
+/// one exists on disk, else the project root.
+pub(crate) fn resolve_terminal_cwd(root: &str, worktree: Option<&str>) -> String {
+    if let Some(worktree) = worktree {
+        if std::path::Path::new(worktree).is_dir() {
+            return worktree.to_string();
+        }
+    }
+    root.to_string()
 }

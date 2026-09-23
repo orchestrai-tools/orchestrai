@@ -303,6 +303,14 @@ impl Daemon {
                     .tasks
                     .get(&id)
                     .and_then(|t| self.project_path(&t.project));
+                // A task's Terminal tab is scoped to the task, so deleting it
+                // would orphan the PTY in a worktree about to be removed. Kill
+                // it first, before the worktree goes away.
+                if delete_result.is_ok() {
+                    for terminal_id in self.agents.kill_for_task(&id) {
+                        self.emit(Event::AgentExited { id: terminal_id });
+                    }
+                }
                 // Clean up worktree if the task had one.
                 if let Some(task) = self.tasks.get(&id).filter(|_| delete_result.is_ok()) {
                     if task.worktree.is_some() {

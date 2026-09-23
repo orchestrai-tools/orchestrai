@@ -5,12 +5,18 @@ import type { Constructor } from "./types";
 export function TerminalMethods<TBase extends Constructor<CoreClient>>(Base: TBase) {
   // ── Terminal PTY RPCs ──
   return class extends Base {
-    async spawnTerminal(project: string, cols: number, rows: number): Promise<string> {
+    async spawnTerminal(
+      project: string,
+      cols: number,
+      rows: number,
+      taskId?: string,
+    ): Promise<string> {
       const result = await this.request("terminal.spawn", {
         project,
         command: 'exec "${SHELL:-/bin/sh}" -l',
         cols,
         rows,
+        ...(taskId ? { task_id: taskId } : {}),
       });
       return (result as { terminalId?: string })?.terminalId ?? "";
     }

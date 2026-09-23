@@ -796,6 +796,11 @@ pub enum Method {
         cols: u16,
         #[serde(default = "default_terminal_rows")]
         rows: u16,
+        /// The task this terminal belongs to, when opened from a task's Terminal
+        /// tab. Its worktree becomes the terminal's working directory when it
+        /// exists on disk; otherwise the terminal starts in the project root.
+        #[serde(default)]
+        task_id: Option<String>,
     },
     #[serde(rename = "terminal.input")]
     TerminalInput {

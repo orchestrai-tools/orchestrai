@@ -199,7 +199,7 @@ impl Daemon {
             format!("{memory_prefix}{pr_assistant_prefix}{RUNTIME_MCP_SYSTEM}\n\n{prompt}")
         };
         let full_prompt = match include_runtime_context
-            .then(|| self.runtime_context(project))
+            .then(|| self.runtime_context(project, Some(task_id)))
             .flatten()
         {
             Some(ctx) => format!("{ctx}\n\n{base_prompt}"),

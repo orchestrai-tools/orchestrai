@@ -142,9 +142,10 @@ pub(super) async fn terminal_spawn(
     command: String,
     cols: u16,
     rows: u16,
+    task_id: Option<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     let id = handle
-        .spawn_agent(&project, &command, "", cols, rows)
+        .spawn_agent(&project, &command, "", cols, rows, task_id)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::AgentUnavailable,

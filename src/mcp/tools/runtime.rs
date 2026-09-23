@@ -7,8 +7,10 @@ pub(super) fn defs() -> Vec<Value> {
              "description": "List the project's dev services and port-forwards with their \
                 live status and allocated ports. Use this to discover what is running \
                 (names, ports, URLs) before reading logs or restarting a service. Each \
-                entry's logSeq is a log cursor you can pass as `after` to read_service_logs \
-                / read_portforward_logs.",
+                service's `checkout` names the working tree it runs from: services run \
+                from the project root, so a restart rebuilds that tree, not a task's \
+                worktree. Each entry's logSeq is a log cursor you can pass as `after` to \
+                read_service_logs / read_portforward_logs.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

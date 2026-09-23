@@ -215,6 +215,7 @@ impl DaemonHandle {
         description: &str,
         cols: u16,
         rows: u16,
+        task_id: Option<String>,
     ) -> Result<String> {
         let (tx, rx) = oneshot::channel();
         self.send(Command::SpawnAgent {
@@ -223,6 +224,7 @@ impl DaemonHandle {
             description: description.to_string(),
             cols,
             rows,
+            task_id,
             reply: tx,
         })
         .await;

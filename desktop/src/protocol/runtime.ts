@@ -18,6 +18,8 @@ export interface ServiceInfo {
   status: ServiceStatus;
   originalPort: number;
   allocatedPort: number;
+  /** Absolute path of the checkout the service runs from (the project root). */
+  checkout?: string;
   /** True when the service's declared port is a hard pin, not a hint. */
   portPinned?: boolean;
   logSeq: number;
@@ -59,6 +61,8 @@ export interface TerminalInfo {
   startedAt: number;
   cols: number;
   rows: number;
+  /** Task this terminal belongs to; absent for a project-level terminal. */
+  taskId?: string | null;
 }
 
 export interface TerminalScreen {
