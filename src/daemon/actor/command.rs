@@ -135,6 +135,12 @@ pub enum Command {
         task_id: String,
         project: String,
     },
+    /// Test-only: replace the worktree remover so a test can hold a removal
+    /// open and prove the actor does not await it.
+    #[cfg(test)]
+    SetWorktreeRemover {
+        remover: crate::daemon::worktree::RemoveFn,
+    },
     /// A git operation that ran off the loop finished; apply what it changed
     /// to the task's state.
     GitOpFinished {

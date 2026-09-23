@@ -1,8 +1,10 @@
 use warpforge_protocol as wire;
 
 use crate::daemon::actor::PendingResume;
+use crate::daemon::actor::PendingSessionStart;
 use crate::daemon::actor::{Command, Daemon, Event};
 use crate::daemon::task::Task;
+use crate::daemon::task::TaskStatus;
 
 impl Daemon {
     pub(crate) async fn handle_session_command(&mut self, cmd: Command) {
@@ -154,6 +156,38 @@ impl Daemon {
                             );
                             self.request_resume_replay_guard(&task_id);
                             let _ = reply.send(Ok(()));
+                        } else if let Some(task) = self
+                            .tasks
+                            .get(&task_id)
+                            .filter(|task| task.status == TaskStatus::Blocked)
+                            .filter(|task| task.workflow_run.is_none())
+                        {
+                            // Retry a task blocked before its session existed (a
+                            // failed checkout, say) from the stashed start, so the
+                            // agent gets the task it never ran.
+                            let fallback = PendingSessionStart {
+                                project: task.project.clone(),
+                                agent: task.agent.clone(),
+                                prompt: task.prompt.clone(),
+                                include_runtime_context: false,
+                                attachments: Vec::new(),
+                                default_model: task.model.clone(),
+                                config_overrides: std::collections::HashMap::new(),
+                            };
+                            let start = self.blocked_starts.remove(&task_id).unwrap_or(fallback);
+                            let prompt = combine_prompt(&start.prompt, &text);
+                            self.start_session(
+                                &task_id,
+                                &start.project,
+                                &start.agent,
+                                &prompt,
+                                start.include_runtime_context,
+                                None,
+                                start.attachments,
+                                start.default_model,
+                                start.config_overrides,
+                            );
+                            let _ = reply.send(Ok(()));
                         } else {
                             // Reject without echoing a user message that was never delivered.
                             let _ = reply.send(Err("no live or resumable agent session".into()));
@@ -259,5 +293,17 @@ impl Daemon {
 
             other => self.handle_accounts_command(other).await,
         }
+    }
+}
+
+/// The original task prompt, then the user's message, so a retried session has
+/// the task it never started with.
+fn combine_prompt(prompt: &str, message: &str) -> String {
+    let prompt = prompt.trim();
+    let message = message.trim();
+    match (prompt.is_empty(), message.is_empty()) {
+        (true, _) => message.to_string(),
+        (_, true) => prompt.to_string(),
+        _ => format!("{prompt}\n\n{message}"),
     }
 }

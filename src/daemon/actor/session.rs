@@ -100,6 +100,71 @@ impl Daemon {
         })
     }
 
+    /// Resolve the git/fs inputs for removing a task's worktree, falling back
+    /// to its recorded path and the deterministic branch name when the manager
+    /// has no entry.
+    pub(crate) fn worktree_for_removal(
+        &self,
+        task_id: &str,
+    ) -> Option<(String, PathBuf, PathBuf, String)> {
+        let task = self.tasks.get(task_id)?;
+        let recorded = task.worktree.as_ref()?;
+        let resolved = self.worktrees.get(&task.project).and_then(|mgr| {
+            mgr.get(task_id)
+                .map(|wt| (mgr.base_repo().to_path_buf(), wt.branch.clone()))
+        });
+        let (base_repo, branch) = match resolved {
+            Some(resolved) => resolved,
+            None => (
+                PathBuf::from(self.project_path(&task.project)?),
+                format!("warpforge/task/{task_id}"),
+            ),
+        };
+        Some((
+            task.project.clone(),
+            base_repo,
+            PathBuf::from(recorded),
+            branch,
+        ))
+    }
+
+    /// Run a detached worktree removal off the actor loop. The actor has
+    /// already dropped the entry from its maps; only the git/fs work runs here.
+    pub(crate) fn spawn_worktree_removal(
+        &self,
+        base_repo: PathBuf,
+        path: PathBuf,
+        branch: String,
+        task_id: String,
+    ) {
+        #[cfg(test)]
+        let remover = self.remove_worktree;
+        #[cfg(not(test))]
+        let remover = crate::daemon::worktree::default_remover;
+        tokio::spawn(async move {
+            if let Err(e) = remover(base_repo, path, branch).await {
+                eprintln!("[daemon] worktree cleanup failed for {task_id}: {e}");
+            }
+        });
+    }
+
+    /// A checkout that could not be created must not quietly run the task in
+    /// the project checkout. Block it so the "needs you" rail surfaces the
+    /// git error; sending a message retries it unisolated.
+    pub(crate) fn worktree_failed(&mut self, task_id: &str, error: &str) {
+        if let Some(task) = self.tasks.get_mut(task_id) {
+            task.worktree = None;
+            task.blocked_reason = Some(format!(
+                "could not create an isolated worktree: {error}; send a message to run it in \
+                 the project checkout instead, or delete the task"
+            ));
+            task.set_status(TaskStatus::Blocked);
+            let updated = task.clone();
+            self.persist(&updated);
+            self.emit(Event::TaskUpdated(updated));
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     /// If the task has a worktree, the agent runs in the worktree directory
     /// instead of the project root — so its edits are isolated.

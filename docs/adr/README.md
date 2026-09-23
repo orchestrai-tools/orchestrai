@@ -28,3 +28,4 @@ stale and then misleads.
 | [0010](0010-pull-request-inbox.md) | The PR inbox is a second surface, not a backlog column |
 | [0011](0011-agent-turn-lifecycle.md) | A session runs one turn at a time, and every turn says who asked for it |
 | [0014](0014-quit-stops-the-daemon.md) | Quitting the app stops the daemon it started |
+| [0015](0015-worktree-lifecycle-across-restarts.md) | Worktree lifecycle survives a daemon restart |

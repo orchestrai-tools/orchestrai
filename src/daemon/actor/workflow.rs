@@ -4,11 +4,10 @@ use anyhow::Result;
 
 use warpforge_protocol as wire;
 
-use crate::daemon::actor::{Daemon, Event};
+use crate::daemon::actor::{Command, Daemon, Event};
 use crate::daemon::runtime::Write as PersistWrite;
 use crate::daemon::task::{Task, TaskStatus};
 use crate::daemon::workflow::{RunState, StageKind, WorkflowRun};
-use crate::daemon::worktree::WorktreeManager;
 
 // ─── Workflow pipeline engine (actor glue) ───────────────────────────────────
 //
@@ -230,16 +229,6 @@ impl Daemon {
         task.parent_task_id = parent_task_id;
         // An explicit lead model from the dialog is the task's model intent.
         task.model = default_model.clone();
-        if use_worktree {
-            let wt_mgr = self
-                .worktrees
-                .entry(project.clone())
-                .or_insert_with(|| WorktreeManager::new(std::path::PathBuf::from(&path)));
-            match wt_mgr.create(&task.id, None).await {
-                Ok(wt) => task.worktree = Some(wt.path.to_string_lossy().to_string()),
-                Err(e) => eprintln!("[daemon] worktree creation failed: {e}"),
-            }
-        }
         // The parent is "running" for the whole life of the pipeline.
         task.set_status(TaskStatus::Running);
         let resolved_model = default_model.or_else(|| {
@@ -255,7 +244,7 @@ impl Daemon {
 
         let run = WorkflowRun::new(
             parent_id.clone(),
-            project,
+            project.clone(),
             spec,
             agent,
             resolved_model,
@@ -289,7 +278,29 @@ impl Daemon {
         );
         let first = run.first_stage();
         self.workflow_runs.insert(parent_id.clone(), run);
-        self.workflow_spawn_stage(&parent_id, first).await;
+        // Checkout off the loop; the first stage starts from WorktreeReady,
+        // which also surfaces a failure (ADR 0002).
+        match use_worktree
+            .then(|| self.worktree_request(&parent_id, &project, None))
+            .flatten()
+        {
+            Some(request) => {
+                self.pending_workflow_starts
+                    .insert(parent_id.clone(), first);
+                let cmd_tx = self.cmd_tx.clone();
+                let id = parent_id.clone();
+                tokio::spawn(async move {
+                    let created = request.run().await;
+                    let _ = cmd_tx
+                        .send(Command::WorktreeReady {
+                            task_id: id,
+                            created,
+                        })
+                        .await;
+                });
+            }
+            None => self.workflow_spawn_stage(&parent_id, first).await,
+        }
         Ok(parent_id)
     }
 

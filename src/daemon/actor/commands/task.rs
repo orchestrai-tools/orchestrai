@@ -129,14 +129,34 @@ impl Daemon {
                             mgr.adopt(wt);
                         }
                     }
-                    // Fall back to a non-isolated run, as before.
-                    Err(error) => eprintln!("[daemon] worktree creation failed: {error}"),
+                    Err(error) => {
+                        // Surface the failure instead of running unisolated; a
+                        // task cancelled mid-checkout has no pending entry, so
+                        // it is left alone.
+                        if self.pending_workflow_starts.remove(&task_id).is_some() {
+                            let _ = self
+                                .workflow_finalize(
+                                    &task_id,
+                                    WorkflowOutcome::Error(format!(
+                                        "could not create an isolated worktree: {error}"
+                                    )),
+                                )
+                                .await;
+                        } else if let Some(start) = self.pending_session_starts.remove(&task_id) {
+                            // Keep the original start so a retry has the task.
+                            self.blocked_starts.insert(task_id.clone(), start);
+                            self.worktree_failed(&task_id, &error);
+                        }
+                    }
                 }
                 // The pending entry is the token: cancelling or deleting the
                 // task removes it, so a checkout that lands afterwards must not
                 // start a session for it (ADR 0002 invariant 5).
                 if let Some(start) = self.pending_session_starts.remove(&task_id) {
                     self.start_pending_session(&task_id, start);
+                }
+                if let Some(stage) = self.pending_workflow_starts.remove(&task_id) {
+                    self.workflow_spawn_stage(&task_id, stage).await;
                 }
             }
             #[cfg(test)]
@@ -219,6 +239,8 @@ impl Daemon {
                     // user just cancelled. Same for a pending resume: its
                     // guard must not start a session the user cancelled.
                     self.pending_session_starts.remove(&id);
+                    self.blocked_starts.remove(&id);
+                    self.pending_workflow_starts.remove(&id);
                     self.pending_resume.remove(&id);
                     self.resume_replay.remove(&id);
                     self.pending_permissions.cleanup_task(&id);
@@ -311,14 +333,15 @@ impl Daemon {
                         self.emit(Event::AgentExited { id: terminal_id });
                     }
                 }
-                // Clean up worktree if the task had one.
-                if let Some(task) = self.tasks.get(&id).filter(|_| delete_result.is_ok()) {
-                    if task.worktree.is_some() {
-                        if let Some(wt_mgr) = self.worktrees.get_mut(&task.project) {
-                            if let Err(e) = wt_mgr.remove(&id).await {
-                                eprintln!("[daemon] worktree cleanup failed for {id}: {e}");
-                            }
+                // Removal off the loop: drop the map entry, spawn the git/fs
+                // work. Terminals and session were stopped above (ADR 0002).
+                if delete_result.is_ok() {
+                    if let Some((project, base_repo, path, branch)) = self.worktree_for_removal(&id)
+                    {
+                        if let Some(mgr) = self.worktrees.get_mut(&project) {
+                            mgr.forget(&id);
                         }
+                        self.spawn_worktree_removal(base_repo, path, branch, id.clone());
                     }
                 }
                 if delete_result.is_ok() && self.tasks.remove(&id).is_some() {
@@ -329,6 +352,8 @@ impl Daemon {
                     self.resume_replay.remove(&id);
                     self.pending_resume.remove(&id);
                     self.pending_session_starts.remove(&id);
+                    self.blocked_starts.remove(&id);
+                    self.pending_workflow_starts.remove(&id);
                     // The run's task is gone — fail the run so it does not sit
                     // in Running until the stale-run sweep finds it.
                     self.automation_task_deleted(&id);

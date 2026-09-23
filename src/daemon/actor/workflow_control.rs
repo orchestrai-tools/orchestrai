@@ -98,6 +98,10 @@ impl Daemon {
         let Some(mut run) = self.workflow_runs.remove(parent_id) else {
             return Ok(());
         };
+        // A checkout still in flight must not start a stage after the pipeline
+        // was stopped: dropping the pending entry is what makes the late
+        // WorktreeReady a no-op (ADR 0002 invariant 5).
+        self.pending_workflow_starts.remove(parent_id);
         if !run.is_active() {
             self.workflow_runs.insert(parent_id.to_string(), run);
             return Ok(());

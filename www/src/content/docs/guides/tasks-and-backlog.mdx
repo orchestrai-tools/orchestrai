@@ -95,6 +95,8 @@ A task can run in **its own git worktree** while staying attached to the same pr
 
 The task's **Terminal** tab opens in its worktree. The project's services keep running from the project checkout, though, so restarting one does not pick up the task's edits — the agent is told this when it starts, and `list_runtime` names the checkout each service runs from.
 
+If the worktree cannot be created — a full disk, say — the task does not quietly fall back to your checkout. It waits in **Needs you** with git's error; send a message to run it in the project checkout instead, or delete it. Deleting a task removes its worktree, including after Warpforge restarts or updates.
+
 When the work is good, the worktree's branch merges back into its base and the worktree is removed. A task without a worktree just works in the project checkout, which is often what you want for a quick change.
 
 ### Review, then commit

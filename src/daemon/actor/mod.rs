@@ -128,6 +128,17 @@ pub struct Daemon {
     /// the token that lets a finished checkout start its session: cancel and
     /// delete remove the entry, so a late checkout cannot resurrect the task.
     pending_session_starts: HashMap<String, PendingSessionStart>,
+    /// Sessions whose checkout failed, so the original start — prompt,
+    /// attachments, model, overrides — survives until the user retries.
+    blocked_starts: HashMap<String, PendingSessionStart>,
+    /// Workflow parents waiting on a worktree checkout, keyed by parent task id
+    /// and mapped to the first stage to start when it lands. Cancel and delete
+    /// remove the entry so a late checkout cannot resurrect a stopped pipeline.
+    pending_workflow_starts: HashMap<String, crate::daemon::workflow::StageKind>,
+    /// How a detached worktree removal runs. Production is `remove_detached`;
+    /// a test swaps in a slow remover to prove the actor does not await it.
+    #[cfg(test)]
+    remove_worktree: crate::daemon::worktree::RemoveFn,
     /// Policy engine: gates agent actions through configurable policies.
     policies: PolicyRegistry,
     /// Channel for ACP reader tasks to request policy checks before file ops.

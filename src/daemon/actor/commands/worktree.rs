@@ -67,6 +67,10 @@ impl Daemon {
                     self.emit(Event::TaskUpdated(updated));
                 }
             }
+            #[cfg(test)]
+            Command::SetWorktreeRemover { remover } => {
+                self.remove_worktree = remover;
+            }
             Command::ListWorktrees { project, reply } => {
                 let wts = if let Some(wt_mgr) = self.worktrees.get(&project) {
                     wt_mgr
