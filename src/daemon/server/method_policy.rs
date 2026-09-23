@@ -24,7 +24,8 @@ pub(super) fn method_runs_concurrently(method: &wire::Method) -> bool {
     use wire::Method::*;
     matches!(
         method,
-        TextGenerate { .. }
+        AppQuitCheck {}
+            | TextGenerate { .. }
             | AgentsInstall { .. }
             | AgentsProbe { .. }
             | SessionSetConfigOption { .. }
@@ -68,6 +69,7 @@ pub(super) fn method_is_mutation(method: &wire::Method) -> bool {
     !matches!(
         method,
         SystemHandshake { .. }
+            | AppQuitCheck {}
             | StateSubscribe { .. }
             | ServiceLogs { .. }
             | PortForwardLogs { .. }

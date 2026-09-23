@@ -14,7 +14,7 @@ sidebar:
 
 **Search without leaving the task.** Press <kbd>⌘⇧F</kbd> for Find in Files: every matching line grouped by file, with a live peek at the surrounding code, and <kbd>Enter</kbd> opens the file at that line with the cursor already there. The quick-open palette (double <kbd>⇧</kbd> or <kbd>⌘P</kbd>) finds text too. Searches stay on files that belong to the project — build output and dependencies don't bury the results.
 
-**Work survives the window.** A local Rust daemon owns projects, services, sessions, and task state behind a WebSocket API; the Tauri app is a thin client. Close or restart it and long-running work continues. Task history and agent configuration persist in `~/.warpforge/warpforge.db`, the project registry in `~/.warpforge/projects.json`.
+**Your work is kept; running services are not.** A local Rust daemon owns projects, services, sessions, and task state behind a WebSocket API; the Tauri app is a thin client. Quitting stops services, port-forwards, and agent sessions — after one confirmation that lists everything running — while task history and agent configuration persist in `~/.warpforge/warpforge.db` and the project registry in `~/.warpforge/projects.json`, so every conversation is exactly where you left it.
 
 **Review, commit, ship.** Browse changed files, read unified or split diffs, accept or reject individual hunks, edit files inline, draft a commit message, commit or amend, update the branch, and push with `--force-with-lease` — all through `git` directly. **Open pull request** additionally needs the [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated; see [Install → Requirements](/getting-started/install/#requirements-beyond-the-app-itself).
 

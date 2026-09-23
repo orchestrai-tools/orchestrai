@@ -39,6 +39,8 @@ pub(super) async fn dispatch(
     match method {
         SystemHandshake { client_version, protocol_version, } => system::system_handshake(lifecycle, client_version, protocol_version).await,
         UpdatePrepareShutdown { expected_daemon_version, protocol_version, } => system::update_prepare_shutdown(handle, lifecycle, expected_daemon_version, protocol_version).await,
+        AppQuitCheck {} => system::app_quit_check(handle, lifecycle).await,
+        AppQuit {} => system::app_quit(handle, lifecycle).await,
         StateSubscribe { .. } => system::state_subscribe().await,
         AutomationList { .. } | AutomationShow { .. } | AutomationCreate { .. } | AutomationUpdate { .. } | AutomationDelete { .. } | AutomationRunNow { .. } | AutomationRuns { .. } => automations::automations(handle, method).await,
         RuntimeStopAll {} => runtime::runtime_stop_all(handle).await,

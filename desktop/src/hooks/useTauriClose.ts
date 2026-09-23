@@ -2,19 +2,18 @@ import { useEffect, useRef, useState } from "react";
 
 import { daemon } from "@/daemon";
 
-/** How many service names the question names before it says "and N more". */
-const NAMED_SERVICES = 4;
+/** How long the daemon check waits before a quit leaves anyway. */
+const QUIT_CHECK_TIMEOUT_MS = 3_000;
+/**
+ * The confirmed quit stops whole service process trees, so it gets longer. The
+ * Rust side waits at least this long before killing the daemon.
+ */
+const QUIT_RPC_TIMEOUT_MS = 15_000;
 
 /**
- * Whether a quit is already under way, parked on `window` rather than in this
- * module or a closure.
- *
- * A hot reload re-evaluates the module and remounts the hook, but the listener
- * the previous generation registered with the window stays registered. Each
- * generation refusing the close on behalf of its own private flag is how a dev
- * session ends up with a window that cannot be closed at all: one generation
- * asks the window to close, every other generation refuses it. A flag they all
- * read survives the reload and lets a quit that has begun finish.
+ * A quit already under way, parked on `window` so a hot reload's stale listener
+ * and the fresh one agree. Without it, each generation refuses the close on
+ * behalf of its own private flag and the window cannot be closed at all.
  */
 const QUITTING = "__warpforgeQuitting";
 
@@ -23,31 +22,34 @@ function isQuitting(): boolean {
 }
 
 /**
- * A quit that is waiting on an answer, because services are still running.
+ * A quit that is waiting on an answer, because something is still running.
  * The window has already refused to close; nothing happens until `confirm`.
  */
 export interface PendingQuit {
-  /** Service names to show, at most [`NAMED_SERVICES`] of them. */
-  services: string[];
-  /** How many more are running beyond the named ones. */
-  more: number;
+  /** One line per thing a quit would stop, from `app.quitCheck`. */
+  blockers: string[];
   confirm: () => Promise<void>;
   cancel: () => void;
 }
 
+/** Resolve `null` instead of hanging if `promise` does not settle in time. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    promise.catch(() => null),
+    new Promise<null>((resolve) => window.setTimeout(() => resolve(null), ms)),
+  ]);
+}
+
 /**
- * Hold the window open while services are running, and hand the question to
- * the app to ask.
- *
- * The question used to be `window.confirm`, which this webview answers without
- * ever drawing it — so quitting stopped every running service with nobody
- * asked. The state comes back out to be rendered as a real dialog.
+ * One quit path for the window's close button, ⌘Q and Dock → Quit. It asks
+ * `app.quitCheck`; nothing running quits at once, otherwise the blockers come
+ * out as a dialog. The final exit is the Rust `quit_app` command.
  */
 export function useTauriClose(): PendingQuit | null {
-  const [pending, setPending] = useState<{ services: string[]; more: number } | null>(null);
-  // The quit itself belongs to the listener's closure (it owns the window
-  // handle and the flag that lets the second close through), so the dialog
-  // reaches it through a ref rather than rebuilding it.
+  const [pending, setPending] = useState<string[] | null>(null);
+  // Whether the daemon may be shut down is known only once the check answers,
+  // and the dialog's confirm runs later — so it travels in a ref.
+  const ownedRef = useRef(false);
   const quitRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
@@ -56,50 +58,63 @@ export function useTauriClose(): PendingQuit | null {
     }
 
     let disposed = false;
-    let unlisten: (() => void) | undefined;
+    let unlistenWindow: (() => void) | undefined;
+    let unlistenEvent: (() => void) | undefined;
 
-    void import("@tauri-apps/api/window")
-      .then(async ({ getCurrentWindow }) => {
+    void Promise.all([
+      import("@tauri-apps/api/window"),
+      import("@tauri-apps/api/event"),
+      import("@tauri-apps/api/core"),
+    ])
+      .then(async ([{ getCurrentWindow }, { listen }, { invoke }]) => {
         if (disposed) {
           return;
         }
-        const appWindow = getCurrentWindow();
 
         const quit = async () => {
-          try {
-            await daemon.stopRuntime();
-          } catch {}
           (window as unknown as Record<string, unknown>)[QUITTING] = true;
-          await appWindow.close();
+          try {
+            if (ownedRef.current) {
+              await withTimeout(daemon.quitRuntime(), QUIT_RPC_TIMEOUT_MS);
+            }
+            await invoke("quit_app");
+          } catch (error) {
+            // The quit did not go through; let the next close request try again.
+            delete (window as unknown as Record<string, unknown>)[QUITTING];
+            throw error;
+          }
         };
         quitRef.current = quit;
 
-        unlisten = await appWindow.onCloseRequested(async (event) => {
+        const handle = async (event?: { preventDefault?: () => void }) => {
           if (isQuitting()) {
             return;
           }
-          event.preventDefault();
+          event?.preventDefault?.();
+          // The shell stands its no-answer fallback down once the UI has it.
+          void invoke("quit_ui_ready");
 
-          const activeServices = daemon
-            .getState()
-            .snapshot.services.filter(
-              (service) => service.status === "running" || service.status === "starting",
-            );
-
-          if (activeServices.length === 0) {
-            await quit();
+          const check = await withTimeout(daemon.quitCheck(), QUIT_CHECK_TIMEOUT_MS);
+          ownedRef.current = check?.owned ?? false;
+          if (!check || check.blockers.length === 0) {
+            await quit().catch(() => {});
             return;
           }
-          setPending({
-            services: activeServices
-              .slice(0, NAMED_SERVICES)
-              .map((service) => `${service.project}/${service.name}`),
-            more: Math.max(0, activeServices.length - NAMED_SERVICES),
-          });
+          setPending(check.blockers);
+        };
+
+        unlistenWindow = await getCurrentWindow().onCloseRequested((event) => {
+          void handle(event);
         });
+        unlistenEvent = await listen("app:quit-requested", () => {
+          void handle();
+        });
+
         if (disposed) {
-          unlisten();
-          unlisten = undefined;
+          unlistenWindow();
+          unlistenEvent();
+          unlistenWindow = undefined;
+          unlistenEvent = undefined;
         }
       })
       .catch(() => {});
@@ -107,16 +122,16 @@ export function useTauriClose(): PendingQuit | null {
     return () => {
       disposed = true;
       quitRef.current = null;
-      unlisten?.();
+      unlistenWindow?.();
+      unlistenEvent?.();
     };
   }, []);
 
   if (!pending) return null;
   return {
-    services: pending.services,
-    more: pending.more,
-    // No `setPending(null)` on the way out: the window is closing, and a
-    // dialog that clears itself first would flash the app back into view.
+    blockers: pending,
+    // No `setPending(null)` on the way out: the app is quitting, and a dialog
+    // that clears itself first would flash the app back into view.
     confirm: async () => {
       await quitRef.current?.();
     },

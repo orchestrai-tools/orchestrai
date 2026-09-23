@@ -29,6 +29,11 @@ dirs = "5"
 warpforge-protocol = { path = "../../crates/warpforge-protocol" }
 env_logger = "0.11"
 
+# The graceful-stop signal for the spawned daemon. Unix-only; other targets
+# have no SIGTERM and skip straight to killing the child.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Keep this last. Placed mid-`[dependencies]` it silently swallows every entry
 # below it, so `serde_json`, `dirs` and `warpforge-protocol` become macOS-only
 # and the Linux build fails on unresolved imports rather than on anything to do

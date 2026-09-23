@@ -308,4 +308,13 @@ impl DaemonHandle {
         rx.await
             .unwrap_or_else(|_| vec!["daemon closed during update safety check".into()])
     }
+
+    /// What a quit would stop. Like [`Self::update_blockers`] but it also
+    /// counts services and port-forwards that are already running.
+    pub async fn quit_blockers(&self) -> Vec<String> {
+        let (tx, rx) = oneshot::channel();
+        self.send(Command::QuitCheck { reply: tx }).await;
+        rx.await
+            .unwrap_or_else(|_| vec!["daemon closed during quit check".into()])
+    }
 }

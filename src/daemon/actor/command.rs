@@ -52,6 +52,12 @@ pub enum Command {
     UpdateSafety {
         reply: oneshot::Sender<Vec<String>>,
     },
+    /// What a quit would stop: like [`Command::UpdateSafety`] but it also
+    /// counts services and port-forwards that are already running, not only
+    /// those still starting. Read-only; the actor keeps running.
+    QuitCheck {
+        reply: oneshot::Sender<Vec<String>>,
+    },
     /// Stop every service and port-forward while keeping the daemon and agent
     /// sessions alive. Used when the desktop UI closes.
     StopRuntime,

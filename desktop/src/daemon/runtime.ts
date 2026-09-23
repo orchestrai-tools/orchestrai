@@ -1,10 +1,26 @@
 import type { CoreClient } from "./client";
 import { MAX_PORTFORWARD_LOGS, MAX_SERVICE_LOGS, type Constructor } from "./types";
 
+/** What `quitCheck` reports: what a quit would stop, and who owns the daemon. */
+export interface QuitCheck {
+  blockers: string[];
+  owned: boolean;
+}
+
 export function RuntimeMethods<TBase extends Constructor<CoreClient>>(Base: TBase) {
   return class extends Base {
     async stopRuntime() {
       await this.request("runtime.stopAll", {});
+    }
+
+    /** Ask what a quit would stop. Read-only; the daemon keeps running. */
+    async quitCheck(): Promise<QuitCheck> {
+      return (await this.request("app.quitCheck", {})) as QuitCheck;
+    }
+
+    /** Stop everything and shut down a desktop-owned daemon. */
+    async quitRuntime() {
+      await this.request("app.quit", {});
     }
 
     async fetchServiceLogs(

@@ -97,3 +97,14 @@ pub struct UpdateHandoff {
     #[serde(default)]
     pub blockers: Vec<String>,
 }
+
+/// Answer to `app.quitCheck`: what a quit would stop, and whether this daemon
+/// may be shut down by the app that is asking. `owned` is false for a daemon
+/// started outside the desktop app, which a quit must leave running.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct QuitCheck {
+    #[serde(default)]
+    pub blockers: Vec<String>,
+    pub owned: bool,
+}

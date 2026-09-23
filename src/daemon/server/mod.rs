@@ -443,6 +443,7 @@ async fn handle_conn(
                 }
 
                 let is_handoff = matches!(&req.method, wire::Method::UpdatePrepareShutdown { .. });
+                let is_quit = matches!(&req.method, wire::Method::AppQuit {});
                 let result = if method_is_mutation(&req.method) && !is_handoff {
                     let _guard = lifecycle.mutations.read().await;
                     if lifecycle.quiescing.load(Ordering::Acquire) {
@@ -457,8 +458,17 @@ async fn handle_conn(
                     dispatch(&handle, req.method, &lifecycle).await
                 };
 
-                let handoff_ready = is_handoff
-                    && matches!(&result, Ok(value) if value.get("ready").and_then(|ready| ready.as_bool()) == Some(true));
+                // A successful handoff or quit ends the accept loop, but only
+                // after the reply is on the socket — the client is waiting for
+                // it, and a refused handoff must leave the daemon serving.
+                let stop_after_reply = if is_handoff {
+                    matches!(
+                        &result,
+                        Ok(value) if value.get("ready").and_then(|ready| ready.as_bool()) == Some(true)
+                    )
+                } else {
+                    is_quit && result.is_ok()
+                };
                 let message = match result {
                     Ok(result) => wire::ServerMessage::Response { id, result },
                     Err(error) => wire::ServerMessage::Error { id, error },
@@ -466,7 +476,7 @@ async fn handle_conn(
                 let text = serde_json::to_string(&message)?;
                 let sent = resp_tx.send(Message::Text(text)).await.is_ok();
 
-                if handoff_ready {
+                if stop_after_reply {
                     // Queue the acknowledgement on the socket before stopping
                     // the accept loop. Even if the client disconnects at this
                     // point, the daemon must not remain stuck quiescing.

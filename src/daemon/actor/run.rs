@@ -170,6 +170,9 @@ impl Daemon {
                             }
                             let _ = reply.send(blockers);
                         }
+                        Some(Command::QuitCheck { reply }) => {
+                            let _ = reply.send(self.quit_blockers_snapshot());
+                        }
                         None => break None,
                         Some(cmd) => self.handle_command(cmd).await,
                     }
@@ -347,7 +350,21 @@ impl Daemon {
         }
     }
 
+    /// Blockers for an application update: work in flight, plus services and
+    /// port-forwards that are mid-transition. A running service is left out —
+    /// an update may proceed while one is up (the daemon is replaced, the
+    /// service is restarted by the app afterwards).
     pub(crate) fn update_blockers_snapshot(&self) -> Vec<String> {
+        self.blockers_snapshot(false)
+    }
+
+    /// Blockers for a quit: everything an update counts, plus services and
+    /// port-forwards that are already up — a quit stops them too.
+    pub(crate) fn quit_blockers_snapshot(&self) -> Vec<String> {
+        self.blockers_snapshot(true)
+    }
+
+    fn blockers_snapshot(&self, include_running: bool) -> Vec<String> {
         let mut blockers = Vec::new();
         let active_tasks = self
             .tasks
@@ -370,15 +387,21 @@ impl Daemon {
         if terminals > 0 {
             blockers.push(format!("{terminals} terminal session(s) are active"));
         }
-        let transitioning_services = self
+        let starting_services = self
             .services
             .all()
             .filter(|service| matches!(service.status, ServiceStatus::Starting))
             .count();
-        if transitioning_services > 0 {
-            blockers.push(format!(
-                "{transitioning_services} service(s) are still starting"
-            ));
+        if starting_services > 0 {
+            blockers.push(format!("{starting_services} service(s) are still starting"));
+        }
+        let running_services = self
+            .services
+            .all()
+            .filter(|service| matches!(service.status, ServiceStatus::Running))
+            .count();
+        if include_running && running_services > 0 {
+            blockers.push(format!("{running_services} service(s) are running"));
         }
         let transitioning_forwards = self
             .portforwards
@@ -390,6 +413,15 @@ impl Daemon {
             blockers.push(format!(
                 "{transitioning_forwards} port-forward(s) are transitioning"
             ));
+        }
+        let active_forwards = self
+            .portforwards
+            .forwards
+            .values()
+            .filter(|forward| matches!(forward.status, PfStatus::Active))
+            .count();
+        if include_running && active_forwards > 0 {
+            blockers.push(format!("{active_forwards} port-forward(s) are running"));
         }
         blockers
     }

@@ -4825,6 +4825,7 @@ dependencies = [
  "block2",
  "dirs 5.0.1",
  "env_logger",
+ "libc",
  "mac-usernotifications",
  "objc2",
  "objc2-app-kit",

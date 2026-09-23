@@ -63,6 +63,16 @@ pub enum Method {
         expected_daemon_version: String,
         protocol_version: u32,
     },
+    /// Report what a quit would stop (active agent tasks, terminal sessions,
+    /// services and port-forwards that are up or starting) and whether this
+    /// daemon is owned by the desktop app. Read-only.
+    #[serde(rename = "app.quitCheck")]
+    AppQuitCheck {},
+    /// Stop everything this daemon is running and shut it down, so the app can
+    /// exit. Refused for a daemon started outside the desktop app — that one is
+    /// left running. Returns `null`.
+    #[serde(rename = "app.quit")]
+    AppQuit {},
 
     /// Subscribe to state updates. Response is a [`Snapshot`]; events follow.
     #[serde(rename = "state.subscribe")]

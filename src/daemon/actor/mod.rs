@@ -247,6 +247,9 @@ impl Daemon {
             Command::UpdateSafety { .. } => unreachable!(
                 "UpdateSafety commands are intercepted by the actor loop before handle_command"
             ),
+            Command::QuitCheck { .. } => unreachable!(
+                "QuitCheck commands are intercepted by the actor loop before handle_command"
+            ),
             Command::Projects(reply) => {
                 let _ = reply.send(self.projects.clone());
             }

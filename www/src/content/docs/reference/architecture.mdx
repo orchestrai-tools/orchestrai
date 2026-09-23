@@ -15,7 +15,7 @@ sidebar:
 - **Git workflow:** optional worktrees, file browser/editor, structured diffs, hunk resolution, commit/update/push, pull requests via `gh`
 - **Release:** Developer ID signing, Apple notarization, signed updater artifacts, checksummed assets
 
-A local Rust daemon owns all state — projects, services, agent sessions, task history — behind a WebSocket JSON-RPC API. The Tauri desktop app is a thin client over that API, which is why work started in a task keeps running if the app window closes or the daemon restarts.
+A local Rust daemon owns all state — projects, services, agent sessions, task history — behind a WebSocket JSON-RPC API. The Tauri desktop app is a thin client over that API. Quitting the app stops the daemon it started, along with everything running under it; a daemon started from the CLI is left alone. Task history and conversations persist between sessions.
 
 ## Current scope
 

@@ -74,14 +74,10 @@ export function AppOverlays({
       {pendingQuit && (
         <ConfirmDialog
           open
-          title="Stop running services and quit?"
-          description={
-            <>
-              Still running: {pendingQuit.services.join(", ")}
-              {pendingQuit.more > 0 ? `, and ${pendingQuit.more} more` : ""}. Quitting stops them.
-            </>
-          }
-          confirmLabel="Stop & quit"
+          title="Stop everything and quit?"
+          description={`Quitting stops ${pendingQuit.blockers.join(", ")}.`}
+          confirmLabel="Stop everything and quit"
+          cancelLabel="Wait"
           busyLabel="Stopping…"
           onCancel={pendingQuit.cancel}
           onConfirm={pendingQuit.confirm}

@@ -30,6 +30,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   busyLabel = "Working…",
   destructive = true,
   onCancel,
@@ -39,6 +40,8 @@ export function ConfirmDialog({
   title: string;
   description: React.ReactNode;
   confirmLabel?: string;
+  /** Label for the dismiss button; the quit dialog calls it "Wait". */
+  cancelLabel?: string;
   /** Shown on the confirm button while `onConfirm` is in flight. */
   busyLabel?: string;
   /** False for a confirmation that only warns — a switch, not a deletion. */
@@ -90,7 +93,7 @@ export function ConfirmDialog({
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" disabled={busy} onClick={onCancel}>
-              Cancel
+              {cancelLabel}
             </Button>
             <Button
               variant={destructive ? "destructive" : "default"}

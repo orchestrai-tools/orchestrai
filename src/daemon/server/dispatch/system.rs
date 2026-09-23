@@ -75,6 +75,36 @@ pub(super) async fn update_prepare_shutdown(
     }))
 }
 
+/// What a quit would stop, and whether this daemon may be shut down by the
+/// asking app. Read-only, so any client can ask.
+pub(super) async fn app_quit_check(
+    handle: &DaemonHandle,
+    lifecycle: &std::sync::Arc<ServerLifecycle>,
+) -> Result<serde_json::Value, wire::RpcError> {
+    Ok(json!(wire::QuitCheck {
+        blockers: handle.quit_blockers().await,
+        owned: lifecycle.owner == wire::DaemonOwner::Desktop,
+    }))
+}
+
+/// Stop everything and end a desktop-owned daemon. A daemon started outside the
+/// app is refused and left running — the caller then exits without it.
+pub(super) async fn app_quit(
+    handle: &DaemonHandle,
+    lifecycle: &std::sync::Arc<ServerLifecycle>,
+) -> Result<serde_json::Value, wire::RpcError> {
+    if lifecycle.owner != wire::DaemonOwner::Desktop {
+        return Err(wire::RpcError {
+            code: wire::ErrorCode::Conflict,
+            message: "the running daemon was started externally; leaving it running".into(),
+        });
+    }
+    // Tears down services, port-forwards and agent sessions, then ends the
+    // actor loop. The connection loop stops the server after the reply is sent.
+    handle.shutdown().await;
+    Ok(json!(null))
+}
+
 pub(super) async fn state_subscribe() -> Result<serde_json::Value, wire::RpcError> {
     Ok(json!(null))
     // handled by caller
