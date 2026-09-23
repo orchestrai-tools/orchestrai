@@ -195,11 +195,12 @@ export function useTranscriptFollow({
       // never visible as a jump. This is deliberately on *size*, not on data —
       // the two imperative pins removed before fought `maintainScrollAtEnd`
       // over the same data change; this one covers the case it cannot.
-      const keepAtEnd = new ResizeObserver(() => {
+      const pinIfFollowing = () => {
         if (!followingRef.current || disclosureSettlingRef.current) return;
         scrollNode.scrollTop = scrollNode.scrollHeight;
         previousScrollRef.current = scrollNode.scrollTop;
-      });
+      };
+      const keepAtEnd = new ResizeObserver(pinIfFollowing);
       // Both boxes move the end. The content grows as rows measure; the
       // scroller itself grows when the composer collapses back to one line on
       // send — same distance from the end, different cause, and watching only
@@ -207,7 +208,15 @@ export function useTranscriptFollow({
       keepAtEnd.observe(scrollNode);
       const content = scrollNode.firstElementChild;
       if (content) keepAtEnd.observe(content);
+      // The list commits a row's new height from inside its own ResizeObserver,
+      // which defers the content box's notification to the next frame. The style
+      // write is visible to a MutationObserver before this frame paints.
+      const heightCommits = new MutationObserver(pinIfFollowing);
+      if (content) {
+        heightCommits.observe(content, { attributeFilter: ["style"], subtree: true });
+      }
       removeListeners = () => {
+        heightCommits.disconnect();
         keepAtEnd?.disconnect();
         scrollNode.removeEventListener("pointerdown", onPointerDown);
       };

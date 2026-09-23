@@ -1,6 +1,6 @@
 # 0005 — The virtualiser owns the chat scroll, and the transcript arrives whole
 
-**Status:** accepted (2026-08-30)
+**Status:** accepted (2026-08-30); amended 2026-09-23 (see the end)
 
 Applies to `desktop/src/components/SessionChat.tsx`, `desktop/src/lib/chatScroll.ts`
 and the `session_history` field of the daemon snapshot
@@ -38,7 +38,9 @@ for another; the second also made every long chat open on a spinner.
 **While following the live edge, `maintainScrollAtEnd` owns the scroll and MVCP
 is off.** `transcriptRestoreMode` (chatScroll.ts) returns `"none"` in that
 state, and `SessionChat` passes `undefined` for
-`maintainVisibleContentPosition`. Anchoring while following means MVCP's
+`maintainVisibleContentPosition`. *Correction (2026-09-23):* `undefined` is not
+off — LegendList normalises it to `{data: false, size: true}`, so the size half
+of MVCP has been running in this state all along; see the amendment. Anchoring while following means MVCP's
 compensating adjust races the end-pin over estimates that churn on every
 streamed token, and the viewport walks upward by the drift. *Rejected:*
 `{data: false, size: true}` while following — that was the pre-`65f87c7`
@@ -47,14 +49,16 @@ the same slide from the other direction. The lesson is not "which MVCP flags",
 it is "not two owners".
 
 **Anchoring is for reading and for disclosure settle.** Once the user scrolls
-away from the end, MVCP restores every row (`"all"`) so the reading position
-survives content streaming in below. While a work-group disclosure settles,
+away from the end, `transcriptRestoreMode` returns `"none"` too, so the list
+runs its default size-only MVCP (anchored on the first row in view). Restoring
+every row (`"all"`) was tried and blanked rows out as the list recycled them. While a work-group disclosure settles,
 MVCP restores only the toggled row (`"anchor"`, keyed on
 `work-toggle:${groupId}`) so the trigger stays under the cursor instead of the
 viewport chasing the end, and `maintainScrollAtEnd` is suspended for the two
 frames the settle takes.
 
-**The follow-zone threshold stays generous (0.2 of the viewport).** The list
+**The follow-zone threshold stays generous (3 viewports,
+`CHAT_MAINTAIN_SCROLL_AT_END_THRESHOLD`).** The list
 derives distance-from-end from estimated content size, and estimate error over
 unmeasured rows inflates it. A tight band (0.05 was tried) makes the list stop
 pinning while the app still believes it is following — at which point nothing
@@ -87,7 +91,8 @@ outside the follow zone, where nothing re-pins.
 ## Invariants
 
 1. **Never two scroll owners at once.** If `maintainScrollAtEnd` is active,
-   `maintainVisibleContentPosition` must be `undefined`, and vice versa. This
+   `maintainVisibleContentPosition` must be `undefined`, and vice versa.
+   (`undefined` still leaves size-only MVCP on — Invariant 13.) This
    is the whole content of `transcriptRestoreMode`; any new scroll behaviour
    goes through that function rather than beside it.
 2. **Nothing is prepended above the viewport after the list mounts.** A task's
@@ -174,3 +179,91 @@ churn, and looks fixed when it is not.
 - Connecting to a large database no longer reads the transcripts table at all:
   the snapshot is tasks and metadata only, and each chat pays for exactly one
   indexed per-task read.
+
+## Amended 2026-09-23 — the end pin runs before paint
+
+Two reports drove this: *approve while reading* (the transcript jumps up to
+older messages after a permission is approved) and *bottom jitter* (the chat
+twitches while following a streaming answer). Both were measured in WebKit
+(Playwright) against the dev daemon with a mock agent, cold-reloaded before
+every run, on a 1,900-update transcript and a fresh 6-turn one, three runs per
+scenario, before and after the change.
+
+**Bottom jitter — cause.** Two lags stacked on every streamed chunk:
+
+- `maintainScrollAtEnd` calls `scrollToEnd` from inside a
+  `requestAnimationFrame`, so it always lands at least one frame late.
+- The list measures a grown row in its own `ResizeObserver` and commits the new
+  content height from there. The `keepAtEnd` observer watches the content
+  wrapper, which is shallower than the rows, so the browser defers its
+  notification to the next frame (the "ResizeObserver loop completed with
+  undelivered notifications" error in the console is that deferral).
+
+The frame in between paints the view short of the end — by the 56px footer, or
+by the whole chunk.
+
+**Change.** `useTranscriptFollow` also pins from a `MutationObserver` on
+`style` writes inside the content wrapper. The height commit is a style write;
+the observer runs as a microtask right after it, before that frame paints. It
+shares the `keepAtEnd` guard: only while following and not settling a
+disclosure. MVCP, fold timing and the disclosure settle are unchanged.
+
+| Painted frames while following (S3, 5 turns × 3 runs) | main | amended |
+| --- | --- | --- |
+| max distance from end, long transcript | 318–424px | 0px |
+| max distance from end, fresh transcript | 56px | 0px |
+| reversals caused by scroll lag | present every chunk | none |
+
+**What still moves while following — content, not scrolling.** Every remaining
+reversal was attributed frame by frame:
+
+- *The activity line.* The "working" line under the transcript unmounts at turn
+  end and mounts at turn start. The scroller changes height by 43px and, with
+  the bottom pinned, the whole transcript shifts by 43px minus whatever the
+  final chunk added. This is the "−43px at turn end" seen before — it was
+  attributed to MVCP's scroll adjust, but the trace shows `clientHeight`
+  changing by exactly 43 in that frame. Removing it is a layout decision (for
+  example overlaying the line on the footer spacer), not a scroll fix.
+- *Step gaps in a live group.* A group is live only while one of its calls is
+  in progress, so between one step finishing and the next starting it folds,
+  then reopens a frame or two later (32→29→125px in the mock). Keeping it open
+  across the gap would change when groups fold, which is not a scroll fix.
+- *The fold itself* (−134px) when a group settles — kept, by constraint.
+
+**Approve while reading — not reproduced.** Approving while reading 0.5, 1 and
+3 viewports up, with short and long answers after the approval, through the
+toast and the inline button, on five transcripts: the top visible row never
+moved (Δ0px, 0 blank frames) on main or amended. The suspected mechanism does
+not hold in 3.3.5: on data changes the list keeps the cached size of every
+unmeasured row (`preferCachedSize` is forced on), so a new average cannot
+re-lay out rows above the viewport, and the size half of MVCP is on while
+reading (see below). A reading anchor was therefore not added. One harness
+artefact looked like the bug: Playwright's `click()` scrolls an off-screen
+button into view, which re-arms following.
+
+**Owner constraints, from failed attempts.** No animation of any kind: groups
+fold instantly. Finished groups keep folding while the reader follows the live
+edge — holding them open to hide the shrink was rejected. Opening or closing a
+group by hand must not move its header (measured 0px, main and amended).
+
+### Invariants (continued)
+
+12. **The end pin must land before the frame paints.** A `ResizeObserver` on
+    the content wrapper is not enough — the list commits heights from inside
+    its own observer and the wrapper's notification is deferred a frame. The
+    `MutationObserver` on the height commit is what closes that frame. Do not
+    move the pin into `requestAnimationFrame`: that is the lag
+    `maintainScrollAtEnd` already has.
+13. **`maintainVisibleContentPosition={undefined}` is not off.** LegendList
+    3.3.5 normalises it to `{data: false, size: true}`: size-only MVCP runs
+    while following and while reading, anchored on the first row in view. Pass
+    `false` to switch it off. Measured harmless while following; do not change
+    it without a trace that says otherwise.
+14. **Judge a scroll fix on painted frames only.** Samples taken in
+    `requestAnimationFrame` or in a posted task include React commits that are
+    not yet laid out or pinned, and overstate the distance by a whole chunk.
+    Sample from a `ResizeObserver` created after the list's, on a sentinel
+    whose size flips every frame — it fires last in the frame, right before
+    paint.
+15. **Fold timing follows `live` exactly.** A scroll fix must not delay, hold
+    or animate a fold; the list absorbs the shrink.
