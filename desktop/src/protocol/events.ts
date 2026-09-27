@@ -1,4 +1,10 @@
-import type { AccountInfo, AgentAccountLimits, AgentConfig, DetectedAgent } from "./agents";
+import type {
+  AccountInfo,
+  AgentAccountLimits,
+  AgentBrokenInstall,
+  AgentConfig,
+  DetectedAgent,
+} from "./agents";
 import type { Automation, AutomationRun } from "./automations";
 import type {
   PortForwardInfo,
@@ -51,6 +57,10 @@ export type DaemonEvent =
     }
   | { event: "agents.setup_needed"; data: { detected: DetectedAgent[] } }
   | { event: "agents.updated"; data: { agents: AgentConfig[] } }
+  | {
+      event: "agents.healthUpdated";
+      data: { id: string; broken: AgentBrokenInstall | null };
+    }
   | { event: "accounts.updated"; data: { accounts: AccountInfo[] } }
   | { event: "agentLimits.updated"; data: { accounts: AgentAccountLimits[] } }
   | {

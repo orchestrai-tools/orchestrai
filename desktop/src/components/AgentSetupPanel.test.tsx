@@ -350,5 +350,41 @@ describe("AgentSetupPanel", () => {
       ).toBeInTheDocument();
       expect(screen.queryByText("v1.0.0")).not.toBeInTheDocument();
     });
+
+    it("shows broken from the daemon's tracked health, before any manual action", async () => {
+      const codex = agent("codex", {
+        installed: true,
+        brokenInstall: {
+          detail:
+            "Codex process has exited with code 1: Missing optional dependency @openai/codex-darwin-arm64",
+          summary: "Missing optional dependency @openai/codex-darwin-arm64",
+        },
+      });
+      render(<AgentSetupPanel detected={[codex]} />);
+
+      expect(screen.getByText("needs reinstall")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Reinstall" })).toBeInTheDocument();
+      expect(
+        screen.getByText("Missing optional dependency @openai/codex-darwin-arm64"),
+      ).toBeInTheDocument();
+      // No action was taken — install/probe must not have been called.
+      expect(installAgent).not.toHaveBeenCalled();
+      expect(probeAgent).not.toHaveBeenCalled();
+    });
+
+    it("offers no reinstall for a health mark on an agent that cannot be reinstalled", async () => {
+      const goose = agent("goose", {
+        brokenInstall: {
+          detail: "goose native binary not found for darwin-arm64",
+          summary: "native binary not found for darwin-arm64",
+        },
+        canReinstall: false,
+        installed: true,
+      });
+      render(<AgentSetupPanel detected={[goose]} />);
+
+      expect(screen.getByText("cannot start")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Reinstall" })).not.toBeInTheDocument();
+    });
   });
 });

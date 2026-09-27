@@ -58,6 +58,12 @@ pub enum Event {
     AgentsUpdated {
         agents: Vec<wire::AgentConfig>,
     },
+    /// A background probe or session start changed whether an agent's install
+    /// looks broken; `broken` is `None` once it recovers.
+    AgentHealthUpdated {
+        id: String,
+        broken: Option<wire::AgentBrokenInstall>,
+    },
     /// Account list or active selection changed.
     AccountsUpdated {
         accounts: Vec<wire::AccountInfo>,

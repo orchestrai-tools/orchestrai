@@ -289,7 +289,17 @@ export default function AgentSetupPanel({ detected, onSaved }: Props) {
           const modelCount = savedConfig?.models.find((o) => configRole(o) === "model")?.options
             .length;
           const isProbing = probing.has(agent.id);
-          const brokenInfo = broken[agent.id];
+          // A result recorded in this panel wins over the daemon's mark; an
+          // agent this detection reports uninstalled carries no stale mark.
+          const healthBroken: BrokenInstall | undefined =
+            agent.installed && agent.brokenInstall
+              ? {
+                  summary: agent.brokenInstall.summary,
+                  full: agent.brokenInstall.detail,
+                  canReinstall: agent.canReinstall ?? false,
+                }
+              : undefined;
+          const brokenInfo = broken[agent.id] ?? healthBroken;
           const isBroken = brokenInfo !== undefined;
           return (
             <div

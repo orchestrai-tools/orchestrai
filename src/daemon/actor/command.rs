@@ -771,6 +771,19 @@ pub enum Command {
         id: String,
         models: Vec<wire::ConfigOption>,
     },
+    /// A probe failed. Sent for background probes too, which have no `reply`,
+    /// so their failure still reaches agent-health tracking.
+    AgentProbeFailed {
+        id: String,
+        error: String,
+    },
+    /// Record a probe/install-verify outcome for an agent's tracked health,
+    /// outside the `ProbeAgent` flow — used after a manual install's own
+    /// verification, so a fixed agent does not keep showing an earlier mark.
+    ObserveAgentHealth {
+        id: String,
+        result: Result<(), String>,
+    },
     /// Start an orchestration plan (planner→worker→reviewer pipeline).
     StartOrchestration {
         project: String,

@@ -58,6 +58,22 @@ pub struct DetectedAgent {
     /// agents only. brew and self-managed installs cannot be repaired this way.
     #[serde(default)]
     pub can_reinstall: bool,
+    /// Set when the last background probe or session start hit a
+    /// broken-install signature; cleared by the next success, not by detection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub broken_install: Option<AgentBrokenInstall>,
+}
+
+/// An agent that is installed but cannot start, as last observed by a
+/// background probe or a session start — not a user-triggered install/update,
+/// which reports its own result directly.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentBrokenInstall {
+    /// One-line reason to show in the row.
+    pub summary: String,
+    /// Untruncated text for a tooltip.
+    pub detail: String,
 }
 
 /// One registered login for an agent. Carries only what the switcher shows —

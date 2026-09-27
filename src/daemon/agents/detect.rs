@@ -273,6 +273,9 @@ async fn detect_one(agent: &'static KnownAgent, check_latest: bool) -> wire::Det
             can_reinstall: can_reinstall(None, agent.npm_package),
             install_command: install,
             update_command: None,
+            // Filled in by the caller from the daemon's live health tracking;
+            // detection itself has no opinion on whether the agent starts.
+            broken_install: None,
         };
     }
 
@@ -315,6 +318,9 @@ async fn detect_one(agent: &'static KnownAgent, check_latest: bool) -> wire::Det
         ),
         update_command: update,
         install_command: None,
+        // Filled in by the caller from the daemon's live health tracking;
+        // detection itself has no opinion on whether the agent starts.
+        broken_install: None,
     }
 }
 

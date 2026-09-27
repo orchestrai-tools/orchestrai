@@ -5,9 +5,9 @@
 //! carry live in the topic modules beside this one.
 
 use crate::{
-    AccountInfo, AgentAccountLimits, AgentConfig, Automation, AutomationRun, DetectedAgent,
-    PortForwardInfo, PortForwardStatus, PortRangeSource, ProjectConfigState, ServiceInfo,
-    ServiceStatus, SessionUpdate, TaskInfo, TerminalInfo, TerminalScreen,
+    AccountInfo, AgentAccountLimits, AgentBrokenInstall, AgentConfig, Automation, AutomationRun,
+    DetectedAgent, PortForwardInfo, PortForwardStatus, PortRangeSource, ProjectConfigState,
+    ServiceInfo, ServiceStatus, SessionUpdate, TaskInfo, TerminalInfo, TerminalScreen,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -114,6 +114,15 @@ pub enum Event {
     /// Agent registry updated (after setup wizard or settings change).
     #[serde(rename = "agents.updated")]
     AgentsUpdated { agents: Vec<AgentConfig> },
+
+    /// A background probe or session start changed whether an agent's install
+    /// looks broken. `broken` is `None` once it recovers; always present (not
+    /// omitted when `None`) so a client can tell "recovered" from "no change".
+    #[serde(rename = "agents.healthUpdated")]
+    AgentHealthUpdated {
+        id: String,
+        broken: Option<AgentBrokenInstall>,
+    },
 
     /// Account list or active selection changed.
     #[serde(rename = "accounts.updated")]

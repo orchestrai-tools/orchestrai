@@ -38,6 +38,7 @@ use crate::policies::registry::PolicyRegistry;
 
 mod accounts;
 mod acp_update;
+mod agent_health;
 mod command;
 mod config_observer;
 mod event;
@@ -95,6 +96,9 @@ pub struct Daemon {
     agent_limits: Vec<warpforge_protocol::AgentAccountLimits>,
     /// Enabled ACP agent configurations (from SQLite, user-managed).
     configured_agents: Vec<wire::AgentConfig>,
+    /// Broken-install marks per agent id from the last probe, session start or
+    /// install verification; in-memory, since the next probe repopulates it.
+    agent_health: HashMap<String, wire::AgentBrokenInstall>,
     /// Live agent sessions keyed by task id. One per task in v1; the map (not a
     /// field on Task) is what keeps multi-session-per-task additive later.
     sessions: HashMap<String, AcpHandle>,

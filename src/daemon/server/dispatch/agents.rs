@@ -97,6 +97,19 @@ pub(super) async fn agents_install(
             })
         }
     };
+    // Keep the agent's tracked health in step with what this install just
+    // proved, so Settings does not keep showing a mark this install fixed (or
+    // miss one a failed install just confirmed).
+    handle
+        .observe_agent_health(
+            &id,
+            if outcome.verified {
+                Ok(())
+            } else {
+                Err(outcome.verify_error.clone().unwrap_or_default())
+            },
+        )
+        .await;
     Ok(json!({
         "ok": outcome.ok,
         "command": outcome.command,

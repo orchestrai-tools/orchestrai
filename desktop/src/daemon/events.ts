@@ -1,7 +1,7 @@
 import { forgetTask } from "../lib/sessionStore";
 import { appendCoalescedUpdate, coalesceUpdates } from "../lib/sessionStream";
 import { stampSessionHistoryStartTimes } from "../lib/sessionTiming";
-import type { DaemonEvent, SessionUpdate, TaskInfo } from "../protocol";
+import type { DaemonEvent, DetectedAgent, SessionUpdate, TaskInfo } from "../protocol";
 import { queryClient } from "../query";
 import { base64ToBytes } from "./base64";
 import { DaemonStore } from "./store";
@@ -222,6 +222,16 @@ export class DaemonEvents extends DaemonStore {
           snapshot: { ...snap, agents: ev.data.agents },
         });
         break;
+      case "agents.healthUpdated": {
+        // Patches the same cache `useAgentUpdates`/Settings seed from, so a
+        // background probe or session start is visible without waiting for
+        // the next detect (a real shell-out, not worth forcing here).
+        const { id, broken } = ev.data;
+        queryClient.setQueryData<DetectedAgent[]>(["agents", "detect"], (list) =>
+          list?.map((a) => (a.id === id ? { ...a, brokenInstall: broken ?? undefined } : a)),
+        );
+        break;
+      }
       case "accounts.updated":
         this.setState({ snapshot: { ...snap, accounts: ev.data.accounts } });
         break;

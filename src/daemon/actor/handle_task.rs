@@ -77,6 +77,17 @@ impl DaemonHandle {
         self.send(Command::UpdateAgents { agents }).await;
     }
 
+    /// Feed an install's own verification into the agent's tracked health, so
+    /// a Settings row does not keep showing a mark an install/reinstall just
+    /// fixed (or introduce one an install's own success/failure did not see).
+    pub async fn observe_agent_health(&self, id: &str, result: Result<(), String>) {
+        self.send(Command::ObserveAgentHealth {
+            id: id.into(),
+            result,
+        })
+        .await;
+    }
+
     pub async fn list_accounts(&self) -> Vec<wire::AccountInfo> {
         let (tx, rx) = oneshot::channel();
         self.send(Command::ListAccounts { reply: tx }).await;

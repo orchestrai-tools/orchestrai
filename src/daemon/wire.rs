@@ -238,6 +238,10 @@ pub fn to_wire(ev: &Event) -> Option<wire::Event> {
         Event::AgentsUpdated { agents } => Some(wire::Event::AgentsUpdated {
             agents: agents.clone(),
         }),
+        Event::AgentHealthUpdated { id, broken } => Some(wire::Event::AgentHealthUpdated {
+            id: id.clone(),
+            broken: broken.clone(),
+        }),
         Event::AccountsUpdated { accounts } => Some(wire::Event::AccountsUpdated {
             accounts: accounts.clone(),
         }),

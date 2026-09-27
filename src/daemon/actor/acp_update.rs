@@ -17,11 +17,24 @@ impl Daemon {
                 if !self.sessions.contains_key(&task_id) {
                     return;
                 }
+                // Resolved before the mutable borrow below: agent_id_of reads
+                // configured_agents, a different field, but a method call
+                // still needs the whole &self.
+                let agent_id = self
+                    .tasks
+                    .get(&task_id)
+                    .map(|t| t.agent.clone())
+                    .map(|a| self.agent_id_of(&a).to_string());
                 if let Some(task) = self.tasks.get_mut(&task_id) {
                     task.attach_session(session_id);
                     let updated = task.clone();
                     self.persist(&updated);
                     self.emit(Event::TaskUpdated(updated));
+                }
+                // A completed handshake proves the install works, whatever
+                // earlier probe or session start had marked it broken.
+                if let Some(id) = agent_id {
+                    self.clear_agent_health(&id);
                 }
             }
             AcpUpdate::AgentText(text) => {
@@ -267,6 +280,17 @@ impl Daemon {
                     return;
                 }
                 let reason = message.clone();
+                // Classified the same way a probe or install verification is:
+                // only a broken-install signature marks the agent, so an
+                // unrelated failure (auth, network) leaves health untouched.
+                let agent_id = self
+                    .tasks
+                    .get(&task_id)
+                    .map(|t| t.agent.clone())
+                    .map(|a| self.agent_id_of(&a).to_string());
+                if let Some(id) = &agent_id {
+                    self.note_agent_failure(id, &message);
+                }
                 // Remove dead ACP handle so subsequent prompts trigger resume.
                 self.sessions.remove(&task_id);
                 self.pending_permissions.cleanup_task(&task_id);

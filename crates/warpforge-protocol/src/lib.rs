@@ -55,6 +55,8 @@ pub mod workflow;
 pub use workflow::*;
 
 #[cfg(test)]
+mod agent_health_tests;
+#[cfg(test)]
 mod tests;
 
 /// Version of the daemon WebSocket contract. Bump this only for a breaking

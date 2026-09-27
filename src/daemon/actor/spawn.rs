@@ -201,6 +201,7 @@ impl Daemon {
             config_observer,
             tasks,
             configured_agents,
+            agent_health: HashMap::new(),
             sessions: HashMap::new(),
             pending_permissions: PendingPermissions::default(),
             agents: AgentManager::new(agent_tx),
