@@ -10,7 +10,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 use super::ready::{spawn_readiness, Probe, Readiness, RunHandle};
-use super::{ManagedService, ServiceEvent, ServiceManager, ServiceStatus};
+use super::{ManagedService, PortClaim, ServiceEvent, ServiceManager, ServiceStatus};
 use crate::ports;
 
 /// An empty `ready_pattern` means "heuristics only".
@@ -28,16 +28,14 @@ fn line_indicates_ready(line: &str, ready_pattern: &str) -> bool {
         || lower.contains("0.0.0.0:")
 }
 
-/// Find a surviving `${svc.port}` placeholder in interpolated env values —
-/// a dependency whose port was never allocated (failed pin, range conflict,
-/// or a typo in the placeholder). Returns the refusal message naming the
-/// unresolved service.
-fn unresolved_port_placeholder(
-    env: &HashMap<String, String>,
+/// The service named by the first surviving `${svc.port}` placeholder in
+/// `values`: one whose port was never allocated (failed pin, range conflict,
+/// no declared port, or a typo in the placeholder).
+fn unresolved_port_ref<'a>(
+    values: impl IntoIterator<Item = &'a String>,
     port_map: &HashMap<String, u16>,
-    service_name: &str,
-) -> Option<String> {
-    for value in env.values() {
+) -> Option<&'a str> {
+    for value in values {
         let mut rest = value.as_str();
         while let Some(pos) = rest.find("${") {
             let Some(end) = rest[pos..].find('}') else {
@@ -46,9 +44,7 @@ fn unresolved_port_placeholder(
             let placeholder = &rest[pos + 2..pos + end];
             if let Some(dep) = placeholder.strip_suffix(".port") {
                 if !port_map.contains_key(dep) {
-                    return Some(format!(
-                        "service {service_name} references ${{{dep}.port}} but {dep} has no allocated port (its pinned port failed or its project has a range conflict); fix or start {dep} first"
-                    ));
+                    return Some(dep);
                 }
             }
             rest = &rest[pos + end + 1..];
@@ -77,7 +73,7 @@ impl ServiceManager {
         let key = format!("{project_name}/{service_name}");
         // Already running — skip. Stopped/Failed, or waiting on dependencies
         // with no process yet — allow start.
-        if let Some(existing) = self.services.get(&key) {
+        if let Some(existing) = self.services.get_mut(&key) {
             let running = matches!(
                 existing.status,
                 ServiceStatus::Running | ServiceStatus::Starting
@@ -87,22 +83,21 @@ impl ServiceManager {
             }
             // Ensure any lingering old process group is gone before reallocating.
             existing.stopping.store(true, Ordering::SeqCst);
-            let old_pgid = existing.pgid;
+            existing.alive = false;
+            let old_pgid = existing.pgid.take();
             super::stop::kill_group(old_pgid).await;
-            ports::release(project_name, service_name);
         }
 
         // A range conflict is a config problem: refuse loudly, exactly like a
         // pinned-port failure, instead of starting into someone else's ports.
         // A pinned port that cannot be bound fails the service — no fallback.
-        let allocation = if let Some(reason) = conflict {
-            Err(reason.to_string())
-        } else if original_port > 0 {
-            ports::allocate(range, project_name, service_name, original_port, pin)
-        } else {
-            Ok(0)
+        let claim = PortClaim {
+            range,
+            pin,
+            port: original_port,
+            conflict: conflict.map(str::to_string),
         };
-        let allocated_port = match allocation {
+        let allocated_port = match self.claim_port(&key, project_name, service_name, &claim) {
             Ok(port) => port,
             Err(message) => {
                 self.record_start_failure(&key, project_name, service_name, command, message);
@@ -125,13 +120,18 @@ impl ServiceManager {
             .healthcheck_url
             .as_deref()
             .map(|url| ports::interpolate(url, &port_map));
-        if let Some(url) = &healthcheck_url {
-            let probe_env = HashMap::from([("healthcheck.url".to_string(), url.clone())]);
-            if let Some(message) = unresolved_port_placeholder(&probe_env, &port_map, service_name)
-            {
-                self.record_start_failure(&key, project_name, service_name, command, message);
-                return Ok(());
-            }
+        if let Some(dep) = healthcheck_url
+            .as_ref()
+            .and_then(|url| unresolved_port_ref([url], &port_map))
+        {
+            let why = if dep == service_name {
+                "declares no port".to_string()
+            } else {
+                format!("has no allocated port; declare one for {dep} or start it first")
+            };
+            let message = format!("healthcheck url references ${{{dep}.port}} but {dep} {why}");
+            self.record_start_failure(&key, project_name, service_name, command, message);
+            return Ok(());
         }
 
         let mut cmd = Command::new("sh");
@@ -155,9 +155,10 @@ impl ServiceManager {
             // Starting the dependent with the placeholder as a literal — a
             // URL, a config value — is a silent wrong-port bug. Invariant 4:
             // the dependent fails as loudly as the pin itself did.
-            if let Some(message) =
-                unresolved_port_placeholder(&interpolated, &port_map, service_name)
-            {
+            if let Some(dep) = unresolved_port_ref(interpolated.values(), &port_map) {
+                let message = format!(
+                    "service {service_name} references ${{{dep}.port}} but {dep} has no allocated port (its pinned port failed or its project has a range conflict); fix or start {dep} first"
+                );
                 self.record_start_failure(&key, project_name, service_name, command, message);
                 return Ok(());
             }
@@ -201,6 +202,7 @@ impl ServiceManager {
             allocated_port,
             port_pinned: pin == ports::PortPin::Strict,
             pgid,
+            alive: true,
             run_id,
             waiting_on: Vec::new(),
             stopping: Arc::clone(&stopping),
@@ -311,6 +313,7 @@ impl ServiceManager {
         command: &str,
         message: String,
     ) {
+        ports::release(project_name, service_name);
         let run_id = self.next_run_id;
         self.next_run_id = self.next_run_id.saturating_add(1);
         let existing_logs = self
@@ -332,7 +335,9 @@ impl ServiceManager {
             original_port: 0,
             allocated_port: 0,
             port_pinned: false,
-            pgid: None,
+            // An exited run's group stays reachable so the next start or stop reaps it.
+            pgid: self.services.get(key).and_then(|s| s.pgid),
+            alive: false,
             run_id,
             waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),

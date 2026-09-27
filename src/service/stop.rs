@@ -84,6 +84,7 @@ impl ServiceManager {
     async fn stop_key(&mut self, key: &str) {
         if let Some(svc) = self.services.get_mut(key) {
             svc.stopping.store(true, Ordering::SeqCst);
+            svc.alive = false;
             let pgid = svc.pgid.take();
             kill_group(pgid).await;
             svc.status = ServiceStatus::Stopped;
@@ -96,6 +97,19 @@ impl ServiceManager {
         self.stop_key(&key).await;
         ports::release(project_name, service_name);
         Ok(())
+    }
+
+    /// Stop a run that is still alive so an explicit Start can replace it,
+    /// and say so in its log.
+    pub async fn stop_previous_run(&mut self, project_name: &str, service_name: &str) {
+        let key = format!("{project_name}/{service_name}");
+        if let Some(svc) = self.services.get_mut(&key) {
+            svc.push_log(
+                "[service restarting] stopping the previous run, which was still running"
+                    .to_string(),
+            );
+        }
+        self.stop(project_name, service_name).await.ok();
     }
 
     /// Stop and forget a service that is no longer declared in project config.

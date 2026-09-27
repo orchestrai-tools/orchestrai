@@ -73,13 +73,20 @@ impl ServiceManager {
                     if svc.run_id != run_id {
                         return;
                     }
-                    // A late "ready" line must not resurrect a stopped service.
-                    if svc.status == ServiceStatus::Stopped && status == ServiceStatus::Running {
+                    // A ready report that lost the race with Stop or with the
+                    // exit must not resurrect the run.
+                    if status == ServiceStatus::Running && !svc.alive {
                         return;
+                    }
+                    let exited = svc.alive
+                        && matches!(status, ServiceStatus::Stopped | ServiceStatus::Failed);
+                    if exited {
+                        svc.alive = false;
                     }
                     let old = svc.status.clone();
                     svc.status = status;
-                    if old != svc.status {
+                    // A timed-out run is already Failed; its exit still leaves a marker.
+                    if old != svc.status || exited {
                         svc.push_log(match svc.status {
                             ServiceStatus::Running => "[service running]".to_string(),
                             ServiceStatus::Stopped => "[service stopped]".to_string(),
@@ -107,7 +114,10 @@ impl ServiceManager {
             }
             ServiceEvent::LateReady { key, run_id, after } => {
                 if let Some(svc) = self.services.get_mut(&key) {
-                    if svc.run_id != run_id || svc.status != ServiceStatus::Failed {
+                    // It can overtake its own NotReady, so Starting counts too.
+                    let pending =
+                        matches!(svc.status, ServiceStatus::Starting | ServiceStatus::Failed);
+                    if svc.run_id != run_id || !svc.alive || !pending {
                         return;
                     }
                     svc.status = ServiceStatus::Running;

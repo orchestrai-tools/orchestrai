@@ -1,5 +1,5 @@
 use super::super::ready::{
-    await_ready, format_duration, spawn_monitor, Outcome, RunHandle, Timing,
+    await_ready, format_duration, is_loopback, spawn_monitor, Outcome, RunHandle, Timing,
     DEFAULT_PROBE_INTERVAL, DEFAULT_READY_TIMEOUT,
 };
 use super::*;
@@ -20,6 +20,7 @@ fn starting(mgr: &mut ServiceManager, key: &str, run_id: u64) {
             allocated_port: 0,
             port_pinned: false,
             pgid: None,
+            alive: true,
             run_id,
             waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
@@ -218,8 +219,10 @@ fn durations_parse_and_reject_garbage() {
     assert_eq!(parse_duration("100ms"), Some(Duration::from_millis(100)));
     assert_eq!(parse_duration("5s"), Some(Duration::from_secs(5)));
     assert_eq!(parse_duration("2m"), Some(Duration::from_secs(120)));
+    assert_eq!(parse_duration("10min"), Some(Duration::from_secs(600)));
+    assert_eq!(parse_duration("1h"), Some(Duration::from_secs(3600)));
     assert_eq!(parse_duration(" 30s "), Some(Duration::from_secs(30)));
-    for bad in ["", "5", "fast", "0s", "-1s", "1.5s", "5h"] {
+    for bad in ["", "5", "fast", "0s", "-1s", "1.5s", "5d", "1h30m"] {
         assert_eq!(parse_duration(bad), None, "{bad:?}");
     }
     assert_eq!(format_duration(Duration::from_secs(120)), "2m");
@@ -341,4 +344,52 @@ async fn stopped_run_never_flips_late() {
         after: Duration::from_secs(1),
     });
     assert_eq!(mgr.get("p", "web").unwrap().status, ServiceStatus::Stopped);
+}
+
+#[tokio::test]
+async fn healthcheck_on_its_own_undeclared_port_names_the_problem() {
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut mgr = ServiceManager::new(tx);
+    let readiness = Readiness {
+        healthcheck_url: Some("http://localhost:${web.port}/health".into()),
+        ..Readiness::default()
+    };
+    mgr.start(
+        "p",
+        ".",
+        (4000, 4099),
+        ports::PortPin::Auto,
+        "web",
+        "sleep 30",
+        0,
+        None,
+        &readiness,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(mgr.get("p", "web").unwrap().status, ServiceStatus::Failed);
+    assert_eq!(
+        logs(&mgr).last().map(String::as_str),
+        Some("[service failed] healthcheck url references ${web.port} but web declares no port")
+    );
+}
+
+#[test]
+fn only_loopback_healthchecks_may_use_self_signed_certificates() {
+    for url in [
+        "https://localhost:4210/health",
+        "https://127.0.0.1:4210/",
+        "https://[::1]:4210/",
+    ] {
+        assert!(is_loopback(url), "{url}");
+    }
+    for url in [
+        "https://example.com/health",
+        "https://10.0.0.5/",
+        "https://localhost.example.com/",
+        "not a url",
+    ] {
+        assert!(!is_loopback(url), "{url}");
+    }
 }

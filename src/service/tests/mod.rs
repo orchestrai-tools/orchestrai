@@ -2,6 +2,7 @@
 // still reach the manager's private fields.
 
 mod deps;
+mod liveness;
 mod readiness;
 
 use super::ready::{spawn_readiness, Probe, RunHandle};
@@ -226,6 +227,7 @@ fn stale_run_events_do_not_overwrite_current_service() {
             allocated_port: 4000,
             port_pinned: false,
             pgid: None,
+            alive: true,
             run_id: 2,
             waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
@@ -281,6 +283,7 @@ fn log_window_cursor_and_lifecycle_markers() {
             allocated_port: 4000,
             port_pinned: false,
             pgid: None,
+            alive: true,
             run_id: 1,
             waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),

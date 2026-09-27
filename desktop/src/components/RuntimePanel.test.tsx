@@ -271,6 +271,16 @@ describe("RuntimePanel — service controls", () => {
     expect(screen.queryByLabelText(/restart worker/i)).not.toBeInTheDocument();
   });
 
+  it("shows Stop + Restart for failed service, no Start", () => {
+    vi.spyOn(daemon, "fetchServiceLogs").mockReturnValue(new Promise(() => {}));
+    const failedService: ServiceInfo = { ...stoppedService, status: "failed" };
+    render(<RuntimePanel project="warpforge" services={[failedService]} portforwards={[]} />);
+    expect(screen.getByLabelText("Stop api")).toBeInTheDocument();
+    expect(screen.getByLabelText(/restart api/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Start api")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Stop all services")).toBeInTheDocument();
+  });
+
   it("calls service.start on Start click", () => {
     vi.spyOn(daemon, "fetchServiceLogs").mockReturnValue(new Promise(() => {}));
     const requestSpy = vi.spyOn(daemon, "request").mockResolvedValue({});

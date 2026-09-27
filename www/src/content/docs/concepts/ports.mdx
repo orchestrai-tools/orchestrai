@@ -69,7 +69,7 @@ The two mechanisms do not mix: `${<service>.port}` substitution happens in `env`
 
 If an app ignores `PORT` and has its port hardcoded, Warpforge never finds out. It reports the port it chose, probes that port, and gets no answer. After the service's `readyTimeout` (five minutes by default) it is marked failed with `did not become ready within 5m: nothing accepted connections on port …`, while the app happily serves on its own port. The diagnostic signal: a service that failed this way, and whose logs say it started, almost always means the app is not reading `PORT`. Fix the app (case 1 or 2 above).
 
-Worse case, and it deserves its own warning: when a service sets `readyPattern`, Running is decided by a log line, not by the port probe. An app that ignores `PORT` is then marked Running while listening somewhere else entirely, and Warpforge displays a port number that nothing is bound to. If a service with `readyPattern` refuses to respond at its reported address, check what port the app actually bound in its logs.
+Worse case, and it deserves its own warning: the port probe is not the only way to become Running. A log line that contains `readyPattern`, or a common "server started" message, marks the service Running too, whichever comes first. An app that ignores `PORT` is then marked Running while listening somewhere else entirely, and Warpforge displays a port number that nothing is bound to. If a service refuses to respond at its reported address, check what port the app actually bound in its logs.
 
 ## Conflicts and precedence
 

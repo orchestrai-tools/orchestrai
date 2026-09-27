@@ -62,7 +62,10 @@ impl Readiness {
 /// The active check polled until a service is ready.
 #[derive(Debug, Clone)]
 pub(super) enum Probe {
-    Http(String),
+    Http {
+        url: String,
+        client: reqwest::Client,
+    },
     Tcp(u16),
     /// Nothing to poll: only a matching log line makes the service ready.
     LogLine(String),
@@ -73,16 +76,19 @@ impl Probe {
     /// `None` means there is no readiness signal at all.
     pub(super) fn select(url: Option<String>, port: u16, pattern: Option<&str>) -> Option<Self> {
         match (url, port, pattern) {
-            (Some(url), _, _) => Some(Probe::Http(url)),
+            (Some(url), _, _) => Some(Probe::Http {
+                client: health_client(&url),
+                url,
+            }),
             (None, port, _) if port > 0 => Some(Probe::Tcp(port)),
             (None, _, Some(pattern)) => Some(Probe::LogLine(pattern.to_string())),
             _ => None,
         }
     }
 
-    async fn check(&self, client: &reqwest::Client) -> Result<(), String> {
+    async fn check(&self) -> Result<(), String> {
         match self {
-            Probe::Http(url) => match client.get(url).send().await {
+            Probe::Http { url, client } => match client.get(url).send().await {
                 Ok(r) if r.status().is_success() || r.status().is_redirection() => Ok(()),
                 Ok(r) => Err(format!("{url} returned {}", r.status())),
                 Err(e) => Err(format!("{url}: {}", root_cause(&e))),
@@ -97,6 +103,31 @@ impl Probe {
             Probe::LogLine(pattern) => Err(format!("no log line matched \"{pattern}\"")),
         }
     }
+}
+
+/// A healthcheck never goes through a proxy. A self-signed certificate is
+/// trusted only on a loopback host, where a dev server usually has one.
+fn health_client(url: &str) -> reqwest::Client {
+    reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(PROBE_TIMEOUT)
+        .danger_accept_invalid_certs(is_loopback(url))
+        .build()
+        .unwrap_or_default()
+}
+
+/// Whether `url` points at localhost, 127.0.0.0/8 or `::1`.
+pub(super) fn is_loopback(url: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    let host = url.host_str().unwrap_or_default();
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 fn root_cause(error: &dyn std::error::Error) -> String {
@@ -274,15 +305,9 @@ pub(super) fn spawn_readiness(run: RunHandle, readiness: &Readiness, probe: Opti
         run.report_running();
         return;
     };
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(PROBE_TIMEOUT)
-        .build()
-        .unwrap_or_default();
     spawn_monitor(run, Timing::for_readiness(readiness), move || {
         let probe = probe.clone();
-        let client = client.clone();
-        async move { probe.check(&client).await }
+        async move { probe.check().await }
     });
 }
 

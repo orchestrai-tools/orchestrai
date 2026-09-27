@@ -411,10 +411,14 @@ impl Daemon {
         if starting_services > 0 {
             blockers.push(format!("{starting_services} service(s) are still starting"));
         }
+        // A run that timed out is Failed but still up, and a quit stops it too.
         let running_services = self
             .services
             .all()
-            .filter(|service| matches!(service.status, ServiceStatus::Running))
+            .filter(|service| {
+                service.status == ServiceStatus::Running
+                    || (service.status == ServiceStatus::Failed && service.process_alive())
+            })
             .count();
         if include_running && running_services > 0 {
             blockers.push(format!("{running_services} service(s) are running"));

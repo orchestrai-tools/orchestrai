@@ -13,7 +13,7 @@ mod stop;
 #[cfg(test)]
 mod tests;
 
-pub use deps::{dependency_gate, DepState, Gate};
+pub use deps::{dependency_gate, DepState, Gate, PortClaim};
 pub use ready::Readiness;
 pub use stop::kill_listeners_on_ports;
 
@@ -73,11 +73,15 @@ pub struct ManagedService {
     pub port_pinned: bool,
     /// Process-group ID — used to kill the entire tree (sh → npm → node)
     pgid: Option<u32>,
+    /// True from spawn until the run's exit is applied or the run is killed.
+    /// A timed-out run is `Failed` while this is still true.
+    alive: bool,
     /// Monotonic run identifier. Async log/status tasks include this so late
     /// events from an older process cannot overwrite a newer restart.
     run_id: u64,
-    /// Dependencies this entry is waiting on before its process is spawned.
-    /// Non-empty only for a `Starting` placeholder with no process yet.
+    /// Dependencies held on before a process is spawned: set on a `Starting`
+    /// placeholder, and kept on a `Failed` entry refused by a dependency so it
+    /// can still start. Such an entry has no live process.
     pub waiting_on: Vec<String>,
     /// Set true when we're deliberately stopping, so the exit waiter can tell
     /// an intentional stop from a crash and report the right status.
@@ -119,6 +123,11 @@ pub struct ServiceManager {
 }
 
 impl ManagedService {
+    /// Whether this entry's last run may still be running, whatever its status.
+    pub fn process_alive(&self) -> bool {
+        self.alive
+    }
+
     /// Append a retained line (assigning its seq + timestamp) and trim the ring.
     pub fn push_log(&mut self, line: String) {
         let seq = self.next_seq;

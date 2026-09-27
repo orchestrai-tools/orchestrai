@@ -96,6 +96,7 @@ impl Daemon {
             Command::StopPortForward { project, name } => {
                 self.portforwards.stop(&project, &name);
                 self.emit_portforward_status(&project, &name);
+                self.advance_waiting(&project).await;
             }
             Command::StopAllPortForwards { project } => {
                 let pfs: Vec<String> = self
@@ -108,6 +109,7 @@ impl Daemon {
                 for name in pfs {
                     self.emit_portforward_status(&project, &name);
                 }
+                self.advance_waiting(&project).await;
             }
             Command::PortForwardLogs {
                 project,

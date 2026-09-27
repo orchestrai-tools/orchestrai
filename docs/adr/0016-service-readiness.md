@@ -50,6 +50,22 @@ dependency the user restarts by hand. *Rejected:* recovering only dependents of
 a timed-out dependency, which needs a separate "why failed" field for no real
 difference.
 Undeclared dependency names are ignored here. Config validation reports them.
+A declared port-forward with no runtime entry is pending, and a waiting
+service starts it.
+
+**A held entry reserves its port.** A placeholder, and a dependent failed by
+the gate, claims its port when it is held, so `${name.port}` resolves for a
+service that starts while it waits, and its own start reuses that port. Stop,
+removal and a refused start release it. *Rejected:* allocating at spawn, which
+failed every service whose `env` names a waiting one's port.
+
+**Liveness is tracked apart from status** (`ManagedService::alive`). It is set
+at spawn and cleared when the run's exit is applied or the run is killed, so a
+timed-out run is `Failed` and alive. Start all and project open skip a service
+whose run is alive. Only an explicit Start or Restart of that service replaces
+it, and Start logs `[service restarting]` first. Quit and project removal count
+such a run as running. The kill handle of an exited run is kept, so the next
+start or stop still reaps what is left of its process group.
 
 ## Invariants
 
@@ -57,14 +73,23 @@ Undeclared dependency names are ignored here. Config validation reports them.
    ready still wins while the run is alive** (`service/ready.rs`). Every ready
    path goes through `RunHandle::report_running`, which settles the run and
    turns into `LateReady` after a timeout. The exit waiter and Stop end the
-   recovery probe. A stale `run_id` or a `Stopped` service never flips.
-2. **`waiting_on` is set only on an entry with no process:** a `Starting`
+   recovery probe. `LateReady` can overtake its own `NotReady`, so it counts
+   while `Starting` too. A stale `run_id`, or a run whose exit or stop was
+   already applied, never flips.
+2. **`waiting_on` is set only on an entry with no live process:** a `Starting`
    placeholder, or a `Failed` dependent held for recovery. `stop_key` clears
    it, and `ServiceManager::start` treats both as startable. A stale hold
    either deadlocks the dependents or auto-starts something the user stopped.
 3. **Every way a dependency can settle must reach `advance_waiting`.** That means
-   service and port-forward status events, plus `StopService` for a placeholder
-   that has no exit event. A missed path leaves the dependent waiting forever,
+   service and port-forward status events, plus the commands that change a
+   status without one: `StopService` for a placeholder, `StopPortForward` and
+   `StopAllPortForwards`. A missed path leaves the dependent waiting forever,
    the exact bug this record exists for.
 4. **A `dependsOn` cycle fails at launch.** Cycles used to fall back to
    alphabetical order, but with waiting they deadlock instead.
+5. **Never replace a service entry whose process may still be alive.**
+   `mark_waiting`, `fail_waiting` and `fail_start` build a process-less entry.
+   Built over a live run, they drop its stop flag and exit events, so Stop,
+   Stop all and quit no longer reach it, and the next start runs a second
+   copy. Stop the old run first, as an explicit Start does, or leave the entry
+   alone, as Start all does.

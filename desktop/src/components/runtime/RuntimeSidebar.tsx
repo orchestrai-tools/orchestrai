@@ -117,8 +117,10 @@ const ServiceRow = memo(function ServiceRow({
   onError: (msg: string) => void;
 }) {
   const badge = serviceBadge(service.status);
-  const canStop = service.status === "running" || service.status === "starting";
-  const canRestart = service.status === "running";
+  // A service that timed out is failed but may still be running.
+  const failed = service.status === "failed";
+  const canStop = service.status === "running" || service.status === "starting" || failed;
+  const canRestart = service.status === "running" || failed;
 
   return (
     <div
@@ -299,7 +301,8 @@ export function RuntimeSidebar({
                 (svc) => svc.status === "stopped" || svc.status === "failed",
               ),
               hasStoppable: services.some(
-                (svc) => svc.status === "running" || svc.status === "starting",
+                (svc) =>
+                  svc.status === "running" || svc.status === "starting" || svc.status === "failed",
               ),
               isSettling: services.some((svc) => svc.status === "starting"),
               noun: "services",

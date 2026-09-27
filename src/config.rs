@@ -333,14 +333,18 @@ pub fn parse_range(s: &str) -> Option<(u16, u16)> {
     Some((start, end))
 }
 
-/// Parse a duration string ("5s", "100ms", "2m"). `None` for anything
-/// unparseable or zero.
+/// Parse a duration string ("100ms", "5s", "2m" or "2min", "1h"). `None` for
+/// anything unparseable or zero.
 pub fn parse_duration(value: &str) -> Option<std::time::Duration> {
     let value = value.trim();
     let (num, scale) = if let Some(n) = value.strip_suffix("ms") {
         (n, 1)
     } else if let Some(n) = value.strip_suffix('s') {
         (n, 1000)
+    } else if let Some(n) = value.strip_suffix('h') {
+        (n, 3_600_000)
+    } else if let Some(n) = value.strip_suffix("min") {
+        (n, 60_000)
     } else {
         (value.strip_suffix('m')?, 60_000)
     };

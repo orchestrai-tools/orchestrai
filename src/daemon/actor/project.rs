@@ -127,10 +127,11 @@ impl Daemon {
                 .list_for_project(name)
                 .iter()
                 .filter(|service| {
-                    matches!(
-                        service.status,
-                        ServiceStatus::Starting | ServiceStatus::Running
-                    )
+                    service.process_alive()
+                        || matches!(
+                            service.status,
+                            ServiceStatus::Starting | ServiceStatus::Running
+                        )
                 })
                 .count(),
             portforwards: self
