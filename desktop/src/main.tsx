@@ -4,11 +4,14 @@ import ReactDOM from "react-dom/client";
 import { Toaster } from "sonner";
 
 import App from "./App";
+import { installControlCharGuard } from "./lib/controlCharInput";
 import { queryClient } from "./query";
 
 // CSS is loaded for its global side effect at the application boundary.
 // eslint-disable-next-line import/no-unassigned-import
 import "./globals.css";
+
+installControlCharGuard();
 
 if (import.meta.env.DEV) {
   void import("./lib/memProbe").then(({ installMemProbe }) => {
