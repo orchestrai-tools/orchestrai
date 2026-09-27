@@ -209,7 +209,7 @@ async fn run_bootstrap(path: &str) -> Result<()> {
         .ok_or_else(|| anyhow!("could not register project at {path}"))?;
     println!("Registered project \"{name}\".\n");
 
-    let agent = ask("Agent (claude/codex/opencode/qwen/goose)", "claude");
+    let agent = ask("Agent (claude/codex/opencode/qwen/goose/grok)", "claude");
     let runtime_kind = ask("Runtime (local/docker-compose/kubernetes/mixed)", "local");
     let dev_commands = ask("Dev commands (comma-separated)", "");
     let notes = ask("Notes", "");

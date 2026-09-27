@@ -10,6 +10,8 @@ import cursorDark from "../assets/app-logos/cursor_dark.svg?no-inline";
 import cursorLight from "../assets/app-logos/cursor_light.svg?no-inline";
 import gooseDark from "../assets/app-logos/goose_dark.png";
 import gooseLight from "../assets/app-logos/goose_light.png";
+import grokDark from "../assets/app-logos/grok_dark.svg?no-inline";
+import grokLight from "../assets/app-logos/grok_light.svg?no-inline";
 import junieLogo from "../assets/app-logos/junie.svg?no-inline";
 import opencodeDark from "../assets/app-logos/openCode_dark.svg?no-inline";
 import opencodeLight from "../assets/app-logos/openCode_light.svg?no-inline";
@@ -38,6 +40,7 @@ const AGENT_ICONS: Record<string, AgentIconAsset> = {
   junie: { dark: junieLogo, light: junieLogo },
   cursor: { dark: cursorDark, light: cursorLight },
   pi: { dark: piDark, light: piLight },
+  grok: { dark: grokDark, light: grokLight },
 };
 
 const AGENT_COLORS: Record<string, string> = {
@@ -49,6 +52,7 @@ const AGENT_COLORS: Record<string, string> = {
   junie: "#48e054",
   cursor: "#6366f1",
   pi: "#16a34a",
+  grok: "#1d9bf0",
 };
 
 function initials(name: string): string {

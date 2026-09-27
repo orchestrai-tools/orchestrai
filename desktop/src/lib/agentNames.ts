@@ -7,6 +7,7 @@ const AGENT_NAMES: Record<string, string> = {
   junie: "Junie",
   cursor: "Cursor",
   pi: "Pi",
+  grok: "Grok Build",
 };
 
 export function agentDisplayName(agentId: string, override?: string): string {

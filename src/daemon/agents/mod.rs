@@ -134,6 +134,18 @@ pub static KNOWN_AGENTS: &[KnownAgent] = &[
         install_hint:
             "npm install -g @earendil-works/pi-coding-agent pi-acp (pi needs Node >=22.19)",
     },
+    KnownAgent {
+        id: "grok",
+        display_name: "Grok Build",
+        binary: "grok",
+        default_acp_command: "grok agent stdio",
+        npm_package: Some("@xai-official/grok"),
+        custom_upgrade_command: Some("grok update"),
+        extra_npm_packages: &[],
+        homebrew_formula: None,
+        install_hint:
+            "curl -fsSL https://x.ai/cli/install.sh | bash (or npm install -g @xai-official/grok)",
+    },
 ];
 
 pub fn known_agent(id: &str) -> Option<&'static KnownAgent> {
