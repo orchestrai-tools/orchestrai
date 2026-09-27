@@ -114,10 +114,6 @@ pub(crate) fn mcp_servers(
     })]
 }
 
-/// Set when Claude Code's Remote Control spawner starts a child. A Claude
-/// Code that inherits it drops every stdio server passed over ACP.
-const REMOTE_CONTROL_CARRIER: &str = "CLAUDE_CODE_BRIDGE_MCP_CARRIER";
-
 /// Point every warpforge bridge the agent starts at this session: the one from
 /// [`mcp_servers`], and a same-named entry from the agent's own config that
 /// the agent may keep in its place (ADR 0018).
@@ -131,7 +127,9 @@ pub(crate) fn bridge_env(
     project: &str,
     is_orchestrator: bool,
 ) {
-    use crate::mcp::identity::{SESSION_MODE, SESSION_PROJECT, SESSION_TASK};
+    use crate::mcp::identity::{
+        REMOTE_CONTROL_CARRIER, SESSION_MODE, SESSION_PROJECT, SESSION_TASK,
+    };
     env.set.extend([
         (SESSION_TASK.to_string(), task_id.to_string()),
         (SESSION_PROJECT.to_string(), project.to_string()),
@@ -380,7 +378,7 @@ mod tests {
         assert_eq!(identity.parent_task, "t_orch");
         assert_eq!(identity.project.as_deref(), Some("demo"));
         assert!(identity.is_orchestrator);
-        assert_eq!(env.remove, [REMOTE_CONTROL_CARRIER]);
+        assert_eq!(env.remove, [crate::mcp::identity::REMOTE_CONTROL_CARRIER]);
     }
 
     #[tokio::test]

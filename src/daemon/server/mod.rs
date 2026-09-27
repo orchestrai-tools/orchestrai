@@ -41,7 +41,7 @@ mod tests;
 mod util;
 
 use dispatch::dispatch;
-use endpoint::{daemon_json_path, write_endpoint};
+use endpoint::{remove_endpoint, write_endpoint};
 use origin::OriginPolicy;
 
 /// Outgoing frames buffered per connection before the read loop slows down.
@@ -103,19 +103,19 @@ pub async fn serve(handle: DaemonHandle, dev: bool, owner: wire::DaemonOwner) ->
         tokio::select! {
             r = run_controlled(listener, handle.clone(), token, Arc::clone(&lifecycle)) => {
                 handle.shutdown().await;
-                std::fs::remove_file(daemon_json_path()).ok();
+                remove_endpoint();
                 r
             },
             _ = sigterm.recv() => {
                 eprintln!("warpforge daemon: SIGTERM — stopping services");
                 handle.shutdown().await;
-                std::fs::remove_file(daemon_json_path()).ok();
+                remove_endpoint();
                 Ok(())
             }
             _ = sigint.recv() => {
                 eprintln!("warpforge daemon: SIGINT — stopping services");
                 handle.shutdown().await;
-                std::fs::remove_file(daemon_json_path()).ok();
+                remove_endpoint();
                 Ok(())
             }
         }
@@ -124,7 +124,7 @@ pub async fn serve(handle: DaemonHandle, dev: bool, owner: wire::DaemonOwner) ->
     {
         let result = run_controlled(listener, handle.clone(), token, lifecycle).await;
         handle.shutdown().await;
-        std::fs::remove_file(daemon_json_path()).ok();
+        remove_endpoint();
         result
     }
 }

@@ -117,7 +117,10 @@ export function SessionChat({
     }
     return null;
   }, [merged, task.status]);
-  const resolved = useStableResolved(updates);
+  // A call left pending by a killed session is history: only a session that is
+  // actually working keeps its groups pulsing and its prompts answerable.
+  const sessionLive = task.status === "running" || task.status === "queued";
+  const resolved = useStableResolved(updates, sessionLive);
   // Which message the developer asked to continue from, and with what. The
   // dialog it opens decides how much of the conversation travels.
   const [branchRequest, setBranchRequest] = useState<{
@@ -168,9 +171,6 @@ export function SessionChat({
     },
     [suspendForDisclosure],
   );
-  // A call left pending by a killed session is history: only a session that is
-  // actually working keeps its groups pulsing.
-  const sessionLive = task.status === "running" || task.status === "queued";
   // Only the session's current request may hold a group open: the per-call
   // flags outlive abandoned requests, and those groups must stay foldable.
   const pendingRequestId = pendingPermission(merged)?.request_id ?? null;

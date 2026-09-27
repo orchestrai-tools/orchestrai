@@ -1,7 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use anyhow::Result;
+use warpforge_protocol as wire;
 
+use crate::daemon::actor::Daemon;
 use crate::daemon::task::{Task, TaskStatus};
 
 /// Tracks unresolved permission requests per task. Keyed by task_id (not
@@ -9,7 +11,8 @@ use crate::daemon::task::{Task, TaskStatus};
 /// both use task_id as the correlation key, and sessions are keyed by task_id.
 #[derive(Default)]
 pub(crate) struct PendingPermissions {
-    pub(crate) by_task: HashMap<String, HashSet<String>>,
+    /// Task id → request id → the outcomes the request offered.
+    pub(crate) by_task: HashMap<String, HashMap<String, Vec<String>>>,
     /// The outcome that won for requests no longer pending, so a stale answer
     /// can be told what already happened instead of silently rewriting it.
     /// Cleared with the task.
@@ -21,28 +24,47 @@ pub(crate) struct PendingPermissions {
 pub(crate) enum PermissionAnswerError {
     /// The request was already answered; `outcome` is what won, when known.
     AlreadyResolved { outcome: Option<String> },
+    /// The request is still pending but did not offer this outcome.
+    NotOffered { offered: Vec<String> },
 }
 
 impl PendingPermissions {
-    pub(crate) fn record(&mut self, task_id: &str, request_id: &str) {
+    /// Track a request until it is answered or its session ends.
+    /// @param task_id the task whose session asked
+    /// @param request_id the request's id
+    /// @param options the outcomes the request offers
+    pub(crate) fn record(&mut self, task_id: &str, request_id: &str, options: &[String]) {
         self.by_task
             .entry(task_id.to_string())
             .or_default()
-            .insert(request_id.to_string());
+            .insert(request_id.to_string(), options.to_vec());
     }
 
-    /// Resolve a request. `Ok` when this answer won; `Err` when it was already
-    /// answered (or is not pending), in which case nothing changes.
+    /// Resolve a request. Nothing changes unless this answer wins.
+    /// @param task_id the task whose session asked
+    /// @param request_id the request being answered
+    /// @param outcome the outcome picked
+    /// @returns `Ok` when this answer won; `Err` when the request is no longer
+    ///   pending or did not offer `outcome`
     pub(crate) fn resolve(
         &mut self,
         task_id: &str,
         request_id: &str,
         outcome: &str,
     ) -> Result<(), PermissionAnswerError> {
+        let offered = self
+            .by_task
+            .get(task_id)
+            .and_then(|requests| requests.get(request_id));
+        if let Some(offered) = offered.filter(|offered| !offered.iter().any(|o| o == outcome)) {
+            return Err(PermissionAnswerError::NotOffered {
+                offered: offered.clone(),
+            });
+        }
         let won = self
             .by_task
             .get_mut(task_id)
-            .is_some_and(|requests| requests.remove(request_id));
+            .is_some_and(|requests| requests.remove(request_id).is_some());
         if !won {
             return Err(PermissionAnswerError::AlreadyResolved {
                 outcome: self
@@ -52,7 +74,7 @@ impl PendingPermissions {
                     .cloned(),
             });
         }
-        if self.by_task.get(task_id).is_some_and(HashSet::is_empty) {
+        if self.by_task.get(task_id).is_some_and(HashMap::is_empty) {
             self.by_task.remove(task_id);
         }
         self.resolved
@@ -62,13 +84,37 @@ impl PendingPermissions {
         Ok(())
     }
 
-    pub(crate) fn cleanup_task(&mut self, task_id: &str) {
-        self.by_task.remove(task_id);
+    /// Forget a task's requests, answered or not.
+    /// @param task_id the task whose session ended
+    /// @returns the ids of the requests that were still pending
+    pub(crate) fn cleanup_task(&mut self, task_id: &str) -> Vec<String> {
         self.resolved.remove(task_id);
+        self.by_task
+            .remove(task_id)
+            .map(|requests| requests.into_keys().collect())
+            .unwrap_or_default()
     }
 
     pub(crate) fn has_pending(&self, task_id: &str) -> bool {
         self.by_task.get(task_id).is_some_and(|r| !r.is_empty())
+    }
+}
+
+impl Daemon {
+    /// Drop a task's permission requests when its session ends. Each one still
+    /// pending is recorded as cancelled, so clients withdraw its prompt and
+    /// banner instead of offering answers nothing will receive.
+    /// @param task_id the task whose session ended
+    pub(crate) fn drop_pending_permissions(&mut self, task_id: &str) {
+        for request_id in self.pending_permissions.cleanup_task(task_id) {
+            self.emit_session(
+                task_id,
+                wire::SessionUpdate::PermissionResolved {
+                    request_id,
+                    outcome: "cancelled".to_string(),
+                },
+            );
+        }
     }
 }
 

@@ -38,6 +38,11 @@ pub(crate) trait Transport: Send {
     /// @param endpoint where to connect
     /// @returns the open connection
     async fn connect(&self, endpoint: &Endpoint) -> Result<Box<dyn Connection>>;
+
+    /// Whether a daemon process still runs.
+    /// @param pid the daemon's pid from its endpoint
+    /// @returns true while the process exists
+    fn alive(&self, pid: u32) -> bool;
 }
 
 /// One open connection carrying JSON text frames.
@@ -92,12 +97,19 @@ impl DaemonClient {
     /// @param params the method's parameters
     /// @returns the reply's `result`, or the daemon's error or the transport's
     pub(crate) async fn request(&mut self, method: &str, params: Value) -> Result<Value> {
-        let endpoint = self.transport.endpoint()?;
+        let published = self.transport.endpoint()?;
         // The connection is only put back after a complete exchange, so a
         // transport error, a timeout or a panic leaves the next call to redial.
-        let connection = match self.open.take() {
-            Some((open_at, connection)) if open_at == endpoint => connection,
-            _ => self.connect(&endpoint).await?,
+        let (endpoint, connection) = match self.open.take() {
+            Some((open_at, connection))
+                if open_at == published || self.outlived_by(&open_at, &published) =>
+            {
+                (open_at, connection)
+            }
+            _ => {
+                let connection = self.connect(&published).await?;
+                (published, connection)
+            }
         };
         let id = self.next_id;
         self.next_id += 1;
@@ -108,12 +120,21 @@ impl DaemonClient {
         .await
         .map_err(|_| {
             anyhow!(
-                "the daemon did not answer {method} within {}s",
-                self.request_timeout.as_secs_f32()
+                "the daemon did not answer {method} within {}s.{}",
+                self.request_timeout.as_secs_f32(),
+                retry_hint(method)
             )
         })??;
         self.open = Some((endpoint, connection));
         reply.map_err(|error| anyhow!("daemon error: {error}"))
+    }
+
+    /// A second daemon publishing its endpoint does not end the session on the
+    /// first; only the first daemon exiting does.
+    fn outlived_by(&self, open_at: &Endpoint, published: &Endpoint) -> bool {
+        open_at
+            .pid
+            .is_some_and(|pid| published.pid != Some(pid) && self.transport.alive(pid))
     }
 
     async fn connect(&self, endpoint: &Endpoint) -> Result<Box<dyn Connection>> {
@@ -126,6 +147,19 @@ impl DaemonClient {
                     self.connect_timeout.as_secs_f32()
                 )
             })?
+    }
+}
+
+/// What to check before retrying a call that timed out but may still land.
+fn retry_hint(method: &str) -> &'static str {
+    match method {
+        "task.create" => {
+            " The call may still complete: check list_agents for the new task before retrying."
+        }
+        "backlog.create" => {
+            " The call may still complete: retrying it may create a duplicate backlog item."
+        }
+        _ => "",
     }
 }
 

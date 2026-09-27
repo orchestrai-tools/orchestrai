@@ -33,6 +33,21 @@ impl Transport for PublishedDaemon {
         }
         Ok(Box::new(WsConnection(ws)))
     }
+
+    #[cfg(unix)]
+    fn alive(&self, pid: u32) -> bool {
+        let Ok(pid) = libc::pid_t::try_from(pid) else {
+            return false;
+        };
+        // SAFETY: signal 0 only checks that the process exists.
+        let signalled = unsafe { libc::kill(pid, 0) } == 0;
+        signalled || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+
+    #[cfg(not(unix))]
+    fn alive(&self, _pid: u32) -> bool {
+        false
+    }
 }
 
 struct WsConnection(WebSocketStream<MaybeTlsStream<TcpStream>>);

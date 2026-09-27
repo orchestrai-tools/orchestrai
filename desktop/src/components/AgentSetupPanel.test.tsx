@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as renderBare, screen } from "@testing-library/react";
+import { act, render as renderBare, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PropsWithChildren, ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,15 +7,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { agentUpdatesQueryKey } from "@/hooks/useAgentUpdates";
 import type { InstallAgentResult } from "@/daemon/agents";
 import { DaemonRpcError } from "@/daemon/rpcError";
-import type { DetectedAgent } from "@/protocol";
+import type { DaemonEvent, DetectedAgent } from "@/protocol";
 
-const { daemonState, detectAgents, installAgent, probeAgent, saveAgents } = vi.hoisted(() => ({
-  daemonState: { snapshot: { agents: [] as unknown[] } },
+const { daemonState, detectAgents, installAgent, probeAgent, saveAgents, store } = vi.hoisted(() => {
+  const initial = { snapshot: { agents: [] as unknown[] } };
+  return {
+    daemonState: initial,
+    store: {
+      state: initial as typeof initial & { agentHealth?: Record<string, unknown> },
+      listeners: new Set<() => void>(),
+      eventListeners: new Set<(event: DaemonEvent) => void>(),
+    },
   detectAgents: vi.fn<() => Promise<DetectedAgent[]>>(),
   installAgent: vi.fn<(id: string, clean?: boolean) => Promise<InstallAgentResult>>(),
   probeAgent: vi.fn<(id: string) => Promise<void>>(),
-  saveAgents: vi.fn<() => Promise<void>>(),
-}));
+    saveAgents: vi.fn<() => Promise<void>>(),
+  };
+});
 
 vi.mock("@/daemon", () => ({
   daemon: {
@@ -25,8 +33,15 @@ vi.mock("@/daemon", () => ({
     saveAgents,
     // The panel seeds its rows from the configured-agent snapshot. getState must
     // return a stable reference or useSyncExternalStore re-renders forever.
-    subscribe: () => () => {},
-    getState: () => daemonState,
+    subscribe: (fn: () => void) => {
+      store.listeners.add(fn);
+      return () => store.listeners.delete(fn);
+    },
+    subscribeEvents: (fn: (event: DaemonEvent) => void) => {
+      store.eventListeners.add(fn);
+      return () => store.eventListeners.delete(fn);
+    },
+    getState: () => store.state,
   },
 }));
 
@@ -55,6 +70,7 @@ describe("AgentSetupPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryClient.clear();
+    store.state = daemonState;
   });
 
   it("seeds the list from the app-wide detection, skipping the detecting skeleton", () => {
@@ -370,6 +386,28 @@ describe("AgentSetupPanel", () => {
       // No action was taken — install/probe must not have been called.
       expect(installAgent).not.toHaveBeenCalled();
       expect(probeAgent).not.toHaveBeenCalled();
+    });
+
+    it("follows live health updates after the list was seeded", () => {
+      const summary = "Missing optional dependency @openai/codex-darwin-arm64";
+      render(<AgentSetupPanel detected={[agent("codex", { installed: true, version: "1.0.0" })]} />);
+      expect(screen.getByText("v1.0.0")).toBeInTheDocument();
+
+      const push = (broken: { detail: string; summary: string } | null) =>
+        act(() => {
+          store.state = { ...store.state, agentHealth: { codex: broken } };
+          store.listeners.forEach((fn) => fn());
+          const event: DaemonEvent = { data: { broken, id: "codex" }, event: "agents.healthUpdated" };
+          store.eventListeners.forEach((fn) => fn(event));
+        });
+
+      push({ detail: summary, summary });
+      expect(screen.getByText("needs reinstall")).toBeInTheDocument();
+      expect(screen.getByText(summary)).toBeInTheDocument();
+
+      push(null);
+      expect(screen.queryByText("needs reinstall")).not.toBeInTheDocument();
+      expect(screen.getByText("v1.0.0")).toBeInTheDocument();
     });
 
     it("offers no reinstall for a health mark on an agent that cannot be reinstalled", async () => {

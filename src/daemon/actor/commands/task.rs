@@ -244,7 +244,7 @@ impl Daemon {
                     self.pending_workflow_starts.remove(&id);
                     self.pending_resume.remove(&id);
                     self.resume_replay.remove(&id);
-                    self.pending_permissions.cleanup_task(&id);
+                    self.drop_pending_permissions(&id);
                     // A finished pipeline's parent keeps its terminal status:
                     // cancelling it must not rewrite that back to Waiting.
                     let finished_workflow = self
@@ -318,7 +318,7 @@ impl Daemon {
                         .write(PersistWrite::DeleteWorkflowRun(id.clone()));
                 }
                 if delete_result.is_ok() {
-                    self.pending_permissions.cleanup_task(&id);
+                    self.drop_pending_permissions(&id);
                 }
                 // Capture project path before the task is removed so we can
                 // clean up YAML backlog references afterwards.

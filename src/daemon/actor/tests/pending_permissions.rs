@@ -1,38 +1,42 @@
 use crate::daemon::actor::lifecycle::*;
 
+fn offered() -> Vec<String> {
+    vec!["allow".into(), "allow_always".into(), "deny".into()]
+}
+
 #[test]
 fn record_inserts_request() {
     let mut pending = PendingPermissions::default();
-    pending.record("task1", "req1");
+    pending.record("task1", "req1", &offered());
     assert!(pending.has_pending("task1"));
 }
 
 #[test]
 fn duplicate_record_is_noop() {
     let mut pending = PendingPermissions::default();
-    pending.record("task1", "req1");
-    pending.record("task1", "req1");
+    pending.record("task1", "req1", &offered());
+    pending.record("task1", "req1", &offered());
     assert_eq!(pending.by_task.get("task1").unwrap().len(), 1);
 }
 
 #[test]
 fn resolve_removes_exact_request_among_multiple() {
     let mut pending = PendingPermissions::default();
-    pending.record("task1", "req1");
-    pending.record("task1", "req2");
-    pending.record("task1", "req3");
+    pending.record("task1", "req1", &offered());
+    pending.record("task1", "req2", &offered());
+    pending.record("task1", "req3", &offered());
     pending.resolve("task1", "req2", "allow").unwrap();
     assert!(pending.has_pending("task1"));
     assert_eq!(pending.by_task.get("task1").unwrap().len(), 2);
-    assert!(pending.by_task.get("task1").unwrap().contains("req1"));
-    assert!(!pending.by_task.get("task1").unwrap().contains("req2"));
-    assert!(pending.by_task.get("task1").unwrap().contains("req3"));
+    assert!(pending.by_task.get("task1").unwrap().contains_key("req1"));
+    assert!(!pending.by_task.get("task1").unwrap().contains_key("req2"));
+    assert!(pending.by_task.get("task1").unwrap().contains_key("req3"));
 }
 
 #[test]
 fn resolve_unknown_request_is_refused() {
     let mut pending = PendingPermissions::default();
-    pending.record("task1", "req1");
+    pending.record("task1", "req1", &offered());
     assert!(pending.resolve("task1", "unknown", "allow").is_err());
     assert!(pending.has_pending("task1"));
     assert_eq!(pending.by_task.get("task1").unwrap().len(), 1);
@@ -41,7 +45,7 @@ fn resolve_unknown_request_is_refused() {
 #[test]
 fn resolve_unknown_task_is_refused() {
     let mut pending = PendingPermissions::default();
-    pending.record("task1", "req1");
+    pending.record("task1", "req1", &offered());
     assert!(pending.resolve("unknown_task", "req1", "allow").is_err());
     assert!(pending.has_pending("task1"));
 }
@@ -49,7 +53,7 @@ fn resolve_unknown_task_is_refused() {
 #[test]
 fn resolve_last_request_cleans_up_empty_key() {
     let mut pending = PendingPermissions::default();
-    pending.record("task1", "req1");
+    pending.record("task1", "req1", &offered());
     pending.resolve("task1", "req1", "allow").unwrap();
     assert!(!pending.has_pending("task1"));
     assert!(!pending.by_task.contains_key("task1"));
@@ -59,7 +63,7 @@ fn resolve_last_request_cleans_up_empty_key() {
 #[test]
 fn second_answer_is_refused_with_the_winning_outcome() {
     let mut pending = PendingPermissions::default();
-    pending.record("task1", "req1");
+    pending.record("task1", "req1", &offered());
     pending.resolve("task1", "req1", "deny").unwrap();
 
     let error = pending.resolve("task1", "req1", "allow").unwrap_err();
@@ -75,10 +79,12 @@ fn second_answer_is_refused_with_the_winning_outcome() {
 #[test]
 fn cleanup_task_removes_all_requests() {
     let mut pending = PendingPermissions::default();
-    pending.record("task1", "req1");
-    pending.record("task1", "req2");
-    pending.record("task2", "req3");
-    pending.cleanup_task("task1");
+    pending.record("task1", "req1", &offered());
+    pending.record("task1", "req2", &offered());
+    pending.record("task2", "req3", &offered());
+    let mut dropped = pending.cleanup_task("task1");
+    dropped.sort();
+    assert_eq!(dropped, ["req1", "req2"]);
     assert!(!pending.has_pending("task1"));
     assert!(pending.has_pending("task2"));
     // The winning outcome is forgotten with the task, so a very late answer
@@ -93,4 +99,20 @@ fn cleanup_task_removes_all_requests() {
 fn has_pending_false_for_unknown_task() {
     let pending = PendingPermissions::default();
     assert!(!pending.has_pending("unknown"));
+}
+
+/// A banner that always sends `allow` must not resolve a request that only
+/// offered a lasting grant or a denial.
+#[test]
+fn an_outcome_the_request_did_not_offer_is_refused_and_leaves_it_pending() {
+    let mut pending = PendingPermissions::default();
+    let offered = vec!["allow_always".to_string(), "deny".to_string()];
+    pending.record("task1", "req1", &offered);
+
+    assert_eq!(
+        pending.resolve("task1", "req1", "allow").unwrap_err(),
+        PermissionAnswerError::NotOffered { offered }
+    );
+    assert!(pending.has_pending("task1"));
+    pending.resolve("task1", "req1", "deny").unwrap();
 }

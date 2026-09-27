@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef } from "react";
 
-import { resolvedPermissions } from "@/lib/sessionPermissions";
+import { settledPermissions } from "@/lib/sessionPermissions";
 
 import type { SessionUpdate } from "../../protocol";
 
-export function useStableResolved(updates: SessionUpdate[]): Record<string, string> {
+export function useStableResolved(
+  updates: SessionUpdate[],
+  sessionLive: boolean,
+): Record<string, string> {
   const ref = useRef<Record<string, string>>({});
   const result = useMemo(() => {
-    const next = resolvedPermissions(updates);
+    const next = settledPermissions(updates, sessionLive);
     const prev = ref.current;
     const prevKeys = Object.keys(prev);
     const same =
@@ -17,7 +20,7 @@ export function useStableResolved(updates: SessionUpdate[]): Record<string, stri
       return prev;
     }
     return next;
-  }, [updates]);
+  }, [sessionLive, updates]);
 
   useEffect(() => {
     ref.current = result;

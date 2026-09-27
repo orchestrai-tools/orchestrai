@@ -11,15 +11,7 @@ impl Daemon {
     /// default; the first project's path (the probe cache is global per agent,
     /// so any project is representative); the active account's environment.
     pub(crate) fn agent_probe_context(&self, id: &str) -> Option<AgentProbeContext> {
-        let acp_command = self
-            .configured_agents
-            .iter()
-            .find(|a| a.id == id)
-            .map(|a| a.acp_command.clone())
-            .or_else(|| {
-                crate::daemon::agents::known_agent(id)
-                    .map(|agent| agent.default_acp_command.to_string())
-            })?;
+        let acp_command = self.agent_health_command(id)?;
         let cwd = self
             .projects
             .first()
@@ -95,16 +87,20 @@ impl Daemon {
             Command::DetectAgents { reply } => {
                 // Detection shells out (which/npm) and hits the registry, so run
                 // it off the actor loop rather than blocking command handling.
-                // Health is a snapshot of actor state, so it is taken here and
-                // merged in after detection finishes off-loop.
-                let health = self.agent_health.clone();
+                let cmd_tx = self.cmd_tx.clone();
                 tokio::spawn(async move {
-                    let mut detected = crate::daemon::agents::detect_agents().await;
-                    for agent in &mut detected {
-                        agent.broken_install = health.get(&agent.id).cloned();
-                    }
-                    let _ = reply.send(detected);
+                    let detected = crate::daemon::agents::detect_agents().await;
+                    let _ = cmd_tx
+                        .send(Command::AgentsDetected { detected, reply })
+                        .await;
                 });
+            }
+            Command::AgentsDetected {
+                mut detected,
+                reply,
+            } => {
+                self.attach_agent_health(&mut detected);
+                let _ = reply.send(detected);
             }
             Command::UpdateAgents { agents } => {
                 self.persist.write(PersistWrite::Agents(agents.clone()));
@@ -139,6 +135,7 @@ impl Daemon {
                     return;
                 };
                 let agent_id = id.clone();
+                let generation = self.agent_health_generation(&id);
                 let cmd_tx = self.cmd_tx.clone();
                 tokio::spawn(async move {
                     let res = crate::daemon::agent_probe::probe_models(
@@ -154,6 +151,7 @@ impl Daemon {
                                 .send(Command::AgentProbed {
                                     id: agent_id,
                                     models,
+                                    generation,
                                 })
                                 .await;
                             Ok(())
@@ -167,6 +165,7 @@ impl Daemon {
                                 .send(Command::AgentProbeFailed {
                                     id: agent_id,
                                     error: message.clone(),
+                                    generation,
                                 })
                                 .await;
                             Err(message)
@@ -180,11 +179,15 @@ impl Daemon {
             Command::AgentProbeContext { id, reply } => {
                 let _ = reply.send(self.agent_probe_context(&id));
             }
-            Command::AgentProbed { id, models } => {
+            Command::AgentProbed {
+                id,
+                models,
+                generation,
+            } => {
                 // The handshake succeeded regardless of whether the agent
                 // advertised any selectors, so health clears here rather than
                 // after the empty-models early return below.
-                self.clear_agent_health(&id);
+                self.note_probe_health(&id, generation, Ok(()));
                 // A probe that came back with nothing means the agent answered
                 // without advertising selectors — treat it as "no news" rather
                 // than truth, or one flaky probe would wipe a working list and
@@ -206,11 +209,12 @@ impl Daemon {
                     agents: self.configured_agents.clone(),
                 });
             }
-            Command::AgentProbeFailed { id, error } => self.note_agent_failure(&id, &error),
-            Command::ObserveAgentHealth { id, result } => match result {
-                Ok(()) => self.clear_agent_health(&id),
-                Err(error) => self.note_agent_failure(&id, &error),
-            },
+            Command::AgentProbeFailed {
+                id,
+                error,
+                generation,
+            } => self.note_probe_health(&id, generation, Err(error)),
+            Command::ObserveAgentHealth { id, result } => self.observe_agent_health(&id, result),
 
             other => self.handle_task_command(other).await,
         }

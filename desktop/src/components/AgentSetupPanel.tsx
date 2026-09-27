@@ -55,6 +55,7 @@ function fromConfig(agent: AgentConfig): DetectedAgent {
 export default function AgentSetupPanel({ detected, onSaved }: Props) {
   const state = useSyncExternalStore(daemon.subscribe, daemon.getState);
   const configured = state.snapshot.agents;
+  const health = state.agentHealth ?? {};
   const queryClient = useQueryClient();
   // The app-wide agent poll already detects on connect; seeding from its cache
   // means Settings renders rows immediately instead of its detecting skeleton.
@@ -128,6 +129,18 @@ export default function AgentSetupPanel({ detected, onSaved }: Props) {
     // Detection runs once per mount; `configured` is only read for the seed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detected]);
+
+  // A live health change supersedes what this panel recorded from its own
+  // install or reload.
+  useEffect(
+    () =>
+      daemon.subscribeEvents((ev) => {
+        if (ev.event !== "agents.healthUpdated") return;
+        const { id } = ev.data;
+        setBroken(({ [id]: _superseded, ...rest }) => rest);
+      }),
+    [],
+  );
 
   const toggle = (id: string) => {
     // The selection no longer matches what was written — offer the save again.
@@ -291,11 +304,12 @@ export default function AgentSetupPanel({ detected, onSaved }: Props) {
           const isProbing = probing.has(agent.id);
           // A result recorded in this panel wins over the daemon's mark; an
           // agent this detection reports uninstalled carries no stale mark.
+          const mark = agent.id in health ? health[agent.id] : agent.brokenInstall;
           const healthBroken: BrokenInstall | undefined =
-            agent.installed && agent.brokenInstall
+            agent.installed && mark
               ? {
-                  summary: agent.brokenInstall.summary,
-                  full: agent.brokenInstall.detail,
+                  summary: mark.summary,
+                  full: mark.detail,
                   canReinstall: agent.canReinstall ?? false,
                 }
               : undefined;

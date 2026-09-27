@@ -70,7 +70,9 @@ describe("WorkflowControls", () => {
   it("offers extend / finish / stop when the review limit is reached", async () => {
     render(
       <WorkflowControls
-        task={task({ waiting: { kind: "limit", question: "open findings: 2 high" } })}
+        task={task({
+          waiting: { barrierId: "t_1:3", kind: "limit", question: "open findings: 2 high" },
+        })}
       />,
     );
     expect(screen.getByText(/open findings: 2 high/)).toBeInTheDocument();
@@ -89,16 +91,22 @@ describe("WorkflowControls", () => {
     expect(stop).toHaveClass("text-destructive", "bg-destructive/15");
 
     await userEvent.click(oneRound);
-    expect(workflowDecide).toHaveBeenCalledWith("t_1", "extend", { rounds: 1 });
+    expect(workflowDecide).toHaveBeenCalledWith("t_1", "extend", {
+      barrierId: "t_1:3",
+      rounds: 1,
+    });
 
     await userEvent.click(twoRounds);
-    expect(workflowDecide).toHaveBeenCalledWith("t_1", "extend", { rounds: 2 });
+    expect(workflowDecide).toHaveBeenCalledWith("t_1", "extend", {
+      barrierId: "t_1:3",
+      rounds: 2,
+    });
 
     await userEvent.click(finish);
-    expect(workflowDecide).toHaveBeenCalledWith("t_1", "finish");
+    expect(workflowDecide).toHaveBeenCalledWith("t_1", "finish", { barrierId: "t_1:3" });
 
     await userEvent.click(stop);
-    expect(workflowDecide).toHaveBeenCalledWith("t_1", "stop");
+    expect(workflowDecide).toHaveBeenCalledWith("t_1", "stop", { barrierId: "t_1:3" });
   });
 
   it("shows which limit action is in progress and locks competing decisions", async () => {

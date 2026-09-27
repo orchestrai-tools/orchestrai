@@ -163,6 +163,7 @@ async fn main() -> Result<()> {
             app::run().await?;
         }
         Commands::Daemon { dev, owner } => {
+            mcp::identity::forget_inherited_session();
             let projects = registry::list_projects().unwrap_or_default();
             let store = daemon::Store::open().ok();
             let handle = daemon::Daemon::spawn(projects, store);

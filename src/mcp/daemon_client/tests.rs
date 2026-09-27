@@ -50,6 +50,26 @@ async fn a_daemon_restarted_on_the_same_port_is_told_apart_by_its_pid() {
 }
 
 #[tokio::test]
+async fn a_second_daemon_does_not_take_the_session_from_a_live_one() {
+    let daemon = FakeDaemon::at("ws://first");
+    daemon.state().alive.push(1);
+    let mut client = client(&daemon);
+    client.request("agents.list", json!({})).await.unwrap();
+
+    daemon.state().endpoint = Some(Endpoint {
+        pid: Some(2),
+        ..endpoint("ws://second")
+    });
+    let reply = client.request("agents.list", json!({})).await.unwrap();
+    assert_eq!(reply["url"], "ws://first");
+
+    daemon.state().alive.clear();
+    let reply = client.request("agents.list", json!({})).await.unwrap();
+    assert_eq!(reply["url"], "ws://second");
+    assert_eq!(daemon.state().dials, ["ws://first", "ws://second"]);
+}
+
+#[tokio::test]
 async fn a_dropped_connection_fails_one_call_and_the_next_one_redials() {
     let daemon = FakeDaemon::at("ws://a");
     daemon.state().answers.push_back(Answer::Close);
@@ -92,6 +112,18 @@ async fn a_daemon_that_never_answers_times_out_and_the_next_call_redials() {
 }
 
 #[tokio::test]
+async fn a_timed_out_spawn_says_it_may_still_complete() {
+    let daemon = FakeDaemon::at("ws://a");
+    daemon.state().answers.push_back(Answer::Silence);
+    let mut client = client(&daemon);
+
+    let error = client.request("task.create", json!({})).await.unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("may still complete"), "{message}");
+    assert!(message.contains("list_agents"), "{message}");
+}
+
+#[tokio::test]
 async fn a_daemon_that_never_accepts_times_out() {
     let daemon = FakeDaemon::at("ws://a");
     daemon.state().dial = Dial::Hang;
@@ -118,4 +150,16 @@ async fn a_daemon_that_is_down_is_an_error_until_it_is_back() {
 
     daemon.state().dial = Dial::Accept;
     client.request("agents.list", json!({})).await.unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_running_daemon_is_alive_and_an_exited_one_is_not() {
+    use super::{PublishedDaemon, Transport};
+
+    assert!(PublishedDaemon.alive(std::process::id()));
+    let mut child = std::process::Command::new("true").spawn().unwrap();
+    let pid = child.id();
+    child.wait().unwrap();
+    assert!(!PublishedDaemon.alive(pid));
 }

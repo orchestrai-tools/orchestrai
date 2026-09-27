@@ -2,11 +2,11 @@ import { ChevronRight, TriangleAlert } from "lucide-react";
 import { memo, useContext, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { answerPermission } from "@/lib/answerPermission";
 import { toolDisplayTitle } from "@/lib/toolDisplay";
 import { basenameOf, type ActivityItem, toolTarget } from "@/lib/transcriptGroups";
 import { cn } from "@/lib/utils";
 
-import { daemon } from "../../daemon";
 import type { EditHunk, SessionUpdate } from "../../protocol";
 import { ThinkingBlock } from "../ThinkingBlock";
 import { ActivityStatusIcon, CategoryIcon, FileTypeIcon } from "./ActivityIcons";
@@ -184,7 +184,7 @@ function ToolCallStep({
   const [open, setOpen] = useState(false);
   const [clicked, setClicked] = useState<string | null>(null);
   const permission = update.pendingPermission;
-  const answered = clicked ?? (permission ? shared.resolved[permission.request_id] : undefined);
+  const answered = (permission ? shared.resolved[permission.request_id] : undefined) ?? clicked;
   const awaiting = Boolean(permission) && !answered && live;
   const target = toolTarget(update);
   const hasContent = Boolean(update.content);
@@ -224,11 +224,9 @@ function ToolCallStep({
                   variant={option === "deny" ? "destructive" : "default"}
                   onClick={() => {
                     setClicked(option);
-                    void daemon.request("session.permission", {
-                      outcome: option,
-                      request_id: permission.request_id,
-                      task_id: shared.taskId,
-                    });
+                    void answerPermission(shared.taskId, permission.request_id, option).then(
+                      (ok) => ok || setClicked(null),
+                    );
                   }}
                 >
                   {option.replace("_", " ")}

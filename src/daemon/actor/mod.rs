@@ -98,7 +98,7 @@ pub struct Daemon {
     configured_agents: Vec<wire::AgentConfig>,
     /// Broken-install marks per agent id from the last probe, session start or
     /// install verification; in-memory, since the next probe repopulates it.
-    agent_health: HashMap<String, wire::AgentBrokenInstall>,
+    agent_health: agent_health::AgentHealth,
     /// Live agent sessions keyed by task id. One per task in v1; the map (not a
     /// field on Task) is what keeps multi-session-per-task additive later.
     sessions: HashMap<String, AcpHandle>,

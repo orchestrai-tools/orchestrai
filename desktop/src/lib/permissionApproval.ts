@@ -1,9 +1,8 @@
 /**
- * The one rule for which permission option counts as "approve": prefer an
- * explicit one-shot approval (`allow` / `allow_once` / `approve` /
- * `approve_once`, matched case- and separator-insensitively), and never treat a
- * persistent `allow_always` grant as approve — a lasting grant always requires
- * opening the task and reading the request.
+ * The option that counts as "approve": a one-shot approval, never a lasting
+ * `allow_always` grant, which has to be read in the task.
+ * @param options the options the request offers
+ * @returns the one-shot approval, or undefined when the request has none
  */
 export function approvePermissionOption(options: readonly string[]): string | undefined {
   return options.find((option) => ONE_SHOT_APPROVALS.has(normalize(option)));

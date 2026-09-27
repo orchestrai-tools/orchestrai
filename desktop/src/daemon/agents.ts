@@ -30,7 +30,10 @@ export function AgentMethods<TBase extends Constructor<CoreClient>>(Base: TBase)
   return class extends Base {
     async detectAgents(): Promise<DetectedAgent[]> {
       const result = await this.request("agents.detect", {});
-      return Array.isArray(result) ? (result as DetectedAgent[]) : [];
+      const detected = Array.isArray(result) ? (result as DetectedAgent[]) : [];
+      const seeded = Object.fromEntries(detected.map((a) => [a.id, a.brokenInstall ?? null]));
+      this.setState({ agentHealth: { ...this.state.agentHealth, ...seeded } });
+      return detected;
     }
 
     async saveAgents(agents: AgentConfig[]) {

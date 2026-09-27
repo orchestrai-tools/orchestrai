@@ -1,10 +1,45 @@
 use super::*;
+use warpforge_protocol as wire;
+
+const REJECT_INIT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/mock-acp-reject-init.mjs"
+);
+const BROKEN: &str = "Error: Missing optional dependency @openai/codex-darwin-arm64";
+
+/// A configured agent that is not probed: disabled agents are never probed,
+/// so every health event in a test comes from what the test itself does.
+fn mock_agent(acp_command: String) -> wire::AgentConfig {
+    wire::AgentConfig {
+        id: "mock-agent".into(),
+        display_name: "Mock Agent".into(),
+        acp_command,
+        enabled: false,
+        models: vec![],
+        last_model: None,
+    }
+}
+
+async fn next_health(
+    events: &mut tokio::sync::broadcast::Receiver<Event>,
+    agent: &str,
+) -> Option<bool> {
+    timeout(Duration::from_millis(500), async {
+        loop {
+            if let Ok(Event::AgentHealthUpdated { id, broken }) = events.recv().await {
+                if id == agent {
+                    return broken.is_some();
+                }
+            }
+        }
+    })
+    .await
+    .ok()
+}
 
 /// Enabling an agent with no cached models probes it with `reply: None`.
 #[tokio::test]
 async fn a_background_probe_marks_a_broken_install_and_a_healthy_one_clears_it() {
-    use warpforge_protocol as wire;
-
     let store = Store::open_at(std::path::Path::new(":memory:")).ok();
     let daemon = Daemon::spawn(test_projects(), store);
     let mut events = daemon.subscribe();
@@ -18,12 +53,8 @@ async fn a_background_probe_marks_a_broken_install_and_a_healthy_one_clears_it()
         last_model: None,
     };
 
-    let broken_mock = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/mock-acp-reject-init.mjs"
-    );
     daemon
-        .update_agents(vec![config(format!("node {broken_mock}"))])
+        .update_agents(vec![config(format!("node {REJECT_INIT}"))])
         .await;
 
     let broken = timeout(Duration::from_secs(10), async {
@@ -73,11 +104,10 @@ async fn a_session_start_failure_with_a_broken_install_signature_marks_the_agent
     let daemon = Daemon::spawn(test_projects(), store);
     let mut events = daemon.subscribe();
 
-    let mock = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/mock-acp-reject-init.mjs"
-    );
-    let agent = format!("node {mock}");
+    daemon
+        .update_agents(vec![mock_agent(format!("node {REJECT_INIT}"))])
+        .await;
+    let agent = "mock-agent".to_string();
     daemon
         .create_task(
             "demo",
@@ -118,11 +148,12 @@ async fn a_session_start_auth_failure_does_not_mark_the_agent_broken() {
     let daemon = Daemon::spawn(test_projects(), store);
     let mut events = daemon.subscribe();
 
-    let mock = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/mock-acp-reject-init.mjs"
-    );
-    let agent = format!("node {mock} 'Authentication required' -32000");
+    daemon
+        .update_agents(vec![mock_agent(format!(
+            "node {REJECT_INIT} 'Authentication required' -32000"
+        ))])
+        .await;
+    let agent = "mock-agent".to_string();
     let task_id = daemon
         .create_task(
             "demo",
@@ -172,4 +203,130 @@ async fn a_session_start_auth_failure_does_not_mark_the_agent_broken() {
         !saw_health,
         "an auth failure must not be classified as a broken install"
     );
+}
+
+/// The probe context an install verifies with must resolve for a known agent
+/// even before it is configured, and be absent for one the daemon never heard
+/// of. This is the path `agents.install` verification rides.
+#[tokio::test]
+async fn agent_probe_context_resolves_a_default_command_for_a_known_agent() {
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let daemon = Daemon::spawn(test_projects(), store);
+    let context = daemon
+        .agent_probe_context("claude")
+        .await
+        .expect("a known agent should resolve a probe context");
+    assert_eq!(context.acp_command, "claude-agent-acp --acp");
+    assert!(daemon.agent_probe_context("nope").await.is_none());
+}
+
+/// Detection takes seconds; a mark made while it ran must reach its result.
+#[tokio::test]
+async fn detection_reports_the_health_held_when_it_finishes() {
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let daemon = Daemon::spawn(test_projects(), store);
+    daemon
+        .observe_agent_health("mock-agent", Err(BROKEN.to_string()))
+        .await;
+
+    let detected = wire::DetectedAgent {
+        id: "mock-agent".into(),
+        display_name: "Mock Agent".into(),
+        installed: true,
+        default_acp_command: "mock".into(),
+        install_hint: String::new(),
+        version: None,
+        latest_version: None,
+        status: "unknown".into(),
+        install_command: None,
+        update_command: None,
+        can_manage: false,
+        can_reinstall: false,
+        broken_install: None,
+    };
+    let (reply, rx) = tokio::sync::oneshot::channel();
+    daemon
+        .send(Command::AgentsDetected {
+            detected: vec![detected],
+            reply,
+        })
+        .await;
+    let detected = rx.await.unwrap();
+    assert!(detected[0].broken_install.is_some());
+}
+
+/// A probe that started before a reinstall tested the old install.
+#[tokio::test]
+async fn a_probe_from_before_a_reinstall_does_not_re_mark_the_agent() {
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let daemon = Daemon::spawn(test_projects(), store);
+    let mut events = daemon.subscribe();
+    daemon.observe_agent_health("mock-agent", Ok(())).await;
+
+    let failed = |generation| Command::AgentProbeFailed {
+        id: "mock-agent".into(),
+        error: BROKEN.to_string(),
+        generation,
+    };
+    daemon.send(failed(0)).await;
+    assert_eq!(next_health(&mut events, "mock-agent").await, None);
+
+    daemon.send(failed(1)).await;
+    assert_eq!(next_health(&mut events, "mock-agent").await, Some(true));
+}
+
+/// A project `agentTemplates` entry runs its own command, which says nothing
+/// about any agent's install. (A known agent's name always resolves to the
+/// registry's command, so a template cannot stand in for one.)
+#[tokio::test]
+async fn a_template_session_does_not_mark_any_agent() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join(".warpforge")).unwrap();
+    std::fs::write(
+        dir.path().join(".warpforge/workspace.yaml"),
+        format!("name: demo\nagentTemplates:\n  my-agent:\n    command: node {REJECT_INIT}\n"),
+    )
+    .unwrap();
+    let projects = vec![ProjectEntry {
+        name: "demo".into(),
+        path: dir.path().to_string_lossy().into_owned(),
+        added_at: "0".into(),
+        port_range: None,
+        port_range_override: None,
+    }];
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let daemon = Daemon::spawn(projects, store);
+    let mut events = daemon.subscribe();
+
+    let task_id = daemon
+        .create_task(
+            "demo",
+            "fix the thing",
+            "my-agent",
+            vec![],
+            false,
+            false,
+            None,
+            vec![],
+            None,
+            std::collections::HashMap::new(),
+            None,
+        )
+        .await;
+    let blocked = timeout(Duration::from_secs(10), async {
+        loop {
+            if let Ok(Event::TaskUpdated(task)) = events.recv().await {
+                if task.id == task_id && task.status == TaskStatus::Blocked {
+                    break task;
+                }
+            }
+        }
+    })
+    .await
+    .expect("the template's broken agent blocks the task");
+    assert!(blocked
+        .blocked_reason
+        .unwrap_or_default()
+        .contains("Missing optional dependency"));
+    assert_eq!(next_health(&mut events, "my-agent").await, None);
 }

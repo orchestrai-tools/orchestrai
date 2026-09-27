@@ -38,6 +38,8 @@ pub(crate) struct State {
     pub(crate) answers: VecDeque<Answer>,
     pub(crate) panic_on_endpoint: bool,
     pub(crate) dials: Vec<String>,
+    /// Daemon pids still running; every other pid has exited.
+    pub(crate) alive: Vec<u32>,
 }
 
 #[derive(Clone, Default)]
@@ -91,6 +93,10 @@ impl Transport for FakeDaemon {
             Dial::Refuse => Err(anyhow!("connecting to daemon at {}: refused", endpoint.url)),
             Dial::Hang => std::future::pending().await,
         }
+    }
+
+    fn alive(&self, pid: u32) -> bool {
+        self.state().alive.contains(&pid)
     }
 }
 

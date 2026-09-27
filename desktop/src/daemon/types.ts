@@ -1,5 +1,6 @@
 import type {
   AgentAccountLimits,
+  AgentBrokenInstall,
   AgentSpend,
   DaemonEvent,
   DetectedAgent,
@@ -26,6 +27,9 @@ export interface DaemonState {
   agentLimits?: AgentAccountLimits[] | null;
   /** Latest per-harness API-equivalent spend, or null until first known. */
   agentSpend?: AgentSpend[] | null;
+  /** Agent id → broken-install mark, `null` once healthy. Seeded by every
+   *  detection and kept live by `agents.healthUpdated`. */
+  agentHealth?: Record<string, AgentBrokenInstall | null>;
 }
 
 export const MAX_SERVICE_LOGS = 1000;

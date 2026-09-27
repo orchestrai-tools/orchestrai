@@ -17,14 +17,7 @@ impl Daemon {
                 if !self.sessions.contains_key(&task_id) {
                     return;
                 }
-                // Resolved before the mutable borrow below: agent_id_of reads
-                // configured_agents, a different field, but a method call
-                // still needs the whole &self.
-                let agent_id = self
-                    .tasks
-                    .get(&task_id)
-                    .map(|t| t.agent.clone())
-                    .map(|a| self.agent_id_of(&a).to_string());
+                let agent_id = self.session_health_agent(&task_id);
                 if let Some(task) = self.tasks.get_mut(&task_id) {
                     task.attach_session(session_id);
                     let updated = task.clone();
@@ -142,7 +135,8 @@ impl Daemon {
                 options,
                 tool_call_id,
             } => {
-                self.pending_permissions.record(&task_id, &request_id);
+                self.pending_permissions
+                    .record(&task_id, &request_id, &options);
                 self.emit_acp_session(
                     &task_id,
                     wire::SessionUpdate::PermissionRequest {
@@ -283,17 +277,12 @@ impl Daemon {
                 // Classified the same way a probe or install verification is:
                 // only a broken-install signature marks the agent, so an
                 // unrelated failure (auth, network) leaves health untouched.
-                let agent_id = self
-                    .tasks
-                    .get(&task_id)
-                    .map(|t| t.agent.clone())
-                    .map(|a| self.agent_id_of(&a).to_string());
-                if let Some(id) = &agent_id {
-                    self.note_agent_failure(id, &message);
+                if let Some(id) = self.session_health_agent(&task_id) {
+                    self.note_agent_failure(&id, &message);
                 }
                 // Remove dead ACP handle so subsequent prompts trigger resume.
                 self.sessions.remove(&task_id);
-                self.pending_permissions.cleanup_task(&task_id);
+                self.drop_pending_permissions(&task_id);
                 if let Some(task) = self.tasks.get_mut(&task_id) {
                     task.blocked_reason = Some(message);
                     task.blocked_kind = kind;

@@ -1,5 +1,6 @@
 //! Server dispatcher topic: sessions.
 
+use crate::daemon::actor::lifecycle::PermissionAnswerError;
 use crate::daemon::actor::DaemonHandle;
 use crate::daemon::server::util::rpc_err;
 use serde_json::json;
@@ -73,19 +74,22 @@ pub(super) async fn session_permission(
     handle
         .session_permission(&task_id, &request_id, outcome)
         .await
-        .map_err(
-            |crate::daemon::actor::lifecycle::PermissionAnswerError::AlreadyResolved {
-                 outcome,
-             }| {
-                wire::RpcError {
-                    code: wire::ErrorCode::PermissionAlreadyResolved,
-                    message: match outcome {
-                        Some(outcome) => format!("already resolved as \"{outcome}\""),
-                        None => "this permission request is no longer pending".to_string(),
-                    },
-                }
+        .map_err(|error| match error {
+            PermissionAnswerError::AlreadyResolved { outcome } => wire::RpcError {
+                code: wire::ErrorCode::PermissionAlreadyResolved,
+                message: match outcome {
+                    Some(outcome) => format!("already resolved as \"{outcome}\""),
+                    None => "this permission request is no longer pending".to_string(),
+                },
             },
-        )?;
+            PermissionAnswerError::NotOffered { offered } => wire::RpcError {
+                code: wire::ErrorCode::InvalidRequest,
+                message: format!(
+                    "this request does not offer \"{outcome}\"; it offers {}",
+                    offered.join(", ")
+                ),
+            },
+        })?;
     Ok(json!(null))
 }
 

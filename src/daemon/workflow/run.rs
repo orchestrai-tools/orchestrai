@@ -219,6 +219,7 @@ impl WorkflowRun {
     /// Mint a stable id for the barrier the run is about to park on. The id is
     /// echoed by `workflow.reply` / `workflow.decide` so an answer meant for an
     /// earlier question cannot land on a later one (first-writer-wins).
+    /// @returns the new id, `<parent task id>:<sequence>`
     pub fn next_barrier_id(&mut self) -> String {
         self.barrier_seq += 1;
         format!("{}:{}", self.parent_id, self.barrier_seq)

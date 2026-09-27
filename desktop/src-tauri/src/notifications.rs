@@ -115,6 +115,8 @@ pub struct WithdrawPayload {
 /// Withdraw a delivered notification by the id `notify_attention` gave it. On
 /// non-macOS this is a no-op. Never fails the caller: a banner that is already
 /// gone is not an error.
+/// @param payload which notification to withdraw
+/// @returns always `Ok`
 #[tauri::command]
 pub async fn withdraw_attention(
     #[allow(unused_variables)] payload: WithdrawPayload,

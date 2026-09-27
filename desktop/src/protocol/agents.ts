@@ -29,10 +29,8 @@ export interface DetectedAgent {
   /** A clean reinstall (remove, then install) is available — npm agents only.
    *  Absent from an older daemon's payload; treat as false. */
   canReinstall?: boolean;
-  /** Set when the daemon's last background probe or session start for this
-   *  agent hit a broken-install signature; absent when healthy (or on an
-   *  older daemon's payload). Independent of a manual install/update, which
-   *  reports its own result directly. */
+  /** Set when the daemon last saw this agent fail with a broken-install
+   *  signature; absent when healthy or from an older daemon. */
   brokenInstall?: AgentBrokenInstall;
 }
 

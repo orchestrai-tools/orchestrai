@@ -8,6 +8,23 @@ pub(crate) const SESSION_TASK: &str = "WARPFORGE_SESSION_TASK";
 pub(crate) const SESSION_PROJECT: &str = "WARPFORGE_SESSION_PROJECT";
 pub(crate) const SESSION_MODE: &str = "WARPFORGE_SESSION_MODE";
 
+/// Set when Claude Code's Remote Control spawner starts a child. A Claude
+/// Code that inherits it drops every stdio server passed over ACP.
+pub(crate) const REMOTE_CONTROL_CARRIER: &str = "CLAUDE_CODE_BRIDGE_MCP_CARRIER";
+
+/// Drop the session identity a daemon inherits when it is started from inside
+/// an agent session, before it spawns anything that would pass it on.
+pub(crate) fn forget_inherited_session() {
+    for name in [
+        SESSION_TASK,
+        SESSION_PROJECT,
+        SESSION_MODE,
+        REMOTE_CONTROL_CARRIER,
+    ] {
+        std::env::remove_var(name);
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) struct Identity {
     /// The inbox owner and parent of spawned sub-agents.

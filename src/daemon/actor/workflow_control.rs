@@ -68,7 +68,7 @@ impl Daemon {
                 handle.cancel();
                 handles.push(handle);
             }
-            self.pending_permissions.cleanup_task(&child_id);
+            self.drop_pending_permissions(&child_id);
         }
         // Only in-flight stages get their record and task status rewritten;
         // completed ones keep their Done/Complete state.

@@ -103,6 +103,23 @@ async function withdrawNativeNotification(opts: {
   }
 }
 
+/** The outcome a banner button stands for, or null when the request offers
+ *  none: a request that only grants lastingly has to be read in the task. A
+ *  request this client never saw is left to the daemon to check. */
+function bannerOutcome(taskId: string, requestId: string, action: string): string | null {
+  const request = daemon
+    .getState()
+    .sessionUpdates[taskId]?.find(
+      (update) => update.kind === "permission_request" && update.request_id === requestId,
+    );
+  const approve = action === "approve";
+  if (request?.kind !== "permission_request") return approve ? "allow" : "deny";
+  const outcome = approve
+    ? approvePermissionOption(request.options)
+    : request.options.find((option) => option === "deny");
+  return outcome ?? null;
+}
+
 /** Bring the window back when the user chooses "Review" from a native notification. */
 async function focusWindow() {
   if (!("__TAURI_INTERNALS__" in window)) return;
@@ -364,9 +381,15 @@ export function useDaemonEvents() {
             payload.request_id
           ) {
             const requestId = payload.request_id;
+            const outcome = bannerOutcome(taskId, requestId, payload.action);
+            if (!outcome) {
+              useUi.getState().openTask(taskId);
+              void focusWindow();
+              return;
+            }
             void daemon
               .request("session.permission", {
-                outcome: payload.action === "approve" ? "allow" : "deny",
+                outcome,
                 request_id: requestId,
                 task_id: taskId,
               })

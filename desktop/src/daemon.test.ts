@@ -312,6 +312,42 @@ describe("DaemonClient connection state", () => {
     });
   });
 
+  /** Health lives outside the detection cache, so a mark that arrives while no
+   *  detection is cached, or while one is in flight, is not lost. */
+  it("keeps agent health from detection and from live updates", async () => {
+    const client = new DaemonClient();
+    const socket = await connectedSocket(client);
+    const broken = { detail: "missing binary", summary: "missing binary" };
+    const event = (data: unknown) =>
+      socket.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({ data, event: "agents.healthUpdated" }),
+        }),
+      );
+
+    event({ broken, id: "codex" });
+    expect(client.getState().agentHealth).toEqual({ codex: broken });
+
+    const detect = client.detectAgents();
+    const sent = JSON.parse(socket.sent[socket.sent.length - 1]) as { id: number };
+    socket.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          id: sent.id,
+          result: [
+            { id: "codex", installed: true },
+            { brokenInstall: broken, id: "goose", installed: true },
+          ],
+        }),
+      }),
+    );
+    await detect;
+    expect(client.getState().agentHealth).toEqual({ codex: null, goose: broken });
+
+    event({ broken: null, id: "goose" });
+    expect(client.getState().agentHealth).toEqual({ codex: null, goose: null });
+  });
+
   /** An unanswered request must fail, not spin forever (wedged `lsp.detect`). */
   it("fails a request the daemon never answers instead of waiting forever", async () => {
     const client = new DaemonClient();

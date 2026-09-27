@@ -80,6 +80,8 @@ impl DaemonHandle {
     /// Feed an install's own verification into the agent's tracked health, so
     /// a Settings row does not keep showing a mark an install/reinstall just
     /// fixed (or introduce one an install's own success/failure did not see).
+    /// @param id the agent id
+    /// @param result `Ok` when the installed agent started, else why it did not
     pub async fn observe_agent_health(&self, id: &str, result: Result<(), String>) {
         self.send(Command::ObserveAgentHealth {
             id: id.into(),

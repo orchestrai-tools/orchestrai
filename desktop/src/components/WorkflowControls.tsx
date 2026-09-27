@@ -139,6 +139,7 @@ function LimitDecision({
   act: (label: string, fn: () => Promise<void>) => Promise<void>;
 }) {
   const busy = busyAction !== null;
+  const barrierId = task.workflowRun?.waiting?.barrierId ?? undefined;
   return (
     <section
       aria-label="Review limit reached"
@@ -165,7 +166,7 @@ function LimitDecision({
           title="Run one more fix → review cycle"
           onClick={() =>
             void act("add one review round", () =>
-              daemon.workflowDecide(task.id, "extend", { rounds: 1 }),
+              daemon.workflowDecide(task.id, "extend", { barrierId, rounds: 1 }),
             )
           }
         >
@@ -179,7 +180,7 @@ function LimitDecision({
           title="Run two more fix → review cycles"
           onClick={() =>
             void act("add two review rounds", () =>
-              daemon.workflowDecide(task.id, "extend", { rounds: 2 }),
+              daemon.workflowDecide(task.id, "extend", { barrierId, rounds: 2 }),
             )
           }
         >
@@ -192,7 +193,9 @@ function LimitDecision({
           disabled={busy}
           title="Stop the pipeline and send the current changes to human review"
           onClick={() =>
-            void act("finish the workflow", () => daemon.workflowDecide(task.id, "finish"))
+            void act("finish the workflow", () =>
+              daemon.workflowDecide(task.id, "finish", { barrierId }),
+            )
           }
         >
           {busyAction === "finish the workflow" ? (
@@ -209,7 +212,9 @@ function LimitDecision({
           disabled={busy}
           title="Stop immediately and mark the workflow as interrupted"
           onClick={() =>
-            void act("stop the workflow", () => daemon.workflowDecide(task.id, "stop"))
+            void act("stop the workflow", () =>
+              daemon.workflowDecide(task.id, "stop", { barrierId }),
+            )
           }
         >
           {busyAction === "stop the workflow" ? (

@@ -19,12 +19,13 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 let emit: ((event: unknown) => void) | null = null;
+let sessionUpdates: Record<string, unknown[]> = {};
 vi.mock("@/daemon", async () => {
   const actual = await vi.importActual<typeof import("@/daemon")>("@/daemon");
   return {
     DaemonRpcError: actual.DaemonRpcError,
     daemon: {
-      getState: () => ({ sessionUpdates: {}, snapshot: { tasks: [] } }),
+      getState: () => ({ sessionUpdates, snapshot: { tasks: [] } }),
       request: (...args: unknown[]) => request(...(args as [string, unknown])),
       subscribeEvents: (cb: (event: unknown) => void) => {
         emit = cb;
@@ -35,6 +36,7 @@ vi.mock("@/daemon", async () => {
 });
 
 import { DaemonRpcError } from "@/daemon";
+import { useUi } from "@/store/ui";
 
 import { useDaemonEvents } from "./useDaemonEvents";
 
@@ -53,6 +55,7 @@ describe("useDaemonEvents native notification lifecycle", () => {
     invoke.mockClear();
     request.mockClear();
     notifyAction = null;
+    sessionUpdates = {};
     (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
     renderHook(() => useDaemonEvents());
   });
@@ -94,5 +97,28 @@ describe("useDaemonEvents native notification lifecycle", () => {
       payload: { kind: "permission", request_id: "req-9", task_id: "t_1" },
     });
     warn.mockRestore();
+  });
+
+  it("opens the task when the request offers no one-shot approval", async () => {
+    sessionUpdates = {
+      t_1: [
+        {
+          kind: "permission_request",
+          options: ["allow_always", "deny"],
+          request_id: "req-9",
+          title: "Edit the config",
+        },
+      ],
+    };
+    const openTask = vi.spyOn(useUi.getState(), "openTask").mockImplementation(() => {});
+
+    await vi.waitFor(() => expect(notifyAction).not.toBeNull());
+    notifyAction?.({
+      payload: { action: "approve", kind: "permission", request_id: "req-9", task_id: "t_1" },
+    });
+
+    expect(openTask).toHaveBeenCalledWith("t_1");
+    expect(request).not.toHaveBeenCalled();
+    openTask.mockRestore();
   });
 });

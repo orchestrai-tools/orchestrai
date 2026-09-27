@@ -38,9 +38,25 @@ environment through.
 No warpforge agent is a Remote Control child; a daemon started from inside
 such a session must not hand the flag down.
 
+**A daemon forgets an identity it inherited.** A `warpforge daemon` (or a
+`tauri dev`) started from an agent's shell inherits that session's
+`WARPFORGE_SESSION_*`. At startup it removes them, and the carrier flag, from
+its own environment (`mcp/identity.rs` `forget_inherited_session`, called
+first in `main.rs`), so its terminals, services, text-generation agents,
+prechecks and installs do not inherit them.
+
+**Everything the agent itself starts is the same session, on purpose.** The
+identity is on the agent process so that the bridges it starts inherit it,
+and that includes a `claude -p` or `opencode run` launched from the agent's
+shell. That nested CLI's bridge acts as the session: as an orchestrator, its
+`read_inbox` drains the session's results. This is a known limit, not a guard.
+
 **The bridge never ends because of the daemon** (`mcp/serve.rs`,
 `mcp/daemon_client/`). `daemon.json` is re-read before every request and a new
-endpoint (url, token or pid) is dialed before anything is sent; a transport
+endpoint (url, token or pid) is dialed before anything is sent, unless the
+daemon the bridge is connected to still runs: a second daemon publishing
+itself does not take the session from the first. A daemon removes
+`daemon.json` on exit only while it still names that daemon's pid. A transport
 error drops the connection for the next call; connecting and answering have
 deadlines; a panicking tool, a line that is not JSON and an unknown request all
 get answers. Its stderr writes cannot panic.
@@ -56,6 +72,12 @@ get answers. Its stderr writes cannot panic.
   config, per scope and per account, and each harness keeps its own.
 - **Logging the bridge to a file, as the daemon does (0014).** The agent keeps
   the bridge's stderr in its MCP server log, which is where this was diagnosed.
+- **Requiring the agent's pid in the bridge's parent chain.** A nested CLI's
+  bridge descends from the agent too, so the chain cannot tell it apart. A
+  direct-parent check would break harnesses that start servers through a
+  wrapper (`npx`, a shell, an ACP adapter's own child).
+- **A single-instance lock on `warpforge daemon`.** The dev flow runs a
+  `tauri dev` daemon next to the installed app's, on the same `~/.warpforge`.
 
 ## Invariants
 
@@ -69,3 +91,6 @@ get answers. Its stderr writes cannot panic.
 4. **`DaemonClient` puts a connection back only after a complete exchange.**
    (`mcp/daemon_client/mod.rs`) Anything else leaves a dead or half-read
    socket for the next call.
+5. **The daemon drops inherited session variables before it spawns
+   anything.** (`main.rs`) Anything started earlier passes on the identity of
+   the session the daemon was launched from.

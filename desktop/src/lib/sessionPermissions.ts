@@ -60,6 +60,28 @@ export function resolvedPermissions(updates: SessionUpdate[]): Record<string, st
   return resolved;
 }
 
+/**
+ * Recorded outcomes, plus `cancelled` for every request a session that is no
+ * longer working left unanswered: the daemon that could deliver an answer is
+ * gone (a restart keeps the request in the transcript but not in memory).
+ * @param updates the task's session stream
+ * @param sessionLive whether the task's session is still working
+ * @returns request id → the outcome to show
+ */
+export function settledPermissions(
+  updates: SessionUpdate[],
+  sessionLive: boolean,
+): Record<string, string> {
+  const resolved = resolvedPermissions(updates);
+  if (sessionLive) return resolved;
+  for (const update of updates) {
+    if (update.kind === "permission_request" && !(update.request_id in resolved)) {
+      resolved[update.request_id] = "cancelled";
+    }
+  }
+  return resolved;
+}
+
 export function pendingPermission(
   updates: SessionUpdate[],
   resolved = resolvedPermissions(updates),

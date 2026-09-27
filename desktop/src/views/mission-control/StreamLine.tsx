@@ -2,6 +2,7 @@ import { ChevronRight, FilePen, ListTodo, TriangleAlert, Wrench } from "lucide-r
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { answerPermission } from "@/lib/answerPermission";
 import { withOccurrenceKeys } from "@/lib/renderKeys";
 import { toolDisplayTitle } from "@/lib/toolDisplay";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,6 @@ import type { FileLinkResolver } from "../../components/Markdown";
 import { BufferedMarkdown, CollapsibleMarkdown, Markdown } from "../../components/Markdown";
 import { ThinkingBlock } from "../../components/ThinkingBlock";
 import { WorkflowEventLine } from "../../components/WorkflowEventLine";
-import { daemon } from "../../daemon";
 import type { EditHunk, PromptAttachmentSummary, SessionUpdate } from "../../protocol";
 
 const attachmentLabel = (attachment: PromptAttachmentSummary) => {
@@ -54,7 +54,7 @@ function ToolCallLine({
   const hasContent = Boolean(update.content);
   const title = toolDisplayTitle(update);
   const permission = update.pendingPermission;
-  const answered = clicked ?? resolvedOutcome ?? null;
+  const answered = resolvedOutcome ?? clicked ?? null;
   const awaiting = Boolean(permission) && !answered;
   return (
     <div
@@ -110,11 +110,9 @@ function ToolCallLine({
                 variant={opt === "deny" ? "destructive" : "default"}
                 onClick={() => {
                   setClicked(opt);
-                  void daemon.request("session.permission", {
-                    outcome: opt,
-                    request_id: permission.request_id,
-                    task_id: taskId,
-                  });
+                  void answerPermission(taskId, permission.request_id, opt).then(
+                    (ok) => ok || setClicked(null),
+                  );
                 }}
               >
                 {opt.replace("_", " ")}
@@ -150,7 +148,7 @@ function PermissionLine({
   resolvedOutcome?: string;
 }) {
   const [clicked, setClicked] = useState<string | null>(null);
-  const answered = clicked ?? resolvedOutcome ?? null;
+  const answered = resolvedOutcome ?? clicked ?? null;
   return (
     <div
       className={cn(
@@ -182,11 +180,9 @@ function PermissionLine({
                 variant={opt === "deny" ? "destructive" : "default"}
                 onClick={() => {
                   setClicked(opt);
-                  void daemon.request("session.permission", {
-                    outcome: opt,
-                    request_id: update.request_id,
-                    task_id: taskId,
-                  });
+                  void answerPermission(taskId, update.request_id, opt).then(
+                    (ok) => ok || setClicked(null),
+                  );
                 }}
               >
                 {opt.replace("_", " ")}

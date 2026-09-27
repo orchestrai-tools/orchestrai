@@ -86,7 +86,7 @@ pub(super) async fn dispatch(
                 .get("message")
                 .and_then(Value::as_str)
                 .ok_or_else(|| anyhow!("'message' is required"))?;
-            let barrier_id = args.get("barrier_id").and_then(Value::as_str);
+            let barrier_id = barrier_id(args);
             ensure_owned(client, parent_task, project, args, task_id).await?;
             client
                 .request(
@@ -124,7 +124,7 @@ pub(super) async fn dispatch(
                 ),
             };
             let note = args.get("note").and_then(Value::as_str);
-            let barrier_id = args.get("barrier_id").and_then(Value::as_str);
+            let barrier_id = barrier_id(args);
             ensure_owned(client, parent_task, project, args, task_id).await?;
             client
                 .request(
@@ -143,5 +143,28 @@ pub(super) async fn dispatch(
             ))
         }
         other => Err(anyhow!("unknown tool: {other}")),
+    }
+}
+
+/// The barrier an answer is meant for; an empty id counts as none.
+fn barrier_id(args: &Value) -> Option<&str> {
+    args.get("barrier_id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.trim().is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn an_empty_barrier_id_is_no_barrier_id() {
+        assert_eq!(super::barrier_id(&json!({ "barrier_id": "" })), None);
+        assert_eq!(super::barrier_id(&json!({ "barrier_id": " " })), None);
+        assert_eq!(super::barrier_id(&json!({})), None);
+        assert_eq!(
+            super::barrier_id(&json!({ "barrier_id": "t_1:2" })),
+            Some("t_1:2")
+        );
     }
 }
