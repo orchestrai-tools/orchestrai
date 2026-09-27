@@ -121,7 +121,12 @@ pub async fn withdraw_attention(
 ) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        use mac_usernotifications::close_delivered;
+        use mac_usernotifications::{check_bundle, close_delivered};
+        // UNUserNotificationCenter throws an uncatchable NSException in an
+        // unbundled binary (`tauri dev`), which aborts the whole app.
+        if check_bundle().is_err() {
+            return Ok(());
+        }
         let id = attention_id(
             &payload.kind,
             &payload.task_id,
