@@ -49,6 +49,33 @@ async fn handshake_reports_protocol_version_and_external_owner() {
 }
 
 #[tokio::test]
+async fn handshake_is_refused_once_the_actor_has_panicked() {
+    let (cmd_tx, cmd_rx) = mpsc::channel(1);
+    let handle = DaemonHandle {
+        cmd_tx,
+        event_tx: broadcast::channel(1).0,
+    };
+    let lifecycle = Arc::new(ServerLifecycle::new(wire::DaemonOwner::Desktop));
+    let handshake = || {
+        let method = wire::Method::SystemHandshake {
+            client_version: env!("CARGO_PKG_VERSION").into(),
+            protocol_version: wire::PROTOCOL_VERSION,
+        };
+        dispatch(&handle, method, &lifecycle)
+    };
+    assert!(handshake().await.is_ok());
+
+    let actor = tokio::spawn(async move {
+        let _mailbox = cmd_rx;
+        panic!("actor panicked");
+    });
+    assert!(actor.await.unwrap_err().is_panic());
+
+    let refused = handshake().await.unwrap_err();
+    assert_eq!(refused.code, wire::ErrorCode::Internal);
+}
+
+#[tokio::test]
 async fn update_handoff_refuses_external_daemon() {
     let handle = Daemon::spawn(Vec::new(), None);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

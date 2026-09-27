@@ -52,8 +52,8 @@ chrono-tz = "0.10.4"
 iana-time-zone = "0.1"
 tempfile = "3"
 
-# `dup2` for pointing the daemon's own stdin at /dev/null (see
-# `daemon::server::detach_stdin`); std has no way to replace fd 0.
+# `dup2` for replacing the daemon's own stdin, stdout and stderr (see
+# `daemon::server::stdio`); std has no way to replace fds 0-2.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 

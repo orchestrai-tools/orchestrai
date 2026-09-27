@@ -34,6 +34,8 @@ use method_policy::{method_is_mutation, method_runs_concurrently};
 
 mod dispatch;
 mod method_policy;
+#[cfg(unix)]
+mod stdio;
 #[cfg(test)]
 mod tests;
 mod util;
@@ -75,28 +77,6 @@ fn write_endpoint(addr: SocketAddr, token: &str, owner: wire::DaemonOwner) -> Re
     Ok(())
 }
 
-/// Point the daemon's own stdin at /dev/null.
-///
-/// The daemon never reads stdin, but spawned children inherit it. As a Tauri
-/// sidecar the daemon's stdin is a pipe the app holds open forever, so a child
-/// that reads stdin (e.g. a language server ignoring `--version`) never sees
-/// EOF and blocks `lsp.detect` forever. Nothing else can close that pipe, so
-/// redirect it here where every descendant inherits the result.
-#[cfg(unix)]
-fn detach_stdin() {
-    use std::os::unix::io::AsRawFd;
-    match std::fs::File::open("/dev/null") {
-        // SAFETY: `null` owns a live descriptor for the duration of the call,
-        // and fd 0 is a valid target.
-        Ok(null) => unsafe {
-            if libc::dup2(null.as_raw_fd(), libc::STDIN_FILENO) < 0 {
-                eprintln!("warpforge daemon: could not redirect stdin to /dev/null");
-            }
-        },
-        Err(error) => eprintln!("warpforge daemon: could not open /dev/null ({error})"),
-    }
-}
-
 /// Bind, publish the endpoint, and serve forever. `dev` disables the auth token
 /// so a browser (vite dev, no Tauri) can connect to a known address.
 pub async fn serve(handle: DaemonHandle, dev: bool, owner: wire::DaemonOwner) -> Result<()> {
@@ -111,7 +91,10 @@ pub async fn serve(handle: DaemonHandle, dev: bool, owner: wire::DaemonOwner) ->
     // services normally, or by hand.
 
     #[cfg(unix)]
-    detach_stdin();
+    {
+        stdio::detach_stdin();
+        stdio::detach_output();
+    }
 
     let bind = if dev {
         "127.0.0.1:61814"

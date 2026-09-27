@@ -37,7 +37,7 @@ pub(super) async fn dispatch(
 ) -> Result<serde_json::Value, wire::RpcError> {
     use wire::Method::*;
     match method {
-        SystemHandshake { client_version, protocol_version, } => system::system_handshake(lifecycle, client_version, protocol_version).await,
+        SystemHandshake { client_version, protocol_version, } => system::system_handshake(handle, lifecycle, client_version, protocol_version).await,
         UpdatePrepareShutdown { expected_daemon_version, protocol_version, } => system::update_prepare_shutdown(handle, lifecycle, expected_daemon_version, protocol_version).await,
         AppQuitCheck {} => system::app_quit_check(handle, lifecycle).await,
         AppQuit {} => system::app_quit(handle, lifecycle).await,

@@ -1,6 +1,6 @@
 # 0014 — Quitting the app stops the daemon it started
 
-**Status:** accepted (2026-09-23)
+**Status:** accepted (2026-09-23); amended 2026-09-27 (see the end)
 
 ## Context
 
@@ -65,7 +65,7 @@ process 5 s. A close button that can hang is a close button that does nothing.
    `DaemonProcess::terminate`) The daemon RPCs time out at 3 s and the process
    wait at 5 s. The window must close even when the daemon is wedged.
 3. **A daemon the app did not spawn is never stopped.** (`dispatch/system.rs`,
-   `main.rs`) `app.quit` refuses an `owner != desktop` daemon, and the shell
+   `desktop/src-tauri/src/daemon/stop.rs`) `app.quit` refuses an `owner != desktop` daemon, and the shell
    only reaps the child it holds. A CLI-started daemon outlives the app.
 4. **The final exit is only via the Rust `quit_app` command.** The webview has
    no close/destroy permission; adding one would reintroduce the half-quit the
@@ -74,3 +74,55 @@ process 5 s. A close button that can hang is a close button that does nothing.
    quit blockers.** (`src/daemon/actor/run.rs`) `quit_blockers_snapshot` extends
    `update_blockers_snapshot`; the update path must keep ignoring services that
    are merely running, or an update would be refused while any service is up.
+
+## Amended 2026-09-27 — the daemon owns its stdio, and reuse needs a handshake
+
+The packaged app spawns the daemon as a sidecar with piped stdout and stderr.
+An app that disappears without quitting — a crash, Force Quit — leaves the
+daemon running with no reader on those pipes, and `eprintln!` panics when the
+write fails (Rust ignores SIGPIPE, so the write returns EPIPE). A panic in the
+actor task is caught by tokio and leaves the server answering on its port:
+`system.handshake` never touched the actor, and every other call got defaults.
+The next launch found `daemon.json`, got a TCP connect, reused the zombie, and
+nothing worked until the daemon was killed by hand.
+
+**The daemon owns its stdio after startup.** Next to the stdin detach, a daemon
+whose stderr is not a terminal points stderr at `~/.warpforge/logs/daemon.log`
+(appended, owner-only, rotated to `daemon.log.1` when over 10 MB at startup)
+and stdout at /dev/null, which the sidecar never persisted either — unless the
+dev app spawned it with `WARPFORGE_DAEMON_STDIO=inherit`, handing over its own
+stdio rather than a pipe, so dev output stays in the dev terminal. If the log
+cannot be opened, both go to /dev/null. `desktop-sidecar.log` keeps the shell's
+lifecycle lines and whatever the daemon printed before it switched.
+
+**Reuse a found daemon only after a handshake.** At launch the shell
+authenticates and sends `system.handshake` as the web UI does, and the daemon
+refuses the handshake once its actor's mailbox is closed. The wait is 5 s, not
+the 3 s of the quit RPCs: a false silence kills a healthy daemon along with its
+agents and services, without the quit dialog. With no answer, and the recorded
+pid still running the daemon binary, a desktop-owned daemon is stopped
+(SIGTERM, 5 s, SIGKILL) and replaced, and an external one is left running
+while `daemon_endpoint` tells the UI it is not responding. A pid that is gone,
+or now runs something else, just gets a new daemon.
+
+### Rejected
+
+- **A non-panicking macro in place of `eprintln!`.** Every future call site
+  would have to remember it; replacing the descriptor covers all of them.
+- **Keeping the TCP connect as the reuse check.** The kernel completes a
+  connect to a listening socket whether or not anything still serves it.
+
+### Invariants (added)
+
+6. **Never leave the daemon's stdout/stderr on a pipe the app owns.**
+   (`src/daemon/server/stdio.rs`) Once the app is gone the next write fails,
+   and a panic in the actor makes a zombie that holds the port.
+7. **Reuse a found daemon only after a handshake.**
+   (`desktop/src-tauri/src/daemon/startup.rs`, `dispatch/system.rs`) The
+   handshake must keep failing when the actor is gone; a reply that needs no
+   actor proves only that the accept loop runs.
+8. **Signal a recorded pid only while it runs the daemon binary.**
+   (`desktop/src-tauri/src/daemon/stop.rs`) `daemon.json` outlives a crashed
+   daemon, and its pid can be reused. This is the one case where the shell
+   stops a daemon it does not hold, and only a desktop-owned one: invariant 3
+   still holds for a daemon started outside the app.

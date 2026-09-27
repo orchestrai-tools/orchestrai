@@ -7,10 +7,20 @@ use std::sync::atomic::Ordering;
 use warpforge_protocol as wire;
 
 pub(super) async fn system_handshake(
+    handle: &DaemonHandle,
     lifecycle: &std::sync::Arc<ServerLifecycle>,
     client_version: String,
     protocol_version: u32,
 ) -> Result<serde_json::Value, wire::RpcError> {
+    // The reply below needs no actor, so a daemon whose actor has died would
+    // otherwise pass the handshake and then answer everything with defaults.
+    if handle.cmd_tx.is_closed() {
+        return Err(wire::RpcError {
+            code: wire::ErrorCode::Internal,
+            message: "the daemon has stopped working; quit and relaunch Warpforge to restart it"
+                .into(),
+        });
+    }
     Ok(json!(wire::DaemonHandshake {
         daemon_version: env!("CARGO_PKG_VERSION").into(),
         protocol_version: wire::PROTOCOL_VERSION,
