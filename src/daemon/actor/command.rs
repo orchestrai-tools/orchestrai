@@ -363,6 +363,7 @@ pub enum Command {
         path: String,
         content: String,
         project: Option<String>,
+        reply: oneshot::Sender<Result<(), String>>,
     },
     CreateFile {
         task_id: String,
@@ -770,12 +771,22 @@ pub enum Command {
     AgentProbed {
         id: String,
         models: Vec<wire::ConfigOption>,
+        /// The install generation the probe tested.
+        generation: u64,
     },
     /// A probe failed. Sent for background probes too, which have no `reply`,
     /// so their failure still reaches agent-health tracking.
     AgentProbeFailed {
         id: String,
         error: String,
+        /// The install generation the probe tested.
+        generation: u64,
+    },
+    /// Detection finished off the actor loop: fill in the health held now,
+    /// which a probe may have changed while detection ran.
+    AgentsDetected {
+        detected: Vec<wire::DetectedAgent>,
+        reply: oneshot::Sender<Vec<wire::DetectedAgent>>,
     },
     /// Record a probe/install-verify outcome for an agent's tracked health,
     /// outside the `ProbeAgent` flow — used after a manual install's own

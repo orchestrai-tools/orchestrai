@@ -3,21 +3,20 @@
 //! on a failed write — in the actor, that leaves a zombie daemon.
 
 use std::fs::{self, File, OpenOptions};
+use std::os::fd::AsFd;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
+use std::time::Duration;
 
 const LOG_NAME: &str = "daemon.log";
 const LOG_ROTATE_BYTES: u64 = 10 * 1024 * 1024;
 const STDIO_ENV: &str = "WARPFORGE_DAEMON_STDIO";
+const LOG_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
-/// Point the daemon's own stdin at /dev/null.
-///
-/// The daemon never reads stdin, but spawned children inherit it. As a Tauri
-/// sidecar the daemon's stdin is a pipe the app holds open forever, so a child
-/// that reads stdin (e.g. a language server ignoring `--version`) never sees
-/// EOF and blocks `lsp.detect` forever. Nothing else can close that pipe, so
-/// redirect it here where every descendant inherits the result.
+/// Point stdin at /dev/null for every descendant. As a sidecar it is a pipe the
+/// app never closes, so a child that reads stdin (a language server ignoring
+/// `--version`) would never see EOF and would block `lsp.detect`.
 pub(super) fn detach_stdin() {
     match std::fs::File::open("/dev/null") {
         // SAFETY: `null` owns a live descriptor for the duration of the call,
@@ -36,12 +35,42 @@ pub(super) fn detach_stdin() {
 /// dev app handed over its own stdio with `WARPFORGE_DAEMON_STDIO=inherit`.
 pub(super) fn detach_output() {
     let inherit = std::env::var_os(STDIO_ENV).is_some_and(|value| value == "inherit");
+    // A daemon started from one of this daemon's terminals must not inherit it.
+    std::env::remove_var(STDIO_ENV);
     // SAFETY: `isatty` only inspects the descriptor.
     if inherit || unsafe { libc::isatty(libc::STDERR_FILENO) } == 1 {
         return;
     }
     let logs = dirs::home_dir().map(|home| home.join(".warpforge").join("logs"));
     redirect_output(logs.as_deref());
+    if let Some(dir) = logs {
+        let _ = std::thread::Builder::new()
+            .name("daemon-log-rotation".into())
+            .spawn(move || loop {
+                std::thread::sleep(LOG_CHECK_INTERVAL);
+                rotate_stderr(&dir, LOG_ROTATE_BYTES);
+            });
+    }
+}
+
+/// Move stderr to a fresh log once the file under it passes `rotate_bytes`.
+/// It measures the descriptor, not the path: another daemon sharing the log
+/// may already have renamed the file this one still writes to.
+fn rotate_stderr(dir: &Path, rotate_bytes: u64) {
+    let len = std::io::stderr()
+        .as_fd()
+        .try_clone_to_owned()
+        .map(File::from)
+        .and_then(|file| file.metadata());
+    if !len.is_ok_and(|meta| meta.len() > rotate_bytes) {
+        return;
+    }
+    if let Ok(log) = open_log(dir, rotate_bytes) {
+        // SAFETY: `log` owns a live descriptor for the call, and fd 2 is valid.
+        unsafe {
+            libc::dup2(log.as_raw_fd(), libc::STDERR_FILENO);
+        }
+    }
 }
 
 /// Stdout goes to /dev/null rather than the log: the app never persisted it,
@@ -80,7 +109,8 @@ fn open_log(dir: &Path, rotate_bytes: u64) -> std::io::Result<File> {
         .create(dir)?;
     let path = dir.join(LOG_NAME);
     if fs::metadata(&path).is_ok_and(|meta| meta.len() > rotate_bytes) {
-        fs::rename(&path, dir.join(format!("{LOG_NAME}.1")))?;
+        // A failed rotation must not cost the log: keep appending instead.
+        let _ = fs::rename(&path, dir.join(format!("{LOG_NAME}.1")));
     }
     OpenOptions::new()
         .create(true)
@@ -100,6 +130,7 @@ mod tests {
     const LOGS: &str = "WARPFORGE_STDIO_TEST_LOGS";
     const PANICKED: i32 = 3;
     const LINE: &str = "[acp t_1 <<?] non-JSON line: banner";
+    const BEFORE_ROTATION: &str = "written before the rotation";
 
     /// A copy of this test binary that runs only [`child`] in `mode`, clear of
     /// the `WARPFORGE_DAEMON_STDIO` a dev daemon's terminals inherit.
@@ -155,7 +186,20 @@ mod tests {
         match mode.as_str() {
             "log" => redirect_output(Some(Path::new(&std::env::var(LOGS).unwrap()))),
             "no-log" => redirect_output(Some(Path::new("/dev/null/logs"))),
-            "detach" => detach_output(),
+            "detach" => {
+                detach_output();
+                let inherited = Command::new("sh")
+                    .args(["-c", &format!("test -n \"${{{STDIO_ENV}+set}}\"")])
+                    .status()
+                    .unwrap();
+                assert!(!inherited.success(), "a descendant inherited {STDIO_ENV}");
+            }
+            "rotate" => {
+                let logs = std::env::var(LOGS).unwrap();
+                redirect_output(Some(Path::new(&logs)));
+                eprintln!("{BEFORE_ROTATION}");
+                rotate_stderr(Path::new(&logs), 1);
+            }
             _ => {}
         }
         match std::panic::catch_unwind(|| eprintln!("{LINE}")) {
@@ -195,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn the_dev_apps_inherit_request_leaves_stderr_where_it_was() {
+    fn the_dev_apps_inherit_request_keeps_stderr_and_is_not_passed_on() {
         let (stderr, home) = detach_in_child(Some("inherit"));
         assert!(stderr.contains(LINE), "{stderr}");
         assert!(!home.path().join(".warpforge").exists());
@@ -207,6 +251,38 @@ mod tests {
         assert!(!stderr.contains(LINE), "{stderr}");
         let log = home.path().join(".warpforge").join("logs").join(LOG_NAME);
         assert!(fs::read_to_string(log).unwrap().contains(LINE));
+    }
+
+    #[test]
+    fn a_log_that_outgrows_the_cap_mid_run_is_rotated() {
+        let dir = tempfile::tempdir().unwrap();
+        let (code, stdout) = run_child("rotate", dir.path());
+        assert_eq!(code, Some(0), "{stdout}");
+        let old = fs::read_to_string(dir.path().join(format!("{LOG_NAME}.1"))).unwrap();
+        let log = fs::read_to_string(dir.path().join(LOG_NAME)).unwrap();
+        assert!(
+            old.contains(BEFORE_ROTATION) && !old.contains(LINE),
+            "{old}"
+        );
+        assert!(
+            log.contains(LINE) && !log.contains(BEFORE_ROTATION),
+            "{log}"
+        );
+    }
+
+    #[test]
+    fn a_rotation_that_fails_still_opens_the_log() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join(LOG_NAME);
+        fs::write(&log, "too big\n").unwrap();
+        fs::create_dir(dir.path().join(format!("{LOG_NAME}.1"))).unwrap();
+        fs::write(dir.path().join(format!("{LOG_NAME}.1")).join("x"), "").unwrap();
+        open_log(dir.path(), 1)
+            .unwrap()
+            .write_all(b"more\n")
+            .unwrap();
+
+        assert_eq!(fs::read_to_string(&log).unwrap(), "too big\nmore\n");
     }
 
     #[test]

@@ -30,7 +30,11 @@ async fn a_web_page_is_refused_at_the_handshake() {
         other => panic!("expected a 403, got {other:?}"),
     }
     connect(addr, None).await.expect("a non-browser client");
+    #[cfg(not(windows))]
     connect(addr, Some("tauri://localhost"))
         .await
         .expect("the packaged app");
+    connect(addr, Some("http://localhost:5173"))
+        .await
+        .expect("the Vite dev server");
 }

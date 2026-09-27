@@ -30,13 +30,9 @@ fn configure_sidecar_path(command: ShellCommand, _log: &SidecarLog) -> ShellComm
     command
 }
 
-/// Find the warpforge daemon binary.
-///
-/// Priority:
-/// 1. `WARPFORGE_DAEMON_BIN` env var (explicit override)
-/// 2. Sibling to current exe (prod app bundle)
-/// 3. `workspace/target/debug/warpforge` (Tauri dev layout)
-/// 4. `warpforge` on `PATH`
+/// The daemon binary: `WARPFORGE_DAEMON_BIN`, else a `warpforge` next to this
+/// exe (the app bundle), else the workspace's `target/debug/warpforge`
+/// (`tauri dev`), else `warpforge` on `PATH`.
 pub(super) fn find_daemon_bin() -> std::path::PathBuf {
     if let Ok(p) = std::env::var("WARPFORGE_DAEMON_BIN") {
         return p.into();

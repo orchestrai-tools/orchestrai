@@ -187,9 +187,10 @@ sidecar lifecycle and redacted stderr diagnostics — including whether a daemon
 found at launch was reused, replaced or reported as not responding — plus
 whatever the daemon printed before it took over its own output. From then on
 the daemon writes its stderr to `~/.warpforge/logs/daemon.log` (owner-only,
-appended, rotated to `daemon.log.1` when over 10 MB at startup). That file is
-not redacted and is not bounded within a run, and it carries the raw agent
-exchange when `WARPFORGE_ACP_DEBUG` is set. Daemon stdout is still discarded.
+appended, rotated to `daemon.log.1` when over 10 MB, at startup and by a
+once-a-minute check during a run). That file is not redacted and has no
+per-line cap, and it carries the raw agent exchange when `WARPFORGE_ACP_DEBUG`
+is set. Daemon stdout is still discarded.
 
 If Windows or Linux previews were requested, smoke-test the same lifecycle on
 real machines before describing those platforms as supported. Until that

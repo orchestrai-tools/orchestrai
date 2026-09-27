@@ -8,30 +8,81 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 use warpforge_protocol::{DaemonEndpoint, PROTOCOL_VERSION};
 
+const CONTINUATION: u8 = 0x0;
 const TEXT: u8 = 0x1;
 const CLOSE: u8 = 0x8;
 const MASK: [u8; 4] = [0x77, 0x66, 0x70, 0x72];
 const MAX_FRAME: u64 = 1 << 20;
 
-/// Whether the daemon at `endpoint` answers `system.handshake` with a result
-/// within about `timeout`. Refused, closed, an error reply or silence is no.
-pub(super) fn answers_handshake(endpoint: &DaemonEndpoint, timeout: Duration) -> bool {
+/// What the daemon at an endpoint did with a handshake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Probe {
+    /// Nothing accepted the connection.
+    NotListening,
+    /// Accepted it, then failed or stayed silent until the deadline.
+    Silent,
+    Answered,
+}
+
+/// Probe the daemon at `endpoint`, connect included, within `timeout`.
+/// @param endpoint the daemon `daemon.json` records
+/// @param timeout the bound on the whole probe
+/// @returns how far the handshake got
+pub(super) fn probe(endpoint: &DaemonEndpoint, timeout: Duration) -> Probe {
     let deadline = Instant::now() + timeout;
     let Some(host) = endpoint.url.strip_prefix("ws://") else {
-        return false;
+        return Probe::NotListening;
     };
-    let connected = host
-        .parse::<SocketAddr>()
-        .map_err(io::Error::other)
-        .and_then(|addr| {
-            let stream = TcpStream::connect_timeout(&addr, timeout)?;
-            stream.set_read_timeout(Some(timeout))?;
-            stream.set_write_timeout(Some(timeout))?;
-            Ok(stream)
-        });
-    connected
-        .and_then(|stream| handshake(&stream, &stream, host, &endpoint.token, deadline))
-        .unwrap_or(false)
+    let Ok(addr) = host.parse::<SocketAddr>() else {
+        return Probe::NotListening;
+    };
+    let Ok(stream) = TcpStream::connect_timeout(&addr, timeout) else {
+        return Probe::NotListening;
+    };
+    let reader = Deadline {
+        stream: &stream,
+        deadline,
+    };
+    let answered = time_left(deadline)
+        .and_then(|left| stream.set_write_timeout(Some(left)))
+        .and_then(|()| handshake(reader, &stream, host, &endpoint.token, deadline));
+    match answered {
+        Ok(true) => Probe::Answered,
+        _ => Probe::Silent,
+    }
+}
+
+fn time_left(deadline: Instant) -> io::Result<Duration> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        return Err(io::ErrorKind::TimedOut.into());
+    }
+    Ok(left)
+}
+
+/// A stream whose reads, however many a peer trickles out, end by `deadline`.
+struct Deadline<S> {
+    stream: S,
+    deadline: Instant,
+}
+
+/// Lets the tests drive [`Deadline`] over a Unix socket pair.
+trait SetReadTimeout {
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
+}
+
+impl SetReadTimeout for &TcpStream {
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        TcpStream::set_read_timeout(self, timeout)
+    }
+}
+
+impl<S: Read + SetReadTimeout> Read for Deadline<S> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.stream
+            .set_read_timeout(Some(time_left(self.deadline)?))?;
+        self.stream.read(buf)
+    }
 }
 
 fn handshake(
@@ -73,16 +124,23 @@ fn handshake(
     })));
     writer.write_all(&frames)?;
 
+    let mut message = Vec::new();
     while Instant::now() < deadline {
-        let (opcode, payload) = read_frame(&mut reader)?;
-        if opcode == CLOSE {
-            return Ok(false);
+        let frame = read_frame(&mut reader)?;
+        match frame.opcode {
+            CLOSE => return Ok(false),
+            TEXT | CONTINUATION => message.extend(frame.payload),
+            _ => continue,
         }
-        if opcode == TEXT {
-            let reply: Value = serde_json::from_slice(&payload)?;
-            if reply["id"] == 1 {
-                return Ok(reply.get("result").is_some());
-            }
+        if message.len() as u64 > MAX_FRAME {
+            return Err(io::Error::other("oversized message"));
+        }
+        if !frame.fin {
+            continue;
+        }
+        let reply: Value = serde_json::from_slice(&std::mem::take(&mut message))?;
+        if reply["id"] == 1 {
+            return Ok(reply.get("result").is_some());
         }
     }
     Ok(false)
@@ -108,8 +166,14 @@ fn text_frame(message: &Value) -> Vec<u8> {
     frame
 }
 
-/// One unmasked server frame: its opcode and payload.
-fn read_frame(reader: &mut impl Read) -> io::Result<(u8, Vec<u8>)> {
+struct Frame {
+    fin: bool,
+    opcode: u8,
+    payload: Vec<u8>,
+}
+
+/// One server frame, unmasked if the server masked it.
+fn read_frame(reader: &mut impl Read) -> io::Result<Frame> {
     let mut head = [0; 2];
     reader.read_exact(&mut head)?;
     let len = match head[1] & 0x7f {
@@ -128,9 +192,24 @@ fn read_frame(reader: &mut impl Read) -> io::Result<(u8, Vec<u8>)> {
     if len > MAX_FRAME {
         return Err(io::Error::other("oversized frame"));
     }
+    let mut key = [0; 4];
+    let masked = head[1] & 0x80 != 0;
+    if masked {
+        reader.read_exact(&mut key)?;
+    }
     let mut payload = vec![0; len as usize];
     reader.read_exact(&mut payload)?;
-    Ok((head[0] & 0x0f, payload))
+    if masked {
+        payload
+            .iter_mut()
+            .zip(key.iter().cycle())
+            .for_each(|(b, k)| *b ^= k);
+    }
+    Ok(Frame {
+        fin: head[0] & 0x80 != 0,
+        opcode: head[0] & 0x0f,
+        payload,
+    })
 }
 
 #[cfg(all(test, unix))]
@@ -190,14 +269,21 @@ mod tests {
         payload
     }
 
+    impl SetReadTimeout for &UnixStream {
+        fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+            UnixStream::set_read_timeout(self, timeout)
+        }
+    }
+
     fn probe(token: &str, reply: Option<Vec<u8>>) -> (io::Result<bool>, Vec<Value>) {
         let (client, server) = UnixStream::pair().unwrap();
-        client
-            .set_read_timeout(Some(Duration::from_millis(300)))
-            .unwrap();
         let daemon = std::thread::spawn(move || fake_daemon(server, reply));
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let answered = handshake(&client, &client, "127.0.0.1:1", token, deadline);
+        let deadline = Instant::now() + Duration::from_millis(500);
+        let reader = Deadline {
+            stream: &client,
+            deadline,
+        };
+        let answered = handshake(reader, &client, "127.0.0.1:1", token, deadline);
         drop(client);
         (answered, daemon.join().unwrap())
     }
@@ -241,6 +327,52 @@ mod tests {
     #[test]
     fn silence_is_not_an_answer() {
         assert!(probe("tok", None).0.is_err());
+    }
+
+    #[test]
+    fn a_reply_split_across_frames_is_reassembled() {
+        let payload = json!({ "id": 1, "result": {} }).to_string().into_bytes();
+        let (first, rest) = payload.split_at(5);
+        let mut reply = vec![TEXT, first.len() as u8];
+        reply.extend(first);
+        reply.extend([0x80 | CONTINUATION, rest.len() as u8]);
+        reply.extend(rest);
+        assert!(probe("tok", Some(reply)).0.unwrap());
+    }
+
+    #[test]
+    fn a_masked_reply_is_unmasked() {
+        let payload = json!({ "id": 1, "result": {} }).to_string().into_bytes();
+        let mut reply = vec![0x80 | TEXT, 0x80 | payload.len() as u8];
+        reply.extend(MASK);
+        reply.extend(payload.iter().zip(MASK.iter().cycle()).map(|(b, k)| b ^ k));
+        assert!(probe("tok", Some(reply)).0.unwrap());
+    }
+
+    #[test]
+    fn a_peer_trickling_bytes_cannot_outlast_the_deadline() {
+        let (client, server) = UnixStream::pair().unwrap();
+        let trickle = std::thread::spawn(move || {
+            while (&server).write_all(b"H").is_ok() {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+        let start = Instant::now();
+        let reader = Deadline {
+            stream: &client,
+            deadline: start + Duration::from_millis(300),
+        };
+        let answered = handshake(
+            reader,
+            &client,
+            "127.0.0.1:1",
+            "",
+            start + Duration::from_millis(300),
+        );
+        assert!(answered.is_err());
+        assert!(start.elapsed() < Duration::from_secs(2));
+        drop(client);
+        trickle.join().unwrap();
     }
 
     #[test]

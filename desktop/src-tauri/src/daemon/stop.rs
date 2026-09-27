@@ -1,18 +1,18 @@
 //! Stopping a daemon: the one this app holds, on quit, and a desktop-owned one
 //! found unresponsive at launch.
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
-use super::endpoint::is_daemon_running;
+use warpforge_protocol::DaemonEndpoint;
+
+use super::process::{executable, has_daemon_argument, start_time};
 use super::{DaemonProcess, ManagedDaemon};
 
 impl DaemonProcess {
-    /// Ask the spawned daemon to stop (SIGTERM), wait up to `timeout` for it to
-    /// exit, then kill it. The forced path and a timed-out `app.quit` never sent
-    /// the stop request, so without the signal the daemon dies by SIGKILL and
-    /// its service process groups and port-forwards are orphaned. A daemon the
-    /// app did not spawn is not held here and is left running.
+    /// SIGTERM the spawned daemon, wait up to `timeout`, then kill it. The
+    /// signal comes first so a forced quit does not orphan its service process
+    /// groups. A daemon the app did not spawn is not held here.
     pub(crate) fn terminate(&self, timeout: Duration) {
         let Ok(mut guard) = self.child.lock() else {
             return;
@@ -41,12 +41,9 @@ impl DaemonProcess {
                 }
             },
             ManagedDaemon::Sidecar(child) => {
-                // No wait primitive on a sidecar child; poll discovery until the
-                // daemon is gone (it removes `daemon.json` and closes the port).
-                while is_daemon_running() && Instant::now() < deadline {
-                    std::thread::sleep(Duration::from_millis(50));
-                }
-                if is_daemon_running() {
+                // No wait primitive on a sidecar child, so poll its pid. The
+                // port closes long before the teardown after SIGTERM ends.
+                if !await_exit(pid, None, timeout) {
                     let _ = child.kill();
                 }
             }
@@ -68,64 +65,74 @@ fn request_stop(pid: u32) {
 #[cfg(not(unix))]
 fn request_stop(_pid: u32) {}
 
-/// SIGTERM, a bounded wait, then SIGKILL — each sent only while `pid` still
-/// runs the daemon binary, so a pid recycled in the meantime is left alone.
+/// SIGTERM, a bounded wait, then SIGKILL — each sent only while `found.pid`
+/// is still that daemon, so a pid recycled in the meantime is left alone.
 #[cfg(unix)]
-pub(super) fn stop_unresponsive(pid: u32, timeout: Duration) {
-    if !is_daemon_process(pid) {
+pub(super) fn stop_unresponsive(found: &DaemonEndpoint, timeout: Duration) {
+    if !is_daemon_process(found.pid, Some(found)) {
         return;
     }
-    request_stop(pid);
-    let deadline = Instant::now() + timeout;
-    while is_daemon_process(pid) && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    if is_daemon_process(pid) {
-        // SAFETY: as in `request_stop`.
+    request_stop(found.pid);
+    if !await_exit(found.pid, Some(found), timeout) {
+        // SAFETY: as in `request_stop`; `await_exit` has just confirmed the pid.
         unsafe {
-            libc::kill(pid as libc::pid_t, libc::SIGKILL);
+            libc::kill(found.pid as libc::pid_t, libc::SIGKILL);
         }
     }
 }
 
 #[cfg(not(unix))]
-pub(super) fn stop_unresponsive(_pid: u32, _timeout: Duration) {}
+pub(super) fn stop_unresponsive(_found: &DaemonEndpoint, _timeout: Duration) {}
 
-/// Whether `pid` is a live process running the daemon binary. `daemon.json`
-/// outlives a crashed daemon, and its pid may since belong to anything.
-pub(super) fn is_daemon_process(pid: u32) -> bool {
+/// Wait up to `timeout` for the daemon at `pid` to exit, sending nothing.
+/// @param pid the daemon's pid
+/// @param found its `daemon.json` entry, when that is where the pid came from
+/// @param timeout how long to wait
+/// @returns whether it is gone
+pub(super) fn await_exit(pid: u32, found: Option<&DaemonEndpoint>, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while is_daemon_process(pid, found) {
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    true
+}
+
+/// Whether `pid` is a live daemon: run with a `daemon` argument, and the
+/// process `found` recorded, or when it recorded nothing, a binary named like
+/// the daemon. `daemon.json` outlives a crashed daemon; its pid may be reused.
+/// @param pid the process to check
+/// @param found the `daemon.json` entry `pid` came from, if any
+/// @returns true when signalling `pid` reaches that daemon
+pub(super) fn is_daemon_process(pid: u32, found: Option<&DaemonEndpoint>) -> bool {
     // `kill` reads 0 and negative pids as whole process groups.
     if pid <= 1 || pid > i32::MAX as u32 {
         return false;
     }
-    let daemon = super::spawn::find_daemon_bin();
-    executable(pid).is_some_and(|path| path.file_name() == daemon.file_name())
+    executable(pid).is_some_and(|exe| {
+        has_daemon_argument(pid) && is_recorded_daemon(&exe, start_time(pid), found)
+    })
 }
 
-#[cfg(target_os = "macos")]
-fn executable(pid: u32) -> Option<PathBuf> {
-    use std::os::unix::ffi::OsStrExt;
-    let mut path = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
-    // SAFETY: `path` is writable for the length passed.
-    let len = unsafe {
-        libc::proc_pidpath(
-            pid as libc::c_int,
-            path.as_mut_ptr().cast(),
-            path.len() as u32,
-        )
-    };
-    let len = usize::try_from(len).ok().filter(|&len| len > 0)?;
-    Some(PathBuf::from(std::ffi::OsStr::from_bytes(&path[..len])))
+/// `wf` is the name `install.sh` gives the CLI.
+fn is_recorded_daemon(exe: &Path, started_at: Option<u64>, found: Option<&DaemonEndpoint>) -> bool {
+    let recorded = found.and_then(|found| Some((found.exe.as_deref()?, found.started_at?)));
+    match recorded {
+        Some((recorded_exe, recorded_start)) => {
+            started_at == Some(recorded_start) && same_file(exe, Path::new(recorded_exe))
+        }
+        None => {
+            let daemon = super::spawn::find_daemon_bin();
+            exe.file_name() == daemon.file_name() || exe.file_name() == Some("wf".as_ref())
+        }
+    }
 }
 
-#[cfg(target_os = "linux")]
-fn executable(pid: u32) -> Option<PathBuf> {
-    std::fs::read_link(format!("/proc/{pid}/exe")).ok()
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn executable(_pid: u32) -> Option<PathBuf> {
-    None
+fn same_file(a: &Path, b: &Path) -> bool {
+    let canonical = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.into());
+    canonical(a) == canonical(b)
 }
 
 #[cfg(test)]
@@ -167,25 +174,51 @@ mod tests {
         );
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
-    fn executable_names_a_live_process_and_nothing_once_it_is_reaped() {
-        let own = executable(std::process::id()).unwrap();
-        assert_eq!(
-            own.file_name(),
-            std::env::current_exe().unwrap().file_name()
-        );
-        let mut child = Command::new("true").spawn().unwrap();
-        let pid = child.id();
-        child.wait().unwrap();
-        assert_eq!(executable(pid), None);
+    fn only_a_process_running_the_daemon_binary_counts() {
+        for pid in [std::process::id(), 0, 1, u32::MAX] {
+            assert!(!is_daemon_process(pid, None), "{pid}");
+        }
+    }
+
+    fn recorded(exe: &str, started_at: u64) -> DaemonEndpoint {
+        DaemonEndpoint {
+            pid: 42,
+            url: "ws://127.0.0.1:1".into(),
+            token: String::new(),
+            version: String::new(),
+            protocol_version: 0,
+            owner: warpforge_protocol::DaemonOwner::Desktop,
+            exe: Some(exe.into()),
+            started_at: Some(started_at),
+        }
     }
 
     #[test]
-    fn only_a_process_running_the_daemon_binary_counts() {
-        assert!(!is_daemon_process(std::process::id()));
-        assert!(!is_daemon_process(0));
-        assert!(!is_daemon_process(1));
-        assert!(!is_daemon_process(u32::MAX));
+    fn a_recorded_daemon_must_match_both_its_executable_and_its_start_time() {
+        let found = recorded("/opt/bin/wf-daemon", 7);
+        let exe = Path::new("/opt/bin/wf-daemon");
+        assert!(is_recorded_daemon(exe, Some(7), Some(&found)));
+        assert!(!is_recorded_daemon(exe, Some(8), Some(&found)));
+        assert!(!is_recorded_daemon(exe, None, Some(&found)));
+        let other = Path::new("/opt/bin/warpforge");
+        assert!(!is_recorded_daemon(other, Some(7), Some(&found)));
+    }
+
+    #[test]
+    fn without_a_record_the_binary_name_decides() {
+        assert!(is_recorded_daemon(
+            Path::new("/usr/local/bin/wf"),
+            None,
+            None
+        ));
+        let daemon = super::super::spawn::find_daemon_bin();
+        let name = daemon.file_name().unwrap();
+        assert!(is_recorded_daemon(
+            &Path::new("/elsewhere").join(name),
+            None,
+            None
+        ));
+        assert!(!is_recorded_daemon(Path::new("/bin/sh"), Some(1), None));
     }
 }

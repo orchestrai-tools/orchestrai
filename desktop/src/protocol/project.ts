@@ -24,6 +24,8 @@ export interface DaemonEndpoint {
   version: string;
   protocolVersion: number;
   owner: "desktop" | "external";
+  exe?: string | null;
+  startedAt?: number | null;
 }
 
 export interface DaemonHandshake {

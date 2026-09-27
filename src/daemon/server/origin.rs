@@ -7,11 +7,11 @@ use tokio_tungstenite::tungstenite::http::{header::ORIGIN, StatusCode};
 
 /// The packaged app's webview: `tauri://localhost` on macOS and Linux,
 /// `http(s)://tauri.localhost` on Windows (tauri `protocol::origin`).
-const APP_ORIGINS: [&str; 3] = [
-    "tauri://localhost",
-    "http://tauri.localhost",
-    "https://tauri.localhost",
-];
+const APP_ORIGINS: &[&str] = if cfg!(windows) {
+    &["http://tauri.localhost", "https://tauri.localhost"]
+} else {
+    &["tauri://localhost"]
+};
 
 /// The Vite dev server (`desktop/vite.config.ts`, `server.port`).
 const VITE_ORIGINS: [&str; 2] = ["http://localhost:5173", "http://127.0.0.1:5173"];
@@ -19,21 +19,18 @@ const VITE_ORIGINS: [&str; 2] = ["http://localhost:5173", "http://127.0.0.1:5173
 /// Comma-separated origins that replace [`VITE_ORIGINS`] when set.
 const DEV_ORIGINS_ENV: &str = "WARPFORGE_DEV_ORIGINS";
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(super) struct OriginPolicy {
     dev_origins: Vec<String>,
 }
 
 impl OriginPolicy {
-    /// Policy for a daemon started with `--dev` or from a debug build.
-    /// Debug builds need the Vite origins because `tauri dev` loads the UI
-    /// from the Vite server and spawns a debug daemon without `--dev`.
-    /// @param dev whether the daemon runs with `--dev`
+    /// Every daemon, whatever its build, accepts the Vite origins: `tauri dev`
+    /// loads the UI from Vite and reuses whichever daemon it finds, and a
+    /// daemon with a token still refuses a page that cannot read `daemon.json`.
+    /// @param _dev whether the daemon runs with `--dev`; the list is the same
     /// @returns the policy for this process
-    pub(super) fn new(dev: bool) -> Self {
-        if !dev && !cfg!(debug_assertions) {
-            return Self::default();
-        }
+    pub(super) fn new(_dev: bool) -> Self {
         Self {
             dev_origins: dev_origins(std::env::var(DEV_ORIGINS_ENV).ok().as_deref()),
         }
@@ -104,14 +101,27 @@ mod tests {
 
     #[test]
     fn non_browser_clients_and_the_app_are_always_allowed() {
-        for origin in [
-            None,
-            Some("tauri://localhost"),
-            Some("http://tauri.localhost"),
-            Some("https://tauri.localhost"),
-        ] {
-            assert!(origin_allowed(origin, &[]), "{origin:?}");
+        assert!(origin_allowed(None, &[]));
+        for origin in APP_ORIGINS {
+            assert!(origin_allowed(Some(origin), &[]), "{origin}");
         }
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn the_windows_webview_origins_are_refused_elsewhere() {
+        assert!(origin_allowed(Some("tauri://localhost"), &[]));
+        for origin in ["http://tauri.localhost", "https://tauri.localhost"] {
+            assert!(!origin_allowed(Some(origin), &vite()), "{origin}");
+        }
+    }
+
+    #[test]
+    fn every_daemon_accepts_the_vite_server_unless_the_env_replaces_it() {
+        let policy = OriginPolicy::new(false);
+        let expected = dev_origins(std::env::var(DEV_ORIGINS_ENV).ok().as_deref());
+        assert_eq!(policy.dev_origins, expected);
+        assert_eq!(OriginPolicy::new(true).dev_origins, expected);
     }
 
     #[test]

@@ -108,9 +108,15 @@ pub fn save_file(repo: &str, path: &str, content: &str) -> Result<()> {
     Ok(())
 }
 
+/// Only plain names below the root: no root, prefix or `..` component. On
+/// Windows `\` and `:` are refused too: `resolve_in_root` splits on `/` only,
+/// and `:` also names a drive (`C:x`) or an alternate data stream.
 fn validate_relative_path(path: &str) -> Result<()> {
-    let p = std::path::Path::new(path);
-    if path.is_empty() || p.is_absolute() || path.split('/').any(|part| part == "..") {
+    use std::path::Component;
+    let plain = std::path::Path::new(path)
+        .components()
+        .all(|part| matches!(part, Component::Normal(_) | Component::CurDir));
+    if path.is_empty() || !plain || (cfg!(windows) && path.contains(['\\', ':'])) {
         bail!("refusing unsafe relative path: {path}");
     }
     Ok(())
@@ -193,7 +199,9 @@ pub fn delete_file(repo: &str, path: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_file, delete_file, file_doc, rename_file, save_file};
+    use super::{
+        create_file, delete_file, file_doc, rename_file, save_file, validate_relative_path,
+    };
 
     struct Fixture {
         repo: tempfile::TempDir,
@@ -300,6 +308,16 @@ mod tests {
         assert!(delete_file(&fx.root(), &through_link).is_err());
         assert!(outside.is_file());
         assert!(!fx.outside.path().join("new.txt").exists());
+    }
+
+    #[test]
+    fn only_plain_components_pass_validation() {
+        for path in ["a.txt", "src/main.rs", "./src/main.rs", "a//b"] {
+            assert!(validate_relative_path(path).is_ok(), "{path}");
+        }
+        for path in ["", "/etc/passwd", "../x", "a/../../x", "a/.."] {
+            assert!(validate_relative_path(path).is_err(), "{path}");
+        }
     }
 
     #[test]

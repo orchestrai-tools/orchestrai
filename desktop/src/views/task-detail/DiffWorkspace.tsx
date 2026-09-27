@@ -12,8 +12,8 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { saveFile } from "@/lib/saveFile";
 
-import { daemon } from "../../daemon";
 import type { EditHunk, FileDiff, HunkResolution, TaskDiff } from "../../protocol";
 import { fileAnchor, hunkKey } from "./diffAnchors";
 import { estimateFileHeight, measureDiffRow } from "./diffRowLayout";
@@ -325,7 +325,7 @@ export const DiffWorkspace = forwardRef<DiffWorkspaceHandle, Props>(function Dif
                         }
                         onScrolledToHunk={armHighlightFade}
                         onSave={(content) =>
-                          void daemon.request("file.save", {
+                          saveFile({
                             content,
                             path: doc.path,
                             task_id: taskId,
@@ -387,7 +387,7 @@ export const DiffWorkspace = forwardRef<DiffWorkspaceHandle, Props>(function Dif
                         onToggleCollapsed ? () => onToggleCollapsed(file.path) : undefined
                       }
                       onSave={(content) =>
-                        void daemon.request("file.save", {
+                        saveFile({
                           content,
                           path: doc.path,
                           task_id: taskId,

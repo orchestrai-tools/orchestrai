@@ -72,15 +72,26 @@ pub(super) async fn file_save(
     content: String,
     project: Option<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
     handle
         .send(Command::SaveFile {
             task_id,
             path,
             content,
             project,
+            reply: tx,
         })
         .await;
-    Ok(json!(null))
+    rx.await
+        .map_err(|_| wire::RpcError {
+            code: wire::ErrorCode::Internal,
+            message: "daemon dropped file save request".into(),
+        })?
+        .map(|_| json!(null))
+        .map_err(|message| wire::RpcError {
+            code: wire::ErrorCode::Internal,
+            message,
+        })
 }
 
 pub(super) async fn file_create(

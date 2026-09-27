@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Panel, PanelCollapseHint, PanelGroup, PanelSeparator } from "@/components/ui/panels";
 import { FlipButton, SurfaceRail } from "@/components/workspace";
+import { saveFile } from "@/lib/saveFile";
 import { setTaskDiff, setTaskEditorView, setTaskFiles } from "@/lib/sessionStore";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +13,6 @@ import { TerminalWorkspaceView } from "../../components/runtime/TerminalWorkspac
 import { RuntimePanel } from "../../components/RuntimePanel";
 import { SessionLostBanner } from "../../components/SessionLostBanner";
 import { TaskAgentSwitcher } from "../../components/TaskAgentSwitcher";
-import { daemon } from "../../daemon";
 import type { TaskInfo } from "../../protocol";
 import { BrowserSurface } from "./browser/BrowserSurface";
 import { DiffSurface } from "./DiffSurface";
@@ -233,7 +233,7 @@ export function TaskDetailPanes({ task, onOpenTask, onOpenPush, detail }: Props)
               }}
               taskId={task.id}
               onSave={(content) =>
-                void daemon.request("file.save", {
+                saveFile({
                   content,
                   path: activeFilePath ?? "",
                   task_id: task.id,

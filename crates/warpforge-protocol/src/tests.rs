@@ -609,4 +609,5 @@ fn old_daemon_endpoint_defaults_to_external_and_unknown_protocol() {
     .unwrap();
     assert_eq!(endpoint.protocol_version, 0);
     assert_eq!(endpoint.owner, DaemonOwner::External);
+    assert_eq!((endpoint.exe, endpoint.started_at), (None, None));
 }

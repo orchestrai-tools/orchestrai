@@ -37,8 +37,10 @@ left running. A daemon the app spawned is stopped — the RPC stops the runtime 
 agent sessions and ends the daemon, and the shell waits (bounded) for the child
 to exit, then TERM/KILLs it if it will not.
 
-**Every wait is bounded.** The daemon RPCs get 3 s, the wait for the daemon
-process 5 s. A close button that can hang is a close button that does nothing.
+**Every wait is bounded.** The quit check (`app.quitCheck`) gets 3 s, the
+confirmed `app.quit` 15 s, since it stops whole service process trees, and the
+wait for the daemon process 15 s. A close button that can hang is a close
+button that does nothing.
 
 ### Rejected
 
@@ -62,8 +64,9 @@ process 5 s. A close button that can hang is a close button that does nothing.
    `app:quit-requested`, and finishes through `quit_app`. Do not add a second
    place that calls `app.exit` or `window.close` on the main window.
 2. **Every wait on the quit path is bounded.** (`useTauriClose.ts`,
-   `DaemonProcess::terminate`) The daemon RPCs time out at 3 s and the process
-   wait at 5 s. The window must close even when the daemon is wedged.
+   `DaemonProcess::terminate`) The quit check times out at 3 s, `app.quit`
+   and the process wait at 15 s. The window must close even when the daemon is
+   wedged.
 3. **A daemon the app did not spawn is never stopped.** (`dispatch/system.rs`,
    `desktop/src-tauri/src/daemon/stop.rs`) `app.quit` refuses an `owner != desktop` daemon, and the shell
    only reaps the child it holds. A CLI-started daemon outlives the app.
@@ -88,22 +91,40 @@ nothing worked until the daemon was killed by hand.
 
 **The daemon owns its stdio after startup.** Next to the stdin detach, a daemon
 whose stderr is not a terminal points stderr at `~/.warpforge/logs/daemon.log`
-(appended, owner-only, rotated to `daemon.log.1` when over 10 MB at startup)
-and stdout at /dev/null, which the sidecar never persisted either — unless the
-dev app spawned it with `WARPFORGE_DAEMON_STDIO=inherit`, handing over its own
-stdio rather than a pipe, so dev output stays in the dev terminal. If the log
-cannot be opened, both go to /dev/null. `desktop-sidecar.log` keeps the shell's
-lifecycle lines and whatever the daemon printed before it switched.
+(appended, owner-only, rotated to `daemon.log.1` when over 10 MB — at startup,
+and by a once-a-minute check during a run) and stdout at /dev/null, which the
+sidecar never persisted either — unless the dev app spawned it with
+`WARPFORGE_DAEMON_STDIO=inherit`, handing over its own stdio rather than a
+pipe, so dev output stays in the dev terminal. The daemon removes that variable
+from its environment once read, so nothing it spawns inherits it. If the log
+cannot be opened, both go to /dev/null; a rotation that fails keeps appending.
+`desktop-sidecar.log` keeps the shell's lifecycle lines and whatever the daemon
+printed before it switched. Unlike that file, `daemon.log` is not redacted and
+has no per-line cap: both need the lines to pass through a pipe, which is the
+thing this amendment removes.
 
 **Reuse a found daemon only after a handshake.** At launch the shell
 authenticates and sends `system.handshake` as the web UI does, and the daemon
-refuses the handshake once its actor's mailbox is closed. The wait is 5 s, not
-the 3 s of the quit RPCs: a false silence kills a healthy daemon along with its
-agents and services, without the quit dialog. With no answer, and the recorded
-pid still running the daemon binary, a desktop-owned daemon is stopped
-(SIGTERM, 5 s, SIGKILL) and replaced, and an external one is left running
-while `daemon_endpoint` tells the UI it is not responding. A pid that is gone,
-or now runs something else, just gets a new daemon.
+refuses the handshake once its actor's mailbox is closed. The whole probe,
+connect included, is bounded by 5 s, not the 3 s of the quit check: a false
+silence kills a healthy daemon along with its agents and services, without the
+quit dialog. What happens next depends on how far the probe got, and on
+whether the recorded pid is still that daemon:
+
+- **Answered:** reuse it.
+- **Pid gone, or now another process:** start a new daemon.
+- **Connection refused, pid alive:** the daemon is shutting down. SIGTERM
+  closes its listener at once, but the teardown — service group kills, agents,
+  the database flush — continues, and `daemon.json` goes last. The shell waits
+  up to 15 s for the process to exit, sends no signal, then starts a new one.
+- **Accepted but no answer, pid alive:** a desktop-owned daemon is stopped
+  (SIGTERM, 5 s, SIGKILL) and replaced; an external one is left running while
+  `daemon_endpoint` tells the UI it is not responding.
+
+"Still that daemon" means the pid was started with a `daemon` argument and has
+the executable path and start time the daemon wrote into `daemon.json`. An
+entry from an older daemon, without those, falls back to the executable's name
+(`warpforge`, or `wf` as `install.sh` names the CLI).
 
 ### Rejected
 
@@ -121,8 +142,16 @@ or now runs something else, just gets a new daemon.
    (`desktop/src-tauri/src/daemon/startup.rs`, `dispatch/system.rs`) The
    handshake must keep failing when the actor is gone; a reply that needs no
    actor proves only that the accept loop runs.
-8. **Signal a recorded pid only while it runs the daemon binary.**
-   (`desktop/src-tauri/src/daemon/stop.rs`) `daemon.json` outlives a crashed
-   daemon, and its pid can be reused. This is the one case where the shell
-   stops a daemon it does not hold, and only a desktop-owned one: invariant 3
-   still holds for a daemon started outside the app.
+8. **Signal a recorded pid only while it is still that daemon.**
+   (`desktop/src-tauri/src/daemon/stop.rs`, `server/endpoint.rs`) `daemon.json`
+   outlives a crashed daemon, and its pid can be reused — by the TUI or the MCP
+   bridge, which run the same binary. Compare the start time and executable it
+   records, and the `daemon` argument; a name match alone is not identity.
+   This is the one case where the shell stops a daemon it does not hold, and
+   only a desktop-owned one: invariant 3 still holds for a daemon started
+   outside the app.
+9. **Never signal a found daemon that refuses the connection.**
+   (`desktop/src-tauri/src/daemon/startup.rs`) Its listener closed because it
+   is shutting down; a SIGKILL would land in the middle of its teardown.
+   Replace only a daemon that accepts the connection and then fails the
+   handshake.

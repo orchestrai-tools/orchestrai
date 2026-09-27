@@ -8,6 +8,7 @@ import {
   subscribeProjectFileNav,
   takeProjectFileRequest,
 } from "@/lib/projectFileNav";
+import { saveFile } from "@/lib/saveFile";
 import { setProjectEditorView, setProjectFiles } from "@/lib/sessionStore";
 import type { FileDoc } from "@/protocol";
 import { daemonQuery, useProjectFilesQuery } from "@/query";
@@ -108,7 +109,7 @@ export function ProjectFilesSurface({ project, rootPath }: ProjectFilesSurfacePr
   const handleSave = useCallback(
     (content: string) => {
       if (!open.activePath) return;
-      void daemon.request("file.save", {
+      saveFile({
         project,
         path: open.activePath,
         content,

@@ -168,6 +168,7 @@ impl Daemon {
                 path,
                 content,
                 project,
+                reply,
             } => {
                 let repo: Option<std::path::PathBuf> = if let Some(proj) = project.clone() {
                     self.projects
@@ -182,10 +183,16 @@ impl Daemon {
                 let cmd_tx = self.cmd_tx.clone();
                 let is_project = project.is_some();
                 tokio::task::spawn_blocking(move || {
-                    let Some(p) = repo else { return };
-                    if crate::daemon::diff::save_file(&p.to_string_lossy(), &path, &content).is_ok()
-                        && !is_project
-                    {
+                    let result = match repo {
+                        Some(p) => {
+                            crate::daemon::diff::save_file(&p.to_string_lossy(), &path, &content)
+                                .map_err(|e| e.to_string())
+                        }
+                        None => Err(format!("no checkout to save {path} in")),
+                    };
+                    let saved = result.is_ok();
+                    let _ = reply.send(result);
+                    if saved && !is_project {
                         // Nudge clients so the diff/file list refetches.
                         let _ = cmd_tx.blocking_send(Command::GitOpFinished {
                             task_id,

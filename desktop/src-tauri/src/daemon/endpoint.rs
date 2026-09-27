@@ -9,24 +9,6 @@ pub(super) fn read_endpoint() -> Option<DaemonEndpoint> {
     serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
 }
 
-/// Check whether a daemon is already listening by reading daemon.json and
-/// attempting a TCP connect to its port. Used to avoid double-spawning.
-pub(super) fn is_daemon_running() -> bool {
-    (|| -> Option<bool> {
-        let path = dirs::home_dir()?.join(".warpforge").join("daemon.json");
-        let text = std::fs::read_to_string(&path).ok()?;
-        let ep: serde_json::Value = serde_json::from_str(&text).ok()?;
-        // "ws://127.0.0.1:PORT" → "127.0.0.1:PORT"
-        let url = ep["url"].as_str()?;
-        let addr: std::net::SocketAddr = url.trim_start_matches("ws://").parse().ok()?;
-        Some(
-            std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(300))
-                .is_ok(),
-        )
-    })()
-    .unwrap_or(false)
-}
-
 /// Read daemon.json, retrying for up to 5 s to give the daemon time to start.
 #[tauri::command]
 pub(crate) fn daemon_endpoint(

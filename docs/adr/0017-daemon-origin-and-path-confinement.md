@@ -1,6 +1,7 @@
 # 0017 — The daemon checks WebSocket origins and confines client paths
 
-**Status:** accepted (2026-09-27)
+**Status:** accepted (2026-09-27); amended 2026-09-27 (Vite origins on every
+daemon, Windows-only webview origins, component-checked paths)
 
 ## Context
 
@@ -15,24 +16,38 @@ joined the client's path onto the repo root, so an absolute path read any file.
 
 **Every handshake is checked against an Origin allow-list** (`server/origin.rs`).
 No `Origin` header means a non-browser client (TUI, MCP bridge, tests) and is
-allowed. The packaged webview's origins are always allowed: `tauri://localhost`
-on macOS and Linux, `http(s)://tauri.localhost` on Windows (tauri
+allowed. The packaged webview's origin is always allowed: `tauri://localhost`
+on macOS and Linux, and on Windows only, `http(s)://tauri.localhost` (tauri
 `protocol::origin`). The Vite dev server (`http://localhost:5173`,
-`http://127.0.0.1:5173`) is allowed in `--dev` and in debug builds, because
-`tauri dev` loads the UI from Vite and spawns a debug daemon without `--dev`.
-`WARPFORGE_DEV_ORIGINS` (comma-separated) replaces the Vite pair. Anything
-else gets a 403 before the upgrade.
+`http://127.0.0.1:5173`) is allowed on every daemon, release builds included:
+`tauri dev` loads the UI from Vite and reuses whatever daemon `daemon.json`
+names, so a dev app that found a packaged daemon got a silent 403. A daemon
+with a token loses nothing by it, since a page still cannot authenticate
+without reading `daemon.json`. `WARPFORGE_DEV_ORIGINS` (comma-separated)
+replaces the Vite pair. Anything else gets a 403 before the upgrade.
 
 **Client paths are relative and resolved inside the root** (`diff/files.rs`).
-Reads and writes that go through the last component (`file.contents`,
-`file.save`) canonicalize the whole path and refuse one that lands outside the
-repo, including through a symlink. Create/rename/delete resolve the parents
-only, since they act on a link itself.
+Every `Path::components()` entry must be a plain name (or a leading `.`), so
+no root, drive prefix or `..` gets through; on Windows `\` and `:` are refused
+too, because resolution splits on `/` only. Reads and writes that go through
+the last component (`file.contents`, `file.save`) canonicalize the whole path
+and refuse one that lands outside the repo, including through a symlink.
+Create/rename/delete resolve the parents only, since they act on a link
+itself. A refusal is an RPC error the editor shows, `file.save` included.
 
 ### Rejected
 
 - **A token in `--dev` too.** The plain-browser UI has no way to read
-  `daemon.json`; the origin check closes the hole without breaking it.
+  `daemon.json`; the origin check closes the hole without breaking it. It
+  leaves one: in `--dev`, whatever serves `localhost:5173` — another project's
+  dev server, when Warpforge's is not running — can drive the daemon. Closing
+  it needs the daemon to mint a `--dev` token and Warpforge's Vite server to
+  hand it only to its own page (Vite's CORS lets other localhost origins fetch
+  from it, so the endpoint needs its own origin check). Not done yet; run
+  `--dev` only while Warpforge's own Vite server holds the port.
+- **Vite origins only in debug builds or `--dev`.** A dev app reusing a
+  packaged daemon was refused with nothing in the UI to say why; the token
+  already protects that daemon.
 - **Allowing any `localhost` origin.** Every local dev server a contributor
   runs, and anything it serves, would reach the daemon.
 

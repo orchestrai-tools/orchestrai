@@ -70,6 +70,13 @@ pub struct DaemonEndpoint {
     pub protocol_version: u32,
     #[serde(default)]
     pub owner: DaemonOwner,
+    /// The daemon's canonical executable path.
+    #[serde(default)]
+    pub exe: Option<String>,
+    /// The daemon's start time as its OS reports it, compared only for
+    /// equality: with `exe`, it tells this daemon from a later owner of `pid`.
+    #[serde(default)]
+    pub started_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]

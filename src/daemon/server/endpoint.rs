@@ -14,6 +14,22 @@ pub(super) fn daemon_json_path() -> PathBuf {
         .join("daemon.json")
 }
 
+/// Remove `daemon.json` on exit, unless a daemon started since has already
+/// replaced it with its own.
+pub(super) fn remove_endpoint() {
+    remove_if_published_by(&daemon_json_path(), std::process::id());
+}
+
+fn remove_if_published_by(path: &Path, pid: u32) {
+    let published = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|endpoint| endpoint.get("pid").and_then(serde_json::Value::as_u64));
+    if published == Some(u64::from(pid)) {
+        std::fs::remove_file(path).ok();
+    }
+}
+
 pub(super) fn write_endpoint(
     addr: SocketAddr,
     token: &str,
@@ -26,11 +42,57 @@ pub(super) fn write_endpoint(
         version: env!("CARGO_PKG_VERSION").to_string(),
         protocol_version: wire::PROTOCOL_VERSION,
         owner,
+        exe: std::env::current_exe()
+            .and_then(std::fs::canonicalize)
+            .ok()
+            .map(|path| path.to_string_lossy().into_owned()),
+        started_at: start_time(std::process::id()),
     };
     write_private(
         &daemon_json_path(),
         &serde_json::to_string_pretty(&endpoint)?,
     )
+}
+
+/// This process's start time, read the way the desktop shell reads it for a
+/// pid it finds in `daemon.json` (`desktop/src-tauri/src/daemon/process.rs`).
+#[cfg(target_os = "macos")]
+fn start_time(pid: u32) -> Option<u64> {
+    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+    // SAFETY: `info` is writable for `size` bytes.
+    let written = unsafe {
+        libc::proc_pidinfo(
+            pid as libc::c_int,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    if written != size {
+        return None;
+    }
+    // SAFETY: `proc_pidinfo` filled all `size` bytes.
+    let info = unsafe { info.assume_init() };
+    Some(info.pbi_start_tvsec * 1_000_000 + info.pbi_start_tvusec)
+}
+
+#[cfg(target_os = "linux")]
+fn start_time(pid: u32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // `starttime` is field 22; the split starts at field 3, after the command name.
+    stat.rsplit_once(')')?
+        .1
+        .split_whitespace()
+        .nth(19)?
+        .parse()
+        .ok()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn start_time(_pid: u32) -> Option<u64> {
+    None
 }
 
 /// Replace `path` with `text`, readable only by the current user. The text
@@ -88,7 +150,7 @@ fn open_private(path: &Path) -> std::io::Result<std::fs::File> {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::write_private;
+    use super::{remove_if_published_by, start_time, write_private};
     use std::os::unix::fs::PermissionsExt;
 
     fn mode(path: &std::path::Path) -> u32 {
@@ -123,5 +185,30 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
         let leftovers = std::fs::read_dir(dir.path()).unwrap().count();
         assert_eq!(leftovers, 1, "the temp file is renamed away");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn the_start_time_is_stable_and_gone_with_the_process() {
+        let own = start_time(std::process::id());
+        assert!(own.is_some());
+        assert_eq!(start_time(std::process::id()), own);
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        assert_eq!(start_time(pid), None);
+    }
+
+    #[test]
+    fn an_exiting_daemon_leaves_a_newer_daemons_endpoint_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("daemon.json");
+
+        std::fs::write(&path, r#"{"pid": 7, "url": "ws://127.0.0.1:1"}"#).unwrap();
+        remove_if_published_by(&path, 6);
+        assert!(path.exists());
+
+        remove_if_published_by(&path, 7);
+        assert!(!path.exists());
     }
 }

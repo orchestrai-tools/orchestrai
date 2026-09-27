@@ -8,6 +8,7 @@ use tauri_plugin_shell::process::CommandChild;
 
 pub(crate) mod endpoint;
 mod probe;
+mod process;
 mod spawn;
 mod startup;
 mod stop;
