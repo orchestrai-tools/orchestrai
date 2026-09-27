@@ -12,8 +12,6 @@
 //! The request dispatcher lives in [`dispatch`] as one exhaustive `match`; the
 //! per-method bodies are split by topic under `dispatch/`.
 
-use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -33,7 +31,9 @@ use super::wire as wireconv;
 use method_policy::{method_is_mutation, method_runs_concurrently};
 
 mod dispatch;
+mod endpoint;
 mod method_policy;
+mod origin;
 #[cfg(unix)]
 mod stdio;
 #[cfg(test)]
@@ -41,6 +41,8 @@ mod tests;
 mod util;
 
 use dispatch::dispatch;
+use endpoint::{daemon_json_path, write_endpoint};
+use origin::OriginPolicy;
 
 /// Outgoing frames buffered per connection before the read loop slows down.
 /// Shrunk under test so a regression test can fill it without sending
@@ -53,32 +55,9 @@ const OUTGOING_QUEUE: usize = if cfg!(test) { 4 } else { 256 };
 /// completes it.
 const MAX_CONCURRENT_REQUESTS: usize = 8;
 
-fn daemon_json_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".warpforge")
-        .join("daemon.json")
-}
-
-fn write_endpoint(addr: SocketAddr, token: &str, owner: wire::DaemonOwner) -> Result<()> {
-    let endpoint = wire::DaemonEndpoint {
-        pid: std::process::id(),
-        url: format!("ws://{addr}"),
-        token: token.to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        protocol_version: wire::PROTOCOL_VERSION,
-        owner,
-    };
-    let path = daemon_json_path();
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).ok();
-    }
-    std::fs::write(&path, serde_json::to_string_pretty(&endpoint)?)?;
-    Ok(())
-}
-
 /// Bind, publish the endpoint, and serve forever. `dev` disables the auth token
-/// so a browser (vite dev, no Tauri) can connect to a known address.
+/// so a browser (vite dev, no Tauri) can connect to a known address; the
+/// Origin check still refuses every page but the app and the Vite server.
 pub async fn serve(handle: DaemonHandle, dev: bool, owner: wire::DaemonOwner) -> Result<()> {
     // No boot-time orphan sweep. It used to `lsof`-kill every listener in every
     // project's range to clear orphans from a previous daemon crash, but a
@@ -111,7 +90,10 @@ pub async fn serve(handle: DaemonHandle, dev: bool, owner: wire::DaemonOwner) ->
     write_endpoint(addr, &token, owner)?;
     eprintln!("warpforge daemon listening on ws://{addr}");
 
-    let lifecycle = Arc::new(ServerLifecycle::new(owner));
+    let lifecycle = Arc::new(ServerLifecycle {
+        origins: OriginPolicy::new(dev),
+        ..ServerLifecycle::new(owner)
+    });
 
     #[cfg(unix)]
     {
@@ -156,6 +138,7 @@ struct ServerLifecycle {
     /// before it flips `quiescing` and asks the actor for blockers.
     mutations: RwLock<()>,
     shutdown: Notify,
+    origins: OriginPolicy,
 }
 
 impl ServerLifecycle {
@@ -165,6 +148,7 @@ impl ServerLifecycle {
             quiescing: AtomicBool::new(false),
             mutations: RwLock::new(()),
             shutdown: Notify::new(),
+            origins: OriginPolicy::new(false),
         }
     }
 }
@@ -216,13 +200,18 @@ impl Drop for AbortOnDrop {
     }
 }
 
+// The Origin callback's error type is fixed by tungstenite's `Callback`.
+#[allow(clippy::result_large_err)]
 async fn handle_conn(
     stream: TcpStream,
     handle: DaemonHandle,
     token: String,
     lifecycle: Arc<ServerLifecycle>,
 ) -> Result<()> {
-    let ws = tokio_tungstenite::accept_async(stream).await?;
+    let ws = tokio_tungstenite::accept_hdr_async(stream, |request: &_, response| {
+        lifecycle.origins.check(request, response)
+    })
+    .await?;
     let (mut sink, mut rx) = ws.split();
     let mut authed = token.is_empty();
     let subscribed = Arc::new(AtomicBool::new(false));

@@ -7,14 +7,10 @@ use warpforge_protocol as wire;
 
 /// A file's old (HEAD) and new (working-tree) text, for the editable review.
 pub async fn file_doc(repo: &str, path: &str) -> Result<wire::FileDoc> {
-    if path.contains("..") {
-        bail!("refusing path with ..: {path}");
-    }
+    let full = resolve_target_in_root(repo, path)?;
 
-    let is_image = is_image_path(path);
-
-    if is_image {
-        return file_doc_binary(repo, path).await;
+    if is_image_path(path) {
+        return file_doc_binary(repo, path, &full).await;
     }
 
     let show = Command::new("git")
@@ -28,7 +24,6 @@ pub async fn file_doc(repo: &str, path: &str) -> Result<wire::FileDoc> {
         String::new()
     };
 
-    let full = std::path::Path::new(repo).join(path);
     let in_tree = full.is_file();
     let new_text = if in_tree {
         std::fs::read_to_string(&full).unwrap_or_default()
@@ -53,7 +48,7 @@ pub async fn file_doc(repo: &str, path: &str) -> Result<wire::FileDoc> {
 }
 
 /// Binary file variant — returns base64-encoded content for images.
-async fn file_doc_binary(repo: &str, path: &str) -> Result<wire::FileDoc> {
+async fn file_doc_binary(repo: &str, path: &str, full: &std::path::Path) -> Result<wire::FileDoc> {
     use base64::{engine::general_purpose::STANDARD, Engine};
 
     let show = Command::new("git")
@@ -67,10 +62,9 @@ async fn file_doc_binary(repo: &str, path: &str) -> Result<wire::FileDoc> {
         None
     };
 
-    let full = std::path::Path::new(repo).join(path);
     let in_tree = full.is_file();
     let new_data_base64 = if in_tree {
-        let bytes = std::fs::read(&full)?;
+        let bytes = std::fs::read(full)?;
         Some(STANDARD.encode(bytes))
     } else {
         None
@@ -106,8 +100,7 @@ fn is_image_path(path: &str) -> bool {
 
 /// Write new contents to a file in the working tree (an in-review edit).
 pub fn save_file(repo: &str, path: &str, content: &str) -> Result<()> {
-    validate_relative_path(path)?;
-    let full = std::path::Path::new(repo).join(path);
+    let full = resolve_target_in_root(repo, path)?;
     if let Some(dir) = full.parent() {
         std::fs::create_dir_all(dir).ok();
     }
@@ -145,6 +138,20 @@ fn resolve_in_root(repo: &str, path: &str) -> Result<std::path::PathBuf> {
         }
     }
     Ok(dir.join(leaf))
+}
+
+/// [`resolve_in_root`] for ops that read or write through the last component:
+/// an existing leaf is followed too, so a link to a file outside is refused.
+fn resolve_target_in_root(repo: &str, path: &str) -> Result<std::path::PathBuf> {
+    let full = resolve_in_root(repo, path)?;
+    if std::fs::symlink_metadata(&full).is_err() {
+        return Ok(full);
+    }
+    let target = std::fs::canonicalize(&full)?;
+    if !target.starts_with(std::fs::canonicalize(repo)?) {
+        bail!("refusing path outside the root: {path}");
+    }
+    Ok(target)
 }
 
 pub fn create_file(repo: &str, path: &str, directory: bool) -> Result<()> {
@@ -186,7 +193,7 @@ pub fn delete_file(repo: &str, path: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_file, delete_file, rename_file};
+    use super::{create_file, delete_file, file_doc, rename_file, save_file};
 
     struct Fixture {
         repo: tempfile::TempDir,
@@ -301,5 +308,45 @@ mod tests {
         assert!(create_file(&fx.root(), "", false).is_err());
         assert!(rename_file(&fx.root(), "", "a.txt").is_err());
         assert!(delete_file(&fx.root(), "").is_err());
+    }
+
+    #[tokio::test]
+    async fn file_doc_reads_a_relative_path() {
+        let fx = Fixture::new();
+        std::fs::write(fx.repo.path().join("notes.txt"), "hello").unwrap();
+        let doc = file_doc(&fx.root(), "notes.txt").await.unwrap();
+        assert_eq!(doc.new_text, "hello");
+    }
+
+    #[tokio::test]
+    async fn file_doc_refuses_paths_outside_the_root() {
+        let fx = Fixture::new();
+        let secret = fx.outside.path().join("secret.png");
+        std::fs::write(&secret, "keep").unwrap();
+        let dir = fx.outside.path().file_name().unwrap().to_string_lossy();
+        let link = fx.escape_link("escape");
+        std::os::unix::fs::symlink(&secret, fx.repo.path().join("leak.png")).unwrap();
+
+        for path in [
+            secret.to_string_lossy().to_string(),
+            format!("../{dir}/secret.png"),
+            format!("{link}/secret.png"),
+            "leak.png".to_string(),
+        ] {
+            assert!(file_doc(&fx.root(), &path).await.is_err(), "{path}");
+        }
+    }
+
+    #[test]
+    fn save_file_does_not_write_through_a_link_that_leaves_the_root() {
+        let fx = Fixture::new();
+        let outside = fx.outside.path().join("target.txt");
+        std::fs::write(&outside, "keep").unwrap();
+        std::os::unix::fs::symlink(&outside, fx.repo.path().join("link.txt")).unwrap();
+
+        assert!(save_file(&fx.root(), "link.txt", "overwritten").is_err());
+        assert!(save_file(&fx.root(), &outside.to_string_lossy(), "overwritten").is_err());
+        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "keep");
+        save_file(&fx.root(), "kept/inside.txt", "ok").unwrap();
     }
 }

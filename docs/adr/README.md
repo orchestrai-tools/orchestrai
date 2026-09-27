@@ -30,3 +30,4 @@ stale and then misleads.
 | [0014](0014-quit-stops-the-daemon.md) | Quitting the app stops the daemon it started |
 | [0015](0015-worktree-lifecycle-across-restarts.md) | Worktree lifecycle survives a daemon restart |
 | [0016](0016-service-readiness.md) | Service readiness has one verdict per run, and a deadline |
+| [0017](0017-daemon-origin-and-path-confinement.md) | The daemon checks WebSocket origins and confines client paths |
