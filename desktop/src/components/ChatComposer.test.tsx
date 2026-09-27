@@ -82,7 +82,7 @@ describe("ChatComposer — workflow parents", () => {
   it("routes a message to the asking stage when a question is pending", async () => {
     renderComposer(task(run("question")));
     await send("Postgres");
-    expect(workflowReply).toHaveBeenCalledWith("t_1", "Postgres");
+    expect(workflowReply).toHaveBeenCalledWith("t_1", "Postgres", undefined);
     expect(request).not.toHaveBeenCalledWith("session.prompt", expect.anything());
   });
 
@@ -96,6 +96,7 @@ describe("ChatComposer — workflow parents", () => {
     renderComposer(task(run("limit")));
     await send("focus on the parser");
     expect(workflowDecide).toHaveBeenCalledWith("t_1", "extend", {
+      barrierId: undefined,
       note: "focus on the parser",
       rounds: 1,
     });

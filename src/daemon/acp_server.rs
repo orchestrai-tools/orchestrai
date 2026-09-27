@@ -239,7 +239,7 @@ async fn handle_connection(
                     .unwrap_or("allow");
 
                 if let Some(tid) = task_id_val {
-                    daemon.session_permission(tid, request_id, outcome).await;
+                    let _ = daemon.session_permission(tid, request_id, outcome).await;
                     let result = json!({"status": "answered"});
                     let resp = json!({"jsonrpc": "2.0", "result": result, "id": id});
                     let _ = write_tx.send(format!("{resp}"));

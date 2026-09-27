@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { TaskInfo, WorkflowWaitKind } from "../protocol";
 import type { AttentionItem } from "./attentionRail";
-import { decisionActionKinds, permissionApproveOption } from "./decisionActions";
+import { decisionActionKinds } from "./decisionActions";
 import type { PermissionUpdate } from "./sessionPermissions";
 
 function task(overrides: Partial<TaskInfo>): TaskInfo {
@@ -93,14 +93,3 @@ function pausedRun() {
     workflowName: "Wf",
   };
 }
-
-describe("permissionApproveOption", () => {
-  it.each([
-    [["allow_once", "deny"], "allow_once"],
-    [["allow", "deny"], "allow"],
-    [["deny"], undefined],
-    [["always_allow", "deny"], "always_allow"],
-  ])("resolves %j to %j", (options, expected) => {
-    expect(permissionApproveOption(options)).toBe(expected);
-  });
-});

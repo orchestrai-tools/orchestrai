@@ -210,6 +210,10 @@ pub(super) fn defs() -> Value {
                     "message": {
                         "type": "string",
                         "description": "The answer to the stage's question."
+                    },
+                    "barrier_id": {
+                        "type": "string",
+                        "description": "The workflowRun.waiting.barrierId from list_agents. Pass the id you saw so a stale answer is refused rather than landing on a newer question."
                     }
                 },
                 "required": ["task_id", "message"]
@@ -241,6 +245,10 @@ pub(super) fn defs() -> Value {
                     "note": {
                         "type": "string",
                         "description": "For decision=extend: optional guidance delivered to the next fix stage."
+                    },
+                    "barrier_id": {
+                        "type": "string",
+                        "description": "The workflowRun.waiting.barrierId from list_agents. Pass the id you saw so a stale decision is refused rather than landing on a newer barrier."
                     }
                 },
                 "required": ["task_id", "decision"]

@@ -2,7 +2,8 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { AttentionItem } from "@/lib/attentionRail";
-import { decisionActionKinds, permissionApproveOption } from "@/lib/decisionActions";
+import { decisionActionKinds } from "@/lib/decisionActions";
+import { approvePermissionOption } from "@/lib/permissionApproval";
 
 import { daemon } from "../daemon";
 
@@ -45,7 +46,7 @@ function RowActions({
   if (kind === "permission") {
     const permission = item.permission;
     if (!permission) return null;
-    const approve = permissionApproveOption(permission.options);
+    const approve = approvePermissionOption(permission.options);
     return (
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
@@ -76,9 +77,10 @@ function RowActions({
   }
 
   if (kind === "question") {
+    const barrierId = item.task.workflowRun?.waiting?.barrierId ?? undefined;
     const send = (message: string) =>
       void act("send reply", async () => {
-        await daemon.workflowReply(item.task.id, message);
+        await daemon.workflowReply(item.task.id, message, barrierId);
         setText("");
       });
     return (
@@ -128,7 +130,10 @@ function RowActions({
           title="Run one more fix → review cycle"
           onClick={() =>
             void act("add one review round", () =>
-              daemon.workflowDecide(item.task.id, "extend", { rounds: 1 }),
+              daemon.workflowDecide(item.task.id, "extend", {
+                barrierId: item.task.workflowRun?.waiting?.barrierId ?? undefined,
+                rounds: 1,
+              }),
             )
           }
         >
@@ -140,7 +145,11 @@ function RowActions({
           disabled={busy}
           title="Stop the pipeline and send the current changes to human review"
           onClick={() =>
-            void act("finish the workflow", () => daemon.workflowDecide(item.task.id, "finish"))
+            void act("finish the workflow", () =>
+              daemon.workflowDecide(item.task.id, "finish", {
+                barrierId: item.task.workflowRun?.waiting?.barrierId ?? undefined,
+              }),
+            )
           }
         >
           {busyAction === "finish the workflow" ? "Finishing…" : "Finish for review"}

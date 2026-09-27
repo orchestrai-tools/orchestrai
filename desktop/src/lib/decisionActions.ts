@@ -17,11 +17,3 @@ export function decisionActionKinds(item: AttentionItem): DecisionActionKind[] {
   if (kind === "limit") return ["limit"];
   return [];
 }
-
-/** Best option to treat as "approve": the explicit allow spellings first. */
-export function permissionApproveOption(options: readonly string[]): string | undefined {
-  for (const preferred of ["allow_once", "allow", "allow_always"]) {
-    if (options.includes(preferred)) return preferred;
-  }
-  return options.find((option) => option.includes("allow"));
-}

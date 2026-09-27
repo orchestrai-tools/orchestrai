@@ -90,7 +90,12 @@ describe("DecisionRowActions", () => {
     const user = userEvent.setup();
     render(
       <DecisionRowActions
-        item={item({ task: task({ status: "waiting", workflowRun: run({ kind: "question" }) }) })}
+        item={item({
+          task: task({
+            status: "waiting",
+            workflowRun: run({ barrierId: "b_1", kind: "question" }),
+          }),
+        })}
       />,
     );
 
@@ -98,7 +103,7 @@ describe("DecisionRowActions", () => {
     expect(send).toBeDisabled();
     await user.type(screen.getByLabelText("Reply to workflow question"), "ship it");
     await user.click(send);
-    await waitFor(() => expect(reply).toHaveBeenCalledWith("task-1", "ship it"));
+    await waitFor(() => expect(reply).toHaveBeenCalledWith("task-1", "ship it", "b_1"));
   });
 
   it("sends Yes preset replies immediately", async () => {
@@ -106,12 +111,17 @@ describe("DecisionRowActions", () => {
     const user = userEvent.setup();
     render(
       <DecisionRowActions
-        item={item({ task: task({ status: "waiting", workflowRun: run({ kind: "question" }) }) })}
+        item={item({
+          task: task({
+            status: "waiting",
+            workflowRun: run({ barrierId: "b_1", kind: "question" }),
+          }),
+        })}
       />,
     );
 
     await user.click(screen.getByRole("button", { name: "Yes" }));
-    await waitFor(() => expect(reply).toHaveBeenCalledWith("task-1", "yes"));
+    await waitFor(() => expect(reply).toHaveBeenCalledWith("task-1", "yes", "b_1"));
   });
 
   it("extends one round or finishes for review on limit rows", async () => {
@@ -119,14 +129,20 @@ describe("DecisionRowActions", () => {
     const user = userEvent.setup();
     render(
       <DecisionRowActions
-        item={item({ task: task({ status: "waiting", workflowRun: run({ kind: "limit" }) }) })}
+        item={item({
+          task: task({ status: "waiting", workflowRun: run({ barrierId: "b_2", kind: "limit" }) }),
+        })}
       />,
     );
 
     await user.click(screen.getByRole("button", { name: "1 more round" }));
-    await waitFor(() => expect(decide).toHaveBeenCalledWith("task-1", "extend", { rounds: 1 }));
+    await waitFor(() =>
+      expect(decide).toHaveBeenCalledWith("task-1", "extend", { barrierId: "b_2", rounds: 1 }),
+    );
     await user.click(screen.getByRole("button", { name: "Finish for review" }));
-    await waitFor(() => expect(decide).toHaveBeenCalledWith("task-1", "finish"));
+    await waitFor(() =>
+      expect(decide).toHaveBeenCalledWith("task-1", "finish", { barrierId: "b_2" }),
+    );
   });
 
   it.each(["blocked", "interrupted"] as const)("renders nothing for %s rows", (status) => {

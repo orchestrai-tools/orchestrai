@@ -254,7 +254,8 @@ fn agents_listing_projection_is_compact_and_keeps_decision_critical_fields() {
                 "waiting": {
                     "kind": "question",
                     "stage": "review",
-                    "question": "Should the fix stage also update the changelog?"
+                    "question": "Should the fix stage also update the changelog?",
+                    "barrierId": "t_2:4"
                 }
             },
             "orchestrationGraph": {
@@ -297,6 +298,7 @@ fn agents_listing_projection_is_compact_and_keeps_decision_critical_fields() {
     assert!(t2.contains("wf stage=review"), "got: {t2}");
     assert!(t2.contains("round=2/3"), "got: {t2}");
     assert!(t2.contains("waiting=question"), "got: {t2}");
+    assert!(t2.contains("barrier=t_2:4"), "got: {t2}");
     assert!(t2.contains("changelog"), "got: {t2}");
     // Graph reduced to one compact status line.
     assert!(

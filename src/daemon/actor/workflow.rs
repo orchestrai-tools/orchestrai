@@ -149,7 +149,7 @@ impl Daemon {
             let active_status = match run.state {
                 RunState::Running { .. } => Some(TaskStatus::Running),
                 RunState::AwaitingReply { .. }
-                | RunState::AwaitingLimitDecision
+                | RunState::AwaitingLimitDecision { .. }
                 | RunState::Paused { .. } => Some(TaskStatus::Waiting),
                 RunState::Done | RunState::Failed => None,
             };
@@ -377,7 +377,7 @@ impl Daemon {
                     let status = match run.state {
                         RunState::Running { .. } => TaskStatus::Running,
                         RunState::AwaitingReply { .. }
-                        | RunState::AwaitingLimitDecision
+                        | RunState::AwaitingLimitDecision { .. }
                         | RunState::Paused { .. } => TaskStatus::Waiting,
                         RunState::Done | RunState::Failed => task.status.clone(),
                     };

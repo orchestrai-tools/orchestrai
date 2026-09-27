@@ -866,11 +866,20 @@ pub enum Method {
     },
     /// Answer a stage's pending `need_user_input` question. The message is
     /// forwarded verbatim to the session that asked. Errors unless the
-    /// pipeline is waiting on a question.
+    /// pipeline is waiting on a question, or when `barrier_id` names a barrier
+    /// that is no longer the open one.
     #[serde(rename = "workflow.reply")]
-    WorkflowReply { task: String, message: String },
+    WorkflowReply {
+        task: String,
+        message: String,
+        /// The `waiting.barrierId` the answer was written against; refused when
+        /// it does not match the open barrier.
+        #[serde(default)]
+        barrier_id: Option<String>,
+    },
     /// Decide what an out-of-rounds pipeline does next. Errors unless the
-    /// pipeline is waiting on a limit decision.
+    /// pipeline is waiting on a limit decision, or when `barrier_id` names a
+    /// barrier that is no longer the open one.
     #[serde(rename = "workflow.decide")]
     WorkflowDecide {
         task: String,
@@ -882,6 +891,10 @@ pub enum Method {
         /// Optional extra guidance delivered to the next fix stage.
         #[serde(default)]
         note: Option<String>,
+        /// The `waiting.barrierId` the decision was made against; refused when
+        /// it does not match the open barrier.
+        #[serde(default)]
+        barrier_id: Option<String>,
     },
 
     // ── Bootstrap wizard (desktop) ──

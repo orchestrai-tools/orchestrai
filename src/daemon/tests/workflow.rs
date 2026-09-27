@@ -425,6 +425,7 @@ async fn archiving_the_orchestrator_stops_a_running_child_workflow() {
         .send(Command::WorkflowReply {
             task: parent_id.clone(),
             message: "Postgres".into(),
+            barrier_id: None,
             reply: reply_tx,
         })
         .await;

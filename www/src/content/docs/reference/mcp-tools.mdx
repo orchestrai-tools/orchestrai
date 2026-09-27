@@ -242,14 +242,14 @@ Soft-pause at the **next stage boundary** — the running stage finishes its tur
 
 ### `answer_workflow`
 
-Answers a stage's pending question — valid only while `list_agents` shows `workflowRun.waiting.kind == "question"`. The message is forwarded to the session that asked.
+Answers a stage's pending question — valid only while `list_agents` shows `workflowRun.waiting.kind == "question"`. The message is forwarded to the session that asked. Pass the `workflowRun.waiting.barrierId` you saw as `barrier_id`; an answer written against a barrier that has since moved on is refused.
 
 ### `decide_workflow`
 
 Decides what happens when a pipeline exhausts its review ⇄ fix rounds with findings still open (`waiting.kind == "limit"`) — grant more rounds, or accept and stop.
 
 ```
-decide_workflow(task_id, decision, rounds?, note?)
+decide_workflow(task_id, decision, rounds?, note?, barrier_id?)
 ```
 
 **Why this exists:** an unbounded review loop is how an agent pipeline burns your quota all night. The limit is a feature; this tool is how you answer it deliberately.

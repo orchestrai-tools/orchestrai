@@ -69,6 +69,10 @@ pub struct WorkflowRun {
     /// applied to every stage session.
     #[serde(default)]
     pub config_overrides: HashMap<String, String>,
+    /// Counter behind [`WorkflowRun::next_barrier_id`]. Persisted so ids stay
+    /// unique across a restart.
+    #[serde(default)]
+    barrier_seq: u32,
 }
 
 impl WorkflowRun {
@@ -110,6 +114,7 @@ impl WorkflowRun {
             attachments: Vec::new(),
             include_runtime_context,
             config_overrides,
+            barrier_seq: 0,
         }
         .with_attachments(attachments)
     }
@@ -211,6 +216,14 @@ impl WorkflowRun {
         self.pending_guidance.take()
     }
 
+    /// Mint a stable id for the barrier the run is about to park on. The id is
+    /// echoed by `workflow.reply` / `workflow.decide` so an answer meant for an
+    /// earlier question cannot land on a later one (first-writer-wins).
+    pub fn next_barrier_id(&mut self) -> String {
+        self.barrier_seq += 1;
+        format!("{}:{}", self.parent_id, self.barrier_seq)
+    }
+
     /// Every stage child this run ever spawned. Completed stages keep their
     /// sessions alive during the run (same-session re-review needs them), so
     /// final cleanup must sweep this full set, not just `active_children`.
@@ -228,21 +241,26 @@ impl WorkflowRun {
         let (stage, waiting) = match &self.state {
             RunState::Running { stage } => (stage.wire(), None),
             RunState::AwaitingReply {
-                stage, question, ..
+                stage,
+                question,
+                barrier_id,
+                ..
             } => (
                 stage.wire(),
                 Some(wire::WorkflowWaiting {
                     kind: wire::WorkflowWaitKind::Question,
                     stage: Some(stage.wire()),
                     question: Some(question.clone()),
+                    barrier_id: (!barrier_id.is_empty()).then(|| barrier_id.clone()),
                 }),
             ),
-            RunState::AwaitingLimitDecision => (
+            RunState::AwaitingLimitDecision { barrier_id } => (
                 wire::WorkflowStage::Review,
                 Some(wire::WorkflowWaiting {
                     kind: wire::WorkflowWaitKind::Limit,
                     stage: Some(wire::WorkflowStage::Review),
                     question: Some(format::summarize_findings(&self.open_findings)),
+                    barrier_id: (!barrier_id.is_empty()).then(|| barrier_id.clone()),
                 }),
             ),
             RunState::Paused { next } => (
@@ -251,6 +269,7 @@ impl WorkflowRun {
                     kind: wire::WorkflowWaitKind::Paused,
                     stage: Some(next.wire()),
                     question: None,
+                    barrier_id: None,
                 }),
             ),
             RunState::Done => (wire::WorkflowStage::Done, None),

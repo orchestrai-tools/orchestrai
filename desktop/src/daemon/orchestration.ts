@@ -58,18 +58,20 @@ export function OrchestrationMethods<TBase extends Constructor<CoreClient>>(Base
       await this.request("workflow.resume", { note, task });
     }
 
-    /** Answer a stage's pending question. */
-    async workflowReply(task: string, message: string): Promise<void> {
-      await this.request("workflow.reply", { message, task });
+    /** Answer a stage's pending question. `barrierId` is the `waiting.barrierId`
+     *  the answer was written against; a stale id is refused. */
+    async workflowReply(task: string, message: string, barrierId?: string): Promise<void> {
+      await this.request("workflow.reply", { barrier_id: barrierId, message, task });
     }
 
     /** Decide what an out-of-rounds pipeline does next. */
     async workflowDecide(
       task: string,
       decision: WorkflowDecision,
-      opts?: { rounds?: number; note?: string },
+      opts?: { rounds?: number; note?: string; barrierId?: string },
     ): Promise<void> {
       await this.request("workflow.decide", {
+        barrier_id: opts?.barrierId,
         decision,
         note: opts?.note,
         rounds: opts?.rounds,

@@ -97,6 +97,9 @@ pub enum ErrorCode {
     InvalidRequest,
     NotFound,
     Conflict,
+    /// The permission request was already answered by someone else; answers are
+    /// first-writer-wins, so this one changed nothing.
+    PermissionAlreadyResolved,
     AgentUnavailable,
     /// The agent is installed but cannot start — typically a global install
     /// missing its platform optional dependencies. A client can offer a

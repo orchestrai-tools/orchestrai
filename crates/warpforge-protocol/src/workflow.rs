@@ -186,6 +186,11 @@ pub struct WorkflowWaiting {
     /// `limit`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question: Option<String>,
+    /// Stable id for this barrier. Pass it back with `workflow.reply` /
+    /// `workflow.decide` so an answer for an earlier question cannot land on a
+    /// later one. Absent on older daemons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub barrier_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

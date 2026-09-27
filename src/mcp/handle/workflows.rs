@@ -86,11 +86,16 @@ pub(super) async fn dispatch(
                 .get("message")
                 .and_then(Value::as_str)
                 .ok_or_else(|| anyhow!("'message' is required"))?;
+            let barrier_id = args.get("barrier_id").and_then(Value::as_str);
             ensure_owned(client, parent_task, project, args, task_id).await?;
             client
                 .request(
                     "workflow.reply",
-                    json!({ "task": task_id, "message": message }),
+                    json!({
+                        "task": task_id,
+                        "message": message,
+                        "barrier_id": barrier_id,
+                    }),
                 )
                 .await?;
             Ok(format!(
@@ -119,6 +124,7 @@ pub(super) async fn dispatch(
                 ),
             };
             let note = args.get("note").and_then(Value::as_str);
+            let barrier_id = args.get("barrier_id").and_then(Value::as_str);
             ensure_owned(client, parent_task, project, args, task_id).await?;
             client
                 .request(
@@ -128,6 +134,7 @@ pub(super) async fn dispatch(
                         "decision": decision,
                         "rounds": rounds,
                         "note": note,
+                        "barrier_id": barrier_id,
                     }),
                 )
                 .await?;

@@ -112,10 +112,17 @@ pub enum RunState {
         stage: StageKind,
         child: String,
         question: String,
+        /// Stable id for this barrier, echoed by `workflow.reply` so an answer
+        /// meant for an earlier question cannot land on a later one.
+        #[serde(default)]
+        barrier_id: String,
     },
     /// Review rounds exhausted with open findings; suspended until
     /// `workflow.decide`.
-    AwaitingLimitDecision,
+    AwaitingLimitDecision {
+        #[serde(default)]
+        barrier_id: String,
+    },
     /// Soft-paused at a stage barrier; `next` starts on `workflow.resume`.
     Paused {
         next: StageKind,

@@ -72,7 +72,20 @@ pub(super) async fn session_permission(
     };
     handle
         .session_permission(&task_id, &request_id, outcome)
-        .await;
+        .await
+        .map_err(
+            |crate::daemon::actor::lifecycle::PermissionAnswerError::AlreadyResolved {
+                 outcome,
+             }| {
+                wire::RpcError {
+                    code: wire::ErrorCode::PermissionAlreadyResolved,
+                    message: match outcome {
+                        Some(outcome) => format!("already resolved as \"{outcome}\""),
+                        None => "this permission request is no longer pending".to_string(),
+                    },
+                }
+            },
+        )?;
     Ok(json!(null))
 }
 

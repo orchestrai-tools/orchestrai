@@ -199,13 +199,25 @@ impl DaemonHandle {
         rx.await.unwrap_or_else(|_| Err("daemon stopped".into()))
     }
 
-    pub async fn session_permission(&self, task_id: &str, request_id: &str, outcome: &str) {
+    pub async fn session_permission(
+        &self,
+        task_id: &str,
+        request_id: &str,
+        outcome: &str,
+    ) -> Result<(), crate::daemon::actor::lifecycle::PermissionAnswerError> {
+        let (tx, rx) = oneshot::channel();
         self.send(Command::SessionPermission {
             task_id: task_id.into(),
             request_id: request_id.into(),
             outcome: outcome.into(),
+            reply: tx,
         })
         .await;
+        rx.await.unwrap_or(Err(
+            crate::daemon::actor::lifecycle::PermissionAnswerError::AlreadyResolved {
+                outcome: None,
+            },
+        ))
     }
 
     pub async fn spawn_agent(

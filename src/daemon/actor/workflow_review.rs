@@ -328,7 +328,8 @@ impl Daemon {
                 } else {
                     match run.spec.review.on_limit {
                         crate::workflow_config::OnLimit::Ask => {
-                            run.state = RunState::AwaitingLimitDecision;
+                            let barrier_id = run.next_barrier_id();
+                            run.state = RunState::AwaitingLimitDecision { barrier_id };
                             self.workflow_timeline(
                                 parent_id,
                                 format!(

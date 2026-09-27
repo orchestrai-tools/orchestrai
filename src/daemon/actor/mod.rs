@@ -41,7 +41,7 @@ mod acp_update;
 mod command;
 mod config_observer;
 mod event;
-mod lifecycle;
+pub(crate) mod lifecycle;
 mod origin_sweep;
 mod output;
 mod policy;

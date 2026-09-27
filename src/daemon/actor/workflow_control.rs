@@ -7,6 +7,19 @@ use crate::daemon::actor::{Daemon, Event};
 use crate::daemon::task::TaskStatus;
 use crate::daemon::workflow::{self, RunState, StageKind, WorkflowOutcome, WorkflowRun};
 
+/// Refuse an answer carrying a barrier id that is not the one open now. An
+/// answer with no id (older client) is accepted; an empty open id (a run
+/// persisted before barrier ids existed) cannot be validated, so it is too.
+fn refuse_stale_barrier(open: &str, given: Option<&str>) -> Result<(), String> {
+    match given {
+        Some(id) if !open.is_empty() && id != open => Err(
+            "this answer is for a stale request; the pipeline is now waiting on something else"
+                .to_string(),
+        ),
+        _ => Ok(()),
+    }
+}
+
 impl Daemon {
     /// Stage barrier: honour a pending pause request, otherwise start `next`.
     pub(crate) async fn workflow_advance(&mut self, parent_id: &str, next: StageKind) {
@@ -206,7 +219,7 @@ impl Daemon {
                 Ok(())
             }
             RunState::Paused { .. } => Err("already paused".to_string()),
-            RunState::AwaitingReply { .. } | RunState::AwaitingLimitDecision => {
+            RunState::AwaitingReply { .. } | RunState::AwaitingLimitDecision { .. } => {
                 Err("the pipeline is already waiting for your input".to_string())
             }
             RunState::Done | RunState::Failed => Err("the pipeline has finished".to_string()),
@@ -248,13 +261,22 @@ impl Daemon {
         &mut self,
         parent_id: &str,
         message: String,
+        barrier_id: Option<String>,
     ) -> Result<(), String> {
         let (stage, child) = {
             let Some(run) = self.workflow_runs.get(parent_id) else {
                 return Err("no workflow pipeline on this task".to_string());
             };
             match &run.state {
-                RunState::AwaitingReply { stage, child, .. } => (*stage, child.clone()),
+                RunState::AwaitingReply {
+                    stage,
+                    child,
+                    barrier_id: open,
+                    ..
+                } => {
+                    refuse_stale_barrier(open, barrier_id.as_deref())?;
+                    (*stage, child.clone())
+                }
                 _ => return Err("the pipeline is not waiting for an answer".to_string()),
             }
         };
@@ -315,14 +337,19 @@ impl Daemon {
         decision: wire::WorkflowDecision,
         rounds: Option<u32>,
         note: Option<String>,
+        barrier_id: Option<String>,
     ) -> Result<(), String> {
         {
             let Some(run) = self.workflow_runs.get(parent_id) else {
                 return Err("no workflow pipeline on this task".to_string());
             };
-            if run.state != RunState::AwaitingLimitDecision {
+            let RunState::AwaitingLimitDecision {
+                barrier_id: open, ..
+            } = &run.state
+            else {
                 return Err("the pipeline is not waiting for a limit decision".to_string());
-            }
+            };
+            refuse_stale_barrier(open, barrier_id.as_deref())?;
         }
         match decision {
             wire::WorkflowDecision::Extend => {

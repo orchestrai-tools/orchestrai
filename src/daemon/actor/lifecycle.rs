@@ -10,6 +10,17 @@ use crate::daemon::task::{Task, TaskStatus};
 #[derive(Default)]
 pub(crate) struct PendingPermissions {
     pub(crate) by_task: HashMap<String, HashSet<String>>,
+    /// The outcome that won for requests no longer pending, so a stale answer
+    /// can be told what already happened instead of silently rewriting it.
+    /// Cleared with the task.
+    resolved: HashMap<String, HashMap<String, String>>,
+}
+
+/// Why a permission answer was refused. Answers are first-writer-wins.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum PermissionAnswerError {
+    /// The request was already answered; `outcome` is what won, when known.
+    AlreadyResolved { outcome: Option<String> },
 }
 
 impl PendingPermissions {
@@ -20,17 +31,40 @@ impl PendingPermissions {
             .insert(request_id.to_string());
     }
 
-    pub(crate) fn resolve(&mut self, task_id: &str, request_id: &str) {
-        if let Some(requests) = self.by_task.get_mut(task_id) {
-            requests.remove(request_id);
-            if requests.is_empty() {
-                self.by_task.remove(task_id);
-            }
+    /// Resolve a request. `Ok` when this answer won; `Err` when it was already
+    /// answered (or is not pending), in which case nothing changes.
+    pub(crate) fn resolve(
+        &mut self,
+        task_id: &str,
+        request_id: &str,
+        outcome: &str,
+    ) -> Result<(), PermissionAnswerError> {
+        let won = self
+            .by_task
+            .get_mut(task_id)
+            .is_some_and(|requests| requests.remove(request_id));
+        if !won {
+            return Err(PermissionAnswerError::AlreadyResolved {
+                outcome: self
+                    .resolved
+                    .get(task_id)
+                    .and_then(|by_request| by_request.get(request_id))
+                    .cloned(),
+            });
         }
+        if self.by_task.get(task_id).is_some_and(HashSet::is_empty) {
+            self.by_task.remove(task_id);
+        }
+        self.resolved
+            .entry(task_id.to_string())
+            .or_default()
+            .insert(request_id.to_string(), outcome.to_string());
+        Ok(())
     }
 
     pub(crate) fn cleanup_task(&mut self, task_id: &str) {
         self.by_task.remove(task_id);
+        self.resolved.remove(task_id);
     }
 
     pub(crate) fn has_pending(&self, task_id: &str) -> bool {

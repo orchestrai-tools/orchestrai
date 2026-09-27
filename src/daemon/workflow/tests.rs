@@ -423,12 +423,14 @@ fn wire_info_reflects_state() {
         stage: StageKind::Plan,
         child: "t_c".into(),
         question: "which db?".into(),
+        barrier_id: "b_1".into(),
     };
     let info = run.wire_info();
     assert_eq!(info.max_rounds, 4);
     let waiting = info.waiting.unwrap();
     assert_eq!(waiting.kind, wire::WorkflowWaitKind::Question);
     assert_eq!(waiting.question.as_deref(), Some("which db?"));
+    assert_eq!(waiting.barrier_id.as_deref(), Some("b_1"));
 
     run.open_findings = vec![Finding {
         severity: Severity::High,
@@ -438,10 +440,13 @@ fn wire_info_reflects_state() {
         description: "d".into(),
         reviewer: "r".into(),
     }];
-    run.state = RunState::AwaitingLimitDecision;
+    run.state = RunState::AwaitingLimitDecision {
+        barrier_id: "b_2".into(),
+    };
     let waiting = run.wire_info().waiting.unwrap();
     assert_eq!(waiting.kind, wire::WorkflowWaitKind::Limit);
     assert_eq!(waiting.question.as_deref(), Some("open findings: 1 high"));
+    assert_eq!(waiting.barrier_id.as_deref(), Some("b_2"));
 
     run.state = RunState::Paused {
         next: StageKind::Fix,

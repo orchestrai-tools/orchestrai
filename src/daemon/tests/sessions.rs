@@ -83,7 +83,7 @@ async fn acp_session_streams_updates_and_permission_roundtrip() {
         // Once the agent asks, answer "allow" so it can finish the turn.
         if !answered {
             if let Some(rid) = permission_request_id.clone() {
-                daemon.session_permission(&task_id, &rid, "allow").await;
+                let _ = daemon.session_permission(&task_id, &rid, "allow").await;
                 answered = true;
             }
         }
@@ -120,6 +120,90 @@ async fn acp_session_streams_updates_and_permission_roundtrip() {
         waiting_files_changed > 0,
         "an editing turn should park in Waiting with changes recorded"
     );
+}
+
+/// Answers are first-writer-wins: a second answer is refused and the outcome
+/// the transcript shows is the one the agent actually received.
+#[tokio::test]
+async fn second_permission_answer_is_refused_and_changes_nothing() {
+    use crate::daemon::actor::lifecycle::PermissionAnswerError;
+    use warpforge_protocol as wire;
+
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let daemon = Daemon::spawn(test_projects(), store);
+    let mut events = daemon.subscribe();
+
+    let mock = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/mock-acp-agent.mjs"
+    );
+    let agent = format!("node {mock}");
+    let task_id = daemon
+        .create_task(
+            "demo",
+            "fix the thing",
+            &agent,
+            vec![],
+            false,
+            false,
+            None,
+            vec![],
+            None,
+            std::collections::HashMap::new(),
+            None,
+        )
+        .await;
+
+    // Wait for the agent to ask.
+    let request_id = timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(Event::SessionUpdate {
+                task_id: tid,
+                update,
+            }) = events.recv().await
+            {
+                if tid == task_id {
+                    if let wire::SessionUpdate::PermissionRequest { request_id, .. } = update {
+                        return request_id;
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("the agent asks for permission");
+
+    daemon
+        .session_permission(&task_id, &request_id, "allow")
+        .await
+        .expect("the first answer wins");
+
+    let stale = daemon
+        .session_permission(&task_id, &request_id, "deny")
+        .await
+        .expect_err("the second answer is refused");
+    assert_eq!(
+        stale,
+        PermissionAnswerError::AlreadyResolved {
+            outcome: Some("allow".to_string())
+        }
+    );
+
+    // The persisted transcript holds exactly the winning answer.
+    let history = daemon.session_history(task_id.clone()).await.unwrap();
+    let resolved: Vec<String> = history
+        .iter()
+        .filter_map(|update| match update {
+            wire::SessionUpdate::PermissionResolved {
+                request_id: rid,
+                outcome,
+            } if rid == &request_id => Some(outcome.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(resolved, vec!["allow".to_string()]);
+
+    daemon.shutdown().await;
 }
 
 #[tokio::test]

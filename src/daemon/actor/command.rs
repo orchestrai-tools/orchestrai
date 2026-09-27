@@ -228,6 +228,8 @@ pub enum Command {
     WorkflowReply {
         task: String,
         message: String,
+        /// Barrier the answer was written against; a mismatch is refused.
+        barrier_id: Option<String>,
         reply: oneshot::Sender<Result<(), String>>,
     },
     /// Decide what an out-of-rounds workflow pipeline does next.
@@ -236,6 +238,8 @@ pub enum Command {
         decision: wire::WorkflowDecision,
         rounds: Option<u32>,
         note: Option<String>,
+        /// Barrier the decision was made against; a mismatch is refused.
+        barrier_id: Option<String>,
         reply: oneshot::Sender<Result<(), String>>,
     },
     /// Drain an orchestrator task's inbox of finished sub-agent results.
@@ -691,6 +695,9 @@ pub enum Command {
         task_id: String,
         request_id: String,
         outcome: String,
+        /// `Ok` when this answer won; `Err` when the request was already
+        /// answered (first-writer-wins), carrying the outcome that won.
+        reply: oneshot::Sender<Result<(), crate::daemon::actor::lifecycle::PermissionAnswerError>>,
     },
     /// Change a session selector (model/mode/…) the agent exposes. The reply
     /// carries the agent's verdict so the UI can undo a rejected pick.

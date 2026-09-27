@@ -3,10 +3,11 @@ import { toast } from "sonner";
 
 import AttentionToast from "@/components/AttentionToast";
 import PermissionToast from "@/components/PermissionToast";
-import { daemon } from "@/daemon";
+import { daemon, DaemonRpcError } from "@/daemon";
 import { agentDisplayName } from "@/lib/agentNames";
 import { attentionToastSummary } from "@/lib/attentionToast";
-import { permissionToastApproveOption, permissionToastContext } from "@/lib/permissionToast";
+import { approvePermissionOption } from "@/lib/permissionApproval";
+import { permissionToastContext } from "@/lib/permissionToast";
 import { awaitsReview } from "@/lib/taskGroups";
 import { taskLabel } from "@/lib/taskLabel";
 import { isSurfaceOwnedTask } from "@/lib/taskOrigin";
@@ -82,6 +83,23 @@ async function fireNativeNotification(opts: {
   } catch (error) {
     // Native notifications are best-effort; the in-house toast already covers this.
     console.warn("native notification failed", error);
+  }
+}
+
+/** Withdraw a delivered native notification once its request is resolved, so a
+ *  stale banner cannot be tapped later. Best-effort: an already-gone banner is
+ *  fine, and a failure is logged with context rather than swallowed. */
+async function withdrawNativeNotification(opts: {
+  kind: "permission" | "review";
+  request_id?: string;
+  task_id: string;
+}) {
+  if (!("__TAURI_INTERNALS__" in window)) return;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("withdraw_attention", { payload: opts });
+  } catch (error) {
+    console.warn("withdrawing native notification failed", { error, ...opts });
   }
 }
 
@@ -205,7 +223,7 @@ export function useDaemonEvents() {
             update,
             daemon.getState().sessionUpdates[taskId] ?? [],
           );
-          const approveOption = permissionToastApproveOption(update.options);
+          const approveOption = approvePermissionOption(update.options);
           const toastId = `attention:permission:${update.request_id}`;
           toast.custom(
             (sonnerId) => (
@@ -258,6 +276,11 @@ export function useDaemonEvents() {
           });
         } else if (update.kind === "permission_resolved") {
           toast.dismiss(`attention:permission:${update.request_id}`);
+          void withdrawNativeNotification({
+            kind: "permission",
+            request_id: update.request_id,
+            task_id: taskId,
+          });
         }
         return;
       }
@@ -275,6 +298,7 @@ export function useDaemonEvents() {
           notifyWorkflowWaiting(event.data, nowWaiting);
         } else if (!nowWaiting && wasWaiting) {
           toast.dismiss(`attention:workflow:${event.data.id}:${wasWaiting}`);
+          void withdrawNativeNotification({ kind: "review", task_id: event.data.id });
         }
         const wasAttention = previousTask ? attentionStatusOf(previousTask) : null;
         const nowAttention = attentionStatusOf(event.data);
@@ -339,13 +363,44 @@ export function useDaemonEvents() {
             (payload.action === "approve" || payload.action === "reject") &&
             payload.request_id
           ) {
+            const requestId = payload.request_id;
             void daemon
               .request("session.permission", {
                 outcome: payload.action === "approve" ? "allow" : "deny",
-                request_id: payload.request_id,
+                request_id: requestId,
                 task_id: taskId,
               })
-              .catch(() => {});
+              .then(() => {
+                void withdrawNativeNotification({
+                  kind: "permission",
+                  request_id: requestId,
+                  task_id: taskId,
+                });
+              })
+              .catch((error) => {
+                // A banner answered after the in-app prompt (or after a
+                // restart) is stale: the first answer wins, so note it
+                // quietly instead of alarming the user.
+                if (
+                  error instanceof DaemonRpcError &&
+                  error.code === "permission_already_resolved"
+                ) {
+                  console.warn(
+                    "native notification answered a request that was already resolved",
+                    error.message,
+                  );
+                  void withdrawNativeNotification({
+                    kind: "permission",
+                    request_id: requestId,
+                    task_id: taskId,
+                  });
+                  return;
+                }
+                console.warn("answering permission from a native notification failed", error);
+                toast.error("Could not answer the permission request", {
+                  description: error instanceof Error ? error.message : String(error),
+                });
+              });
             return;
           }
           if (payload.action === "review") {

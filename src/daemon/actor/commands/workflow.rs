@@ -46,18 +46,23 @@ impl Daemon {
             Command::WorkflowReply {
                 task,
                 message,
+                barrier_id,
                 reply,
             } => {
-                let _ = reply.send(self.workflow_reply(&task, message).await);
+                let _ = reply.send(self.workflow_reply(&task, message, barrier_id).await);
             }
             Command::WorkflowDecide {
                 task,
                 decision,
                 rounds,
                 note,
+                barrier_id,
                 reply,
             } => {
-                let _ = reply.send(self.workflow_decide(&task, decision, rounds, note).await);
+                let _ = reply.send(
+                    self.workflow_decide(&task, decision, rounds, note, barrier_id)
+                        .await,
+                );
             }
 
             Command::StartOrchestration {

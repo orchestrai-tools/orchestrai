@@ -64,14 +64,29 @@ describe("useWorkflowSend", () => {
     expect(await send(task({ waiting: { kind: "question" } })).send(submission("Postgres"))).toBe(
       true,
     );
-    expect(workflowReply).toHaveBeenCalledWith("t_1", "Postgres");
+    expect(workflowReply).toHaveBeenCalledWith("t_1", "Postgres", undefined);
 
     await send(task({ waiting: { kind: "paused" } })).send(submission("carry on"));
     expect(workflowResume).toHaveBeenCalledWith("t_1", "carry on");
 
     await send(task({ waiting: { kind: "limit" } })).send(submission("focus here"));
     expect(workflowDecide).toHaveBeenCalledWith("t_1", "extend", {
+      barrierId: undefined,
       note: "focus here",
+      rounds: 1,
+    });
+  });
+
+  it("passes the barrier id the caller saw, so a stale answer is refused", async () => {
+    await send(task({ waiting: { barrierId: "b_7", kind: "question" } })).send(
+      submission("Postgres"),
+    );
+    expect(workflowReply).toHaveBeenCalledWith("t_1", "Postgres", "b_7");
+
+    await send(task({ waiting: { barrierId: "b_8", kind: "limit" } })).send(submission("go"));
+    expect(workflowDecide).toHaveBeenCalledWith("t_1", "extend", {
+      barrierId: "b_8",
+      note: "go",
       rounds: 1,
     });
   });

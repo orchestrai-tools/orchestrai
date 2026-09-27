@@ -80,6 +80,9 @@ export interface WorkflowWaiting {
   stage?: WorkflowStage | null;
   /** The question text, or a findings summary for `limit`. */
   question?: string | null;
+  /** Stable id for this barrier; pass it back with the reply/decision so a
+   *  stale answer cannot land on a newer barrier. Absent on older daemons. */
+  barrierId?: string | null;
 }
 
 export type WorkflowWaitKind = "question" | "limit" | "paused";

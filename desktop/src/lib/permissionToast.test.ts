@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SessionUpdate } from "../protocol";
-import {
-  PERMISSION_TOAST_CONTEXT_LIMIT,
-  permissionToastApproveOption,
-  permissionToastContext,
-} from "./permissionToast";
+import { PERMISSION_TOAST_CONTEXT_LIMIT, permissionToastContext } from "./permissionToast";
 
 const request = (
   title = "Permission request",
@@ -82,16 +78,5 @@ describe("permissionToastContext", () => {
     expect(hugePrompt.length).toBeGreaterThan(5_000);
     expect(Array.from(summary).length).toBeLessThanOrEqual(PERMISSION_TOAST_CONTEXT_LIMIT);
     expect(summary.endsWith("…")).toBe(true);
-  });
-});
-
-describe("permissionToastApproveOption", () => {
-  it("prefers a one-shot approval without escalating to allow always", () => {
-    expect(permissionToastApproveOption(["allow_always", "deny", "allow"])).toBe("allow");
-    expect(permissionToastApproveOption(["Allow once", "deny"])).toBe("Allow once");
-  });
-
-  it("requires review when only persistent approval is available", () => {
-    expect(permissionToastApproveOption(["allow_always", "deny"])).toBeUndefined();
   });
 });

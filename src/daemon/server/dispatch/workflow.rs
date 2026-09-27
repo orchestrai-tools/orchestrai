@@ -58,10 +58,12 @@ pub(super) async fn workflow_reply(
     handle: &DaemonHandle,
     task: String,
     message: String,
+    barrier_id: Option<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     workflow_control(handle, |reply| Command::WorkflowReply {
         task,
         message,
+        barrier_id,
         reply,
     })
     .await
@@ -73,12 +75,14 @@ pub(super) async fn workflow_decide(
     decision: wire::WorkflowDecision,
     rounds: Option<u32>,
     note: Option<String>,
+    barrier_id: Option<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     workflow_control(handle, |reply| Command::WorkflowDecide {
         task,
         decision,
         rounds,
         note,
+        barrier_id,
         reply,
     })
     .await

@@ -18,6 +18,7 @@ export interface RpcError {
     | "invalid_request"
     | "not_found"
     | "conflict"
+    | "permission_already_resolved"
     | "agent_unavailable"
     | "agent_broken_install"
     | "internal"

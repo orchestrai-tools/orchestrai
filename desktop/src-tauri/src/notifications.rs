@@ -29,7 +29,13 @@ pub fn notify_attention(
     {
         use mac_usernotifications::{Action, Notification};
 
+        let attention_id = attention_id(
+            &payload.kind,
+            &payload.task_id,
+            payload.request_id.as_deref(),
+        );
         let mut notification = Notification::new()
+            .id(&attention_id)
             .title(&payload.title)
             .subtitle(&payload.subtitle)
             .message(&payload.body);
@@ -83,6 +89,45 @@ pub fn notify_attention(
                 }),
             );
         });
+    }
+    Ok(())
+}
+
+/// The identifier a native attention notification is delivered under. Stable
+/// across the send/withdraw pair so a resolved request can take its banner
+/// back out of Notification Center.
+fn attention_id(kind: &str, task_id: &str, request_id: Option<&str>) -> String {
+    match request_id {
+        Some(request_id) => format!("warpforge:{kind}:{request_id}"),
+        None => format!("warpforge:{kind}:{task_id}"),
+    }
+}
+
+/// Payload for withdrawing a delivered attention notification once it is
+/// resolved (answered in-app, or answered from a banner).
+#[derive(Deserialize)]
+pub struct WithdrawPayload {
+    pub kind: String,
+    pub task_id: String,
+    pub request_id: Option<String>,
+}
+
+/// Withdraw a delivered notification by the id `notify_attention` gave it. On
+/// non-macOS this is a no-op. Never fails the caller: a banner that is already
+/// gone is not an error.
+#[tauri::command]
+pub async fn withdraw_attention(
+    #[allow(unused_variables)] payload: WithdrawPayload,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use mac_usernotifications::close_delivered;
+        let id = attention_id(
+            &payload.kind,
+            &payload.task_id,
+            payload.request_id.as_deref(),
+        );
+        close_delivered(&id).await;
     }
     Ok(())
 }

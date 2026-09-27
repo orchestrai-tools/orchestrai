@@ -397,6 +397,7 @@ fn main() {
             window::enable_window_glass,
             window::disable_window_glass,
             notifications::notify_attention,
+            notifications::withdraw_attention,
             context_menu::show_context_menu,
             browser::browser_open,
             browser::browser_navigate,

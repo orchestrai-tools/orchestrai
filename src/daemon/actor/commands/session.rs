@@ -199,18 +199,32 @@ impl Daemon {
                 task_id,
                 request_id,
                 outcome,
+                reply,
             } => {
-                if let Some(handle) = self.sessions.get(&task_id) {
-                    handle.answer(request_id.clone(), outcome.clone());
+                // First answer wins. A stale answer — a second tap, or a banner
+                // answered after the in-app prompt — must not reach the agent
+                // or rewrite the outcome the transcript already shows.
+                match self
+                    .pending_permissions
+                    .resolve(&task_id, &request_id, &outcome)
+                {
+                    Ok(()) => {
+                        if let Some(handle) = self.sessions.get(&task_id) {
+                            handle.answer(request_id.clone(), outcome.clone());
+                        }
+                        self.emit_session(
+                            &task_id,
+                            wire::SessionUpdate::PermissionResolved {
+                                request_id,
+                                outcome,
+                            },
+                        );
+                        let _ = reply.send(Ok(()));
+                    }
+                    Err(error) => {
+                        let _ = reply.send(Err(error));
+                    }
                 }
-                self.pending_permissions.resolve(&task_id, &request_id);
-                self.emit_session(
-                    &task_id,
-                    wire::SessionUpdate::PermissionResolved {
-                        request_id,
-                        outcome,
-                    },
-                );
             }
             Command::SessionSetConfigOption {
                 task_id,

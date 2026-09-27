@@ -60,6 +60,13 @@ pub(crate) fn render_workflow_run(wf: &Value) -> String {
     if let Some(waiting) = wf.get("waiting").filter(|v| !v.is_null()) {
         let kind = waiting.get("kind").and_then(Value::as_str).unwrap_or("?");
         out.push_str(&format!(" waiting={kind}"));
+        if let Some(id) = waiting
+            .get("barrierId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            out.push_str(&format!(" barrier={id}"));
+        }
         if let Some(q) = waiting
             .get("question")
             .and_then(Value::as_str)

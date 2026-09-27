@@ -38,7 +38,7 @@ export function useWorkflowSend(task: TaskInfo): WorkflowSend {
       const text = submission.text.trim();
       switch (waiting?.kind) {
         case "question":
-          await daemon.workflowReply(task.id, text);
+          await daemon.workflowReply(task.id, text, waiting.barrierId ?? undefined);
           return true;
         case "paused":
           await daemon.workflowResume(task.id, text || undefined);
@@ -46,6 +46,7 @@ export function useWorkflowSend(task: TaskInfo): WorkflowSend {
         case "limit":
           // Typed guidance rides along with one more round of fixes.
           await daemon.workflowDecide(task.id, "extend", {
+            barrierId: waiting.barrierId ?? undefined,
             note: text || undefined,
             rounds: 1,
           });

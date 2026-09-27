@@ -42,6 +42,7 @@ async fn workflow_plan_question_reply_flow() {
         .send(Command::WorkflowReply {
             task: parent_id.clone(),
             message: "Postgres".into(),
+            barrier_id: None,
             reply: tx,
         })
         .await;
@@ -55,6 +56,79 @@ async fn workflow_plan_question_reply_flow() {
     .await;
     assert_eq!(done.status, TaskStatus::Waiting);
     assert_eq!(done.workflow_run.unwrap().round, 1);
+}
+
+#[tokio::test]
+async fn stale_barrier_id_is_refused() {
+    use warpforge_protocol as wire;
+    let (dir, projects) = workflow_project("name: placeholder\n");
+    let reviewer = wf_agent(&dir, "rev.state", "approve");
+    std::fs::write(
+        dir.path().join(".warpforge/workflows/test.yaml"),
+        format!("name: Q flow\nplan: {{}}\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
+    )
+    .unwrap();
+    let lead = wf_agent(&dir, "lead.state", "question plan impl");
+
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let daemon = Daemon::spawn(projects, store);
+    let mut events = daemon.subscribe();
+    let parent_id = create_workflow_task(&daemon, &lead).await;
+
+    let waiting = wait_for_parent(&mut events, &parent_id, "question", |t| {
+        t.workflow_run
+            .as_ref()
+            .and_then(|w| w.waiting.as_ref())
+            .is_some_and(|w| w.kind == wire::WorkflowWaitKind::Question)
+    })
+    .await;
+    let open = waiting
+        .workflow_run
+        .as_ref()
+        .and_then(|w| w.waiting.as_ref())
+        .and_then(|w| w.barrier_id.clone())
+        .expect("a question barrier carries an id");
+
+    // An answer written against another barrier changes nothing.
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    daemon
+        .send(Command::WorkflowReply {
+            task: parent_id.clone(),
+            message: "Postgres".into(),
+            barrier_id: Some("some-other-barrier".into()),
+            reply: tx,
+        })
+        .await;
+    let error = rx.await.unwrap().expect_err("a stale id is refused");
+    assert!(error.contains("stale"), "{error}");
+    let still_waiting = daemon
+        .tasks()
+        .await
+        .into_iter()
+        .find(|t| t.id == parent_id)
+        .expect("parent on the board");
+    assert_eq!(
+        still_waiting
+            .workflow_run
+            .as_ref()
+            .and_then(|w| w.waiting.as_ref())
+            .and_then(|w| w.barrier_id.clone())
+            .as_deref(),
+        Some(open.as_str()),
+        "the open barrier is unchanged"
+    );
+
+    // The id the caller saw is accepted.
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    daemon
+        .send(Command::WorkflowReply {
+            task: parent_id.clone(),
+            message: "Postgres".into(),
+            barrier_id: Some(open),
+            reply: tx,
+        })
+        .await;
+    rx.await.unwrap().expect("reply accepted");
 }
 
 #[tokio::test]
@@ -111,6 +185,7 @@ async fn workflow_limit_asks_and_finishes_on_decision() {
             decision: wire::WorkflowDecision::Finish,
             rounds: None,
             note: None,
+            barrier_id: None,
             reply: tx,
         })
         .await;

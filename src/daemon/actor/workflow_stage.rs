@@ -362,10 +362,12 @@ impl Daemon {
             StageKind::Plan | StageKind::Implement | StageKind::Fix => {
                 match workflow::parse_stage_signal(&output) {
                     StageSignal::Question(question) => {
+                        let barrier_id = run.next_barrier_id();
                         run.state = RunState::AwaitingReply {
                             stage,
                             child: child_id.to_string(),
                             question: question.clone(),
+                            barrier_id,
                         };
                         self.workflow_set_child_status(child_id, TaskStatus::Waiting);
                         let event_agent = run
