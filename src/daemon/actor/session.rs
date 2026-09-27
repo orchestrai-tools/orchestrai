@@ -5,6 +5,7 @@ use anyhow::Result;
 use warpforge_protocol as wire;
 
 use crate::daemon::acp::spawn_acp_session;
+use crate::daemon::actor::prompt::bridge_env;
 use crate::daemon::actor::prompt::mcp_servers;
 use crate::daemon::actor::prompt::MEMORY_SYSTEM;
 use crate::daemon::actor::prompt::ORCHESTRATOR_SYSTEM;
@@ -194,7 +195,7 @@ impl Daemon {
                 .unwrap_or_else(|| ".".to_string())
         };
         let command = self.resolve_agent_command(project, agent);
-        let env = self.resolve_agent_env(agent, self.spawn_account(task_id));
+        let mut env = self.resolve_agent_env(agent, self.spawn_account(task_id));
         // Bind the task to the account it is starting on, so a later resume goes
         // back to the same home even after the active account changed. Recorded
         // before the session exists, because that is the only moment the answer
@@ -223,6 +224,7 @@ impl Daemon {
             .get(task_id)
             .is_some_and(|t| t.tags.iter().any(|x| x == "orchestrator-chat"));
         let mcp_servers = mcp_servers(task_id, project, is_orchestrator);
+        bridge_env(&mut env, task_id, project, is_orchestrator);
         let memory_prefix = if self.memory.enabled() {
             format!("{MEMORY_SYSTEM}\n\n")
         } else {

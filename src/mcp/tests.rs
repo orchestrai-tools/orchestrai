@@ -1,4 +1,6 @@
 use super::*;
+use serde_json::{json, Value};
+
 use crate::mcp::agents::{
     model_ids, render_agents_listing, validate_model, DEFAULT_CLEANUP_MAX_AGE_SECONDS,
 };
@@ -337,4 +339,63 @@ fn agents_listing_handles_blocked_and_truncates_long_prompts() {
     assert!(line.contains("no longer exists"), "got: {line}");
     assert!(!line.contains("files="), "got: {line}");
     assert!(render_agents_listing(&[]).contains("No sub-agent sessions"));
+}
+
+const STDERR_CHILD: &str = "WARPFORGE_MCP_STDERR_CHILD";
+const PANICKED: i32 = 3;
+
+/// Re-runs [`stderr_child`] with the read end of its stderr pipe closed, as an
+/// agent that went away leaves the bridge's stderr.
+fn run_stderr_child(mode: &str) -> (Option<i32>, String) {
+    use std::process::{Command, Stdio};
+    let test = format!(
+        "{}::stderr_child",
+        module_path!().split_once("::").unwrap().1
+    );
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args([test.as_str(), "--exact", "--nocapture", "--test-threads=1"])
+        .env(STDERR_CHILD, mode)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stderr.take());
+    drop(child.stdin.take());
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    (output.status.code(), stdout)
+}
+
+#[test]
+fn stderr_child() {
+    use std::io::Read;
+    let Ok(mode) = std::env::var(STDERR_CHILD) else {
+        return;
+    };
+    // EOF on stdin is the go-ahead: the parent has closed the stderr reader by then.
+    std::io::stdin().read_to_end(&mut Vec::new()).unwrap();
+    let wrote = std::panic::catch_unwind(|| match mode.as_str() {
+        "eprintln" => eprintln!("[wf-mcp] starting"),
+        _ => log("starting"),
+    });
+    if let Err(panic) = wrote {
+        let message = panic.downcast_ref::<String>().map_or("", String::as_str);
+        println!("{message}");
+        std::process::exit(PANICKED);
+    }
+    std::process::exit(0);
+}
+
+#[test]
+fn eprintln_panics_once_the_bridges_stderr_has_no_reader() {
+    let (code, stdout) = run_stderr_child("eprintln");
+    assert_eq!(code, Some(PANICKED), "{stdout}");
+    assert!(stdout.contains("failed printing to stderr"), "{stdout}");
+}
+
+#[test]
+fn the_bridge_logs_through_a_stderr_with_no_reader() {
+    let (code, stdout) = run_stderr_child("log");
+    assert_eq!(code, Some(0), "{stdout}");
 }

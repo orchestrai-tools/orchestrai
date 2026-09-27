@@ -109,9 +109,46 @@ pub(crate) fn mcp_servers(
         "env": [
             { "name": "WF_TASK", "value": task_id },
             { "name": "WF_PROJECT", "value": project },
-            { "name": "WF_MODE", "value": if is_orchestrator { "orchestrator" } else { "single" } },
+            { "name": "WF_MODE", "value": bridge_mode(is_orchestrator) },
         ],
     })]
+}
+
+/// Set when Claude Code's Remote Control spawner starts a child. A Claude
+/// Code that inherits it drops every stdio server passed over ACP.
+const REMOTE_CONTROL_CARRIER: &str = "CLAUDE_CODE_BRIDGE_MCP_CARRIER";
+
+/// Point every warpforge bridge the agent starts at this session: the one from
+/// [`mcp_servers`], and a same-named entry from the agent's own config that
+/// the agent may keep in its place (ADR 0018).
+/// @param env the agent process's environment changes
+/// @param task_id the session's task
+/// @param project the task's project
+/// @param is_orchestrator whether the session is an orchestrator chat
+pub(crate) fn bridge_env(
+    env: &mut crate::daemon::accounts::AgentEnv,
+    task_id: &str,
+    project: &str,
+    is_orchestrator: bool,
+) {
+    use crate::mcp::identity::{SESSION_MODE, SESSION_PROJECT, SESSION_TASK};
+    env.set.extend([
+        (SESSION_TASK.to_string(), task_id.to_string()),
+        (SESSION_PROJECT.to_string(), project.to_string()),
+        (
+            SESSION_MODE.to_string(),
+            bridge_mode(is_orchestrator).to_string(),
+        ),
+    ]);
+    env.remove.push(REMOTE_CONTROL_CARRIER.to_string());
+}
+
+fn bridge_mode(is_orchestrator: bool) -> &'static str {
+    if is_orchestrator {
+        "orchestrator"
+    } else {
+        "single"
+    }
 }
 
 /// Cap the diff we feed a text-generation agent. A commit message or PR body
@@ -318,6 +355,32 @@ mod tests {
         std::fs::write(d.join("oranges.txt"), "oranges are orange\n").unwrap();
         let r = d.to_str().unwrap().to_string();
         (dir, r)
+    }
+
+    #[test]
+    fn a_same_named_entry_from_the_agents_config_still_serves_the_session() {
+        let mut env = crate::daemon::accounts::AgentEnv::default();
+        bridge_env(&mut env, "t_orch", "demo", true);
+        // What Claude Code hands the bridge when a user's `warpforge` entry
+        // wins the name: that entry's env over the agent's own.
+        let entry = [
+            ("WF_TASK", "policy-probe"),
+            ("WF_PROJECT", "warpforge"),
+            ("WF_MODE", "single"),
+        ];
+        let identity = crate::mcp::identity::resolve(|name| {
+            entry
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.to_string())
+                .or_else(|| env.set.get(name).cloned())
+        })
+        .unwrap();
+
+        assert_eq!(identity.parent_task, "t_orch");
+        assert_eq!(identity.project.as_deref(), Some("demo"));
+        assert!(identity.is_orchestrator);
+        assert_eq!(env.remove, [REMOTE_CONTROL_CARRIER]);
     }
 
     #[tokio::test]
