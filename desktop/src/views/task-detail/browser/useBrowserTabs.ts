@@ -129,24 +129,33 @@ export function useBrowserTabs(project: string): BrowserTabs {
   const activeRef = useRef(activeId);
   activeRef.current = activeId;
 
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+
   const newTab = useCallback(() => {
     const tab = makeTab(project, BROWSER_START);
     setTabs((list) => [...list, tab]);
     setActiveId(tab.id);
   }, [project]);
 
-  const closeTab = useCallback((id: string) => {
-    void browser.close(id);
-    setTabs((list) => {
-      const next = list.filter((t) => t.id !== id);
-      setActiveId((current) => {
-        if (current !== id) return current;
-        const idx = list.findIndex((t) => t.id === id);
-        return next[Math.min(idx, next.length - 1)]?.id ?? null;
+  const closeTab = useCallback(
+    (id: string) => {
+      void browser.close(id);
+      // Closing the last tab leaves a fresh one, so the browser always has a
+      // tab for the address bar to load into.
+      const fresh = makeTab(project, BROWSER_START);
+      setTabs((list) => {
+        const rest = list.filter((t) => t.id !== id);
+        return rest.length > 0 ? rest : [fresh];
       });
-      return next;
-    });
-  }, []);
+      if (activeRef.current !== id) return;
+      const list = tabsRef.current;
+      const rest = list.filter((t) => t.id !== id);
+      const idx = list.findIndex((t) => t.id === id);
+      setActiveId(rest.length > 0 ? rest[Math.min(idx, rest.length - 1)].id : fresh.id);
+    },
+    [project],
+  );
 
   const setActive = useCallback((id: string) => setActiveId(id), []);
 

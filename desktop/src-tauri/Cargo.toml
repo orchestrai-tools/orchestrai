@@ -50,9 +50,11 @@ objc2-app-kit = { version = "0.3", features = [
     "NSImageRep",
     "NSBitmapImageRep",
 ] }
-# Element screenshots: WKWebView.takeSnapshot into an NSImage, encoded to PNG.
+# WKWebView.takeSnapshot for element screenshots, reloadFromOrigin for a
+# cache-bypassing browser reload.
 objc2-web-kit = { version = "0.3", features = [
     "WKWebView",
+    "WKNavigation",
     "WKSnapshotConfiguration",
     "block2",
     "objc2-core-foundation",

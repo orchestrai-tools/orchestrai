@@ -11,7 +11,7 @@
 
 use serde::Serialize;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Webview, WebviewUrl};
 
 const HOST_WINDOW: &str = "main";
 const STATE_EVENT: &str = "browser:state";
@@ -207,7 +207,7 @@ pub fn browser_reload(app: AppHandle, tab_id: String) -> Result<(), String> {
     let webview = app
         .get_webview(&label_for(&tab_id))
         .ok_or_else(|| "no such browser tab".to_string())?;
-    webview.reload().map_err(|e| e.to_string())
+    reload_from_origin(&webview)
 }
 
 #[tauri::command]
@@ -288,4 +288,42 @@ fn eval(app: &AppHandle, tab_id: &str, js: &str) -> Result<(), String> {
         .get_webview(&label_for(tab_id))
         .ok_or_else(|| "no such browser tab".to_string())?;
     webview.eval(js).map_err(|e| e.to_string())
+}
+
+/// `Webview::reload` maps to `WKWebView.reload`, which may still serve a
+/// cached response; a local dev server needs a real refetch to show new
+/// content, so this reaches into the native view for `reloadFromOrigin`.
+#[cfg(target_os = "macos")]
+fn reload_from_origin(webview: &Webview) -> Result<(), String> {
+    webview
+        .with_webview(|platform| {
+            if let Some(wk) = adopt_wk_webview(platform) {
+                let _ = unsafe { wk.reloadFromOrigin() };
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn reload_from_origin(webview: &Webview) -> Result<(), String> {
+    webview.reload().map_err(|e| e.to_string())
+}
+
+/// tauri-runtime-wry 2.11 hands `with_webview` +1-retained raw pointers and
+/// never releases them; this takes ownership of all three so each call is
+/// balanced. Re-check `WebviewMessage::WithWebview` on a Tauri upgrade.
+#[cfg(target_os = "macos")]
+pub(crate) fn adopt_wk_webview(
+    platform: tauri::webview::PlatformWebview,
+) -> Option<objc2::rc::Retained<objc2_web_kit::WKWebView>> {
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+
+    unsafe {
+        drop(Retained::<AnyObject>::from_raw(
+            platform.controller().cast(),
+        ));
+        drop(Retained::<AnyObject>::from_raw(platform.ns_window().cast()));
+        Retained::from_raw(platform.inner().cast())
+    }
 }

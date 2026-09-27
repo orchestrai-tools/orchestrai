@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { IS_TAURI } from "@/lib/platform";
 import { cn } from "@/lib/utils";
+import { usePanelLayout } from "@/store/panelLayout";
 
 import type { ServiceInfo } from "../../../protocol";
 
@@ -160,8 +161,9 @@ export function BrowserSurface({ onAnnotate, onShot, project, services }: Props)
     void browser.open(active.id, active.url, boundsOf(el));
   }, [active]);
 
+  const chatOnRight = usePanelLayout((s) => s.chatOnRight);
   // No webview to position while the start page or the error overlay is up.
-  useBrowserViewport(onStart || unreachable ? null : activeId, pageRef);
+  useBrowserViewport(onStart || unreachable ? null : activeId, pageRef, chatOnRight);
 
   // A picked element arrives as an event from the page; add it as a chip and,
   // when the composer takes images, a screenshot of it. The page's picker stops

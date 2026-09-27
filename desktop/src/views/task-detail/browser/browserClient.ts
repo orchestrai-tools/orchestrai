@@ -45,9 +45,16 @@ async function call(command: string, args: Record<string, unknown>): Promise<voi
   await invoke(command, args);
 }
 
+/** A tab's webview is created shown; a hide sent while it is still being
+ *  created would find no view, so visibility waits for the open to land. */
+const opening = new Map<string, Promise<unknown>>();
+
 export const browser = {
   open(tabId: string, url: string, bounds: BrowserBounds): Promise<void> {
-    return call("browser_open", { tabId, url, ...bounds });
+    const done = call("browser_open", { tabId, url, ...bounds });
+    const settled = done.catch(() => {});
+    opening.set(tabId, settled);
+    return done;
   },
   navigate(tabId: string, url: string): Promise<void> {
     return call("browser_navigate", { tabId, url });
@@ -68,9 +75,11 @@ export const browser = {
     return call("browser_set_bounds", { tabId, ...bounds });
   },
   setVisible(tabId: string, visible: boolean): Promise<void> {
-    return call("browser_set_visible", { tabId, visible });
+    const pending = opening.get(tabId) ?? Promise.resolve();
+    return pending.then(() => call("browser_set_visible", { tabId, visible }));
   },
   close(tabId: string): Promise<void> {
+    opening.delete(tabId);
     return call("browser_close", { tabId });
   },
   closeProject(project: string): Promise<void> {

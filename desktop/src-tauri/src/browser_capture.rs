@@ -19,7 +19,7 @@ pub fn capture_element(
     use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage};
     use objc2_core_foundation::{CGPoint, CGRect, CGSize};
     use objc2_foundation::{NSDictionary, NSError, NSString};
-    use objc2_web_kit::{WKSnapshotConfiguration, WKWebView};
+    use objc2_web_kit::WKSnapshotConfiguration;
     use tauri::Emitter;
 
     // NSImage → PNG bytes. Nested so the whole native path stays in one place.
@@ -34,7 +34,9 @@ pub fn capture_element(
     let app = app.clone();
     let (x, y, w, h) = rect;
     let _ = webview.with_webview(move |platform| unsafe {
-        let wk = &*(platform.inner() as *mut WKWebView);
+        let Some(wk) = crate::browser::adopt_wk_webview(platform) else {
+            return;
+        };
 
         // with_webview runs on the main thread, where WKWebView must be touched.
         let mtm = MainThreadMarker::new().expect("with_webview runs on the main thread");
