@@ -26,7 +26,7 @@ Workspace orchestrator with TUI and desktop interfaces. Manages multiple dev pro
 - **Frontend:** React 18 + TypeScript + Vite
 - **UI:** Tailwind CSS + Radix UI primitives + shadcn/ui components
 - **State:** Zustand (persisted to localStorage)
-- **Terminal:** CodeMirror for editor (interactive terminal not yet implemented)
+- **Terminal:** CodeMirror for editor, xterm.js for interactive terminal sessions
 - **Package manager:** Bun
 - **Linting:** oxlint + oxfmt
 - **Tests:** Vitest + React Testing Library
@@ -70,8 +70,7 @@ store/
   ui.ts               — Zustand store (UI state: view, panels, toggles)
 views/
   MissionControl.tsx  — Main dashboard with session tiles
-  Board.tsx           — Kanban board view
-  Projects.tsx        — Project list
+  Projects.tsx        — Project list + surface tabs (backlog, runtime, files, PRs)
   TaskDetail.tsx      — Task detail: chat + changes rail + runtime panel
   Settings.tsx        — Settings view
 components/
@@ -108,8 +107,8 @@ lib/                  — Utilities (38 files: sessionActivity, sessionTiming, e
 - **Agent chat:** conversation stream, composer with mentions/attachments, thinking blocks
 - **Changes rail:** staging tree with tri-state checkboxes, per-file diff counts, commit with amend
 - **Mission Control:** session tiles with live conversation preview, pinned tasks
-- **Board view:** Kanban-style task grouping
-- **Services/PF status:** read-only runtime panel
+- **Backlog:** per-project work item list — infinite scroll, filters, sort, priority edits, detail drawer
+- **Services/PF status:** runtime panel with live status/logs, start/stop/restart, and an interactive terminal
 - **Git operations:** commit, push (with force-with-lease), branch info
 - **Code editor:** CodeMirror with syntax highlighting for multiple languages
 - **Diff viewer:** unified/split merge view

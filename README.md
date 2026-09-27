@@ -121,7 +121,7 @@ More in **[Cross-harness memory](https://warpforge.app/concepts/memory/)**.
 
 ## Projects and their runtime
 
-Register a project once and Warpforge reads or creates `.warpforge/workspace.yaml`, brings its services online in dependency order with captured logs and readiness detection, and gives every project a predictable 100-port range starting at `4000` — no more `address already in use`. A local Rust daemon owns all state behind a WebSocket API, so task history and conversations are kept between sessions; quitting stops running services and agents. Review changed files as unified or split diffs, accept or reject hunks, commit, push, and open a pull request from the same workspace.
+Register a project once and Warpforge reads or creates `.warpforge/workspace.yaml`, brings its services online in dependency order with captured logs and readiness detection, and gives every project a predictable 100-port range starting at `4000` — no more `address already in use`. A local Rust daemon owns all state behind a WebSocket API, so task history and conversations are kept between sessions; quitting stops running services and agents. Review changed files as unified or split diffs, revert individual hunks, commit, push, and open a pull request from the same workspace.
 
 Full guide: **[Projects and their runtime](https://warpforge.app/guides/projects-and-runtime/)** · config schema: **[Configuration reference](https://warpforge.app/reference/configuration/)**
 

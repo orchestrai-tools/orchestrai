@@ -257,9 +257,11 @@ group by hand must not move its header (measured 0px, main and amended).
     `maintainScrollAtEnd` already has.
 13. **`maintainVisibleContentPosition={undefined}` is not off.** LegendList
     3.3.5 normalises it to `{data: false, size: true}`: size-only MVCP runs
-    while following and while reading, anchored on the first row in view. Pass
-    `false` to switch it off. Measured harmless while following; do not change
-    it without a trace that says otherwise.
+    while following, anchored on the first row in view. Pass `false` to switch
+    it off. Measured harmless while following; do not change it without a
+    trace that says otherwise. *Correction (second amendment):* while reading,
+    MVCP is no longer left at this default — it explicitly sets
+    `{data: true, size: true}` (see the fix below).
 14. **Judge a scroll fix on painted frames only.** Samples taken in
     `requestAnimationFrame` or in a posted task include React commits that are
     not yet laid out or pinned, and overstate the distance by a whole chunk.

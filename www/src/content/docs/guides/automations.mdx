@@ -67,9 +67,11 @@ Leave the field empty and Warpforge resolves your machine's zone **at creation t
 An optional shell command, run in the project directory before each scheduled run. **Exit 0 authorizes the run; anything else calls it off** — a non-zero exit, a command that cannot be spawned, or one that runs longer than 120 seconds.
 
 ```bash
-# Only triage when the branch actually moved
-git fetch --quiet && ! git diff --quiet HEAD @{u}
+# Only triage when the upstream has commits we don't have yet
+git fetch --quiet && [ -n "$(git rev-list HEAD..@{u} 2>/dev/null)" ]
 ```
+
+It still fires on every occurrence until those commits are pulled — the check is "is the upstream ahead," not "did this precheck already fire for them."
 
 A blocked run is recorded as **Skipped · precheck**, never as a failure: a run the precheck never authorized did not fail, it did not happen. The precheck's own output is kept on the run as the reason.
 
@@ -77,7 +79,7 @@ A blocked run is recorded as **Skipped · precheck**, never as a failure: a run 
 
 ## Missed-run grace
 
-If the daemon was down — laptop asleep, app closed — when an occurrence came due, the automation catches up on the next tick, but only if the occurrence is younger than the grace window. Past that it is recorded as **Skipped · missed** and the automation waits for its next real occurrence.
+If the daemon was down — laptop asleep, or the app quit and stopped the daemon it started — when an occurrence came due, the automation catches up on the next tick, but only if the occurrence is younger than the grace window. Past that it is recorded as **Skipped · missed** and the automation waits for its next real occurrence. A daemon started from the CLI keeps running after the app quits, so its automations keep firing on schedule regardless.
 
 The default is **720 minutes (12 hours)**: an overnight job still runs when you open the lid in the morning, but a laptop reopened after a week does not fire a week of backlog at you. Lower it for anything whose value expires quickly; raise it for a weekly job you genuinely want caught up.
 
@@ -105,7 +107,7 @@ The detail drawer lists every run newest-first: run number, status, when it was 
 | **Completed** | The agent finished its turn. |
 | **Failed** | The run started and the agent did not finish. |
 | **Skipped · precheck** | The precheck command did not authorize the run. |
-| **Skipped · missed** | Came due while Warpforge was closed, past the grace window. |
+| **Skipped · missed** | Came due while the daemon was down, past the grace window. |
 | **Skipped · overlap** | The previous run had not finished. |
 
 Skips are reported honestly as three different things rather than folded into one, because the fix for each is different: rewrite the precheck, widen the grace, or make the prompt finish faster.
