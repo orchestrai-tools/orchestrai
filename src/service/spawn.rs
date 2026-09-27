@@ -1,24 +1,21 @@
-//! Spawning and readiness detection: port allocation, environment
-//! interpolation, and the async tasks that stream a process's logs, status,
-//! and exit into [`ServiceEvent`]s.
+//! Spawning: port allocation, environment interpolation, and the async tasks
+//! that stream a process's logs, readiness, and exit into [`ServiceEvent`]s.
 
 use anyhow::Result;
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::net::TcpStream;
 use tokio::process::Command;
-use tokio::sync::mpsc;
-use tokio::time::{sleep, timeout};
 
+use super::ready::{spawn_readiness, Probe, Readiness, RunHandle};
 use super::{ManagedService, ServiceEvent, ServiceManager, ServiceStatus};
 use crate::ports;
 
-fn line_indicates_ready(line: &str, ready_pattern: Option<&str>) -> bool {
-    if ready_pattern.is_some_and(|pat| line.contains(pat)) {
+/// An empty `ready_pattern` means "heuristics only".
+fn line_indicates_ready(line: &str, ready_pattern: &str) -> bool {
+    if !ready_pattern.is_empty() && line.contains(ready_pattern) {
         return true;
     }
     let lower = line.to_ascii_lowercase();
@@ -60,39 +57,6 @@ fn unresolved_port_placeholder(
     None
 }
 
-pub fn spawn_port_ready_probe(
-    tx: mpsc::UnboundedSender<ServiceEvent>,
-    key: String,
-    run_id: u64,
-    port: u16,
-    stopping: Arc<AtomicBool>,
-) {
-    if port == 0 {
-        return;
-    }
-    tokio::spawn(async move {
-        for _ in 0..600 {
-            if stopping.load(Ordering::SeqCst) {
-                return;
-            }
-            let addr = ("127.0.0.1", port);
-            if matches!(
-                timeout(Duration::from_millis(250), TcpStream::connect(addr)).await,
-                Ok(Ok(_))
-            ) {
-                let _ = tx.send(ServiceEvent::StatusChange {
-                    key,
-                    run_id,
-                    status: ServiceStatus::Running,
-                    exit_code: None,
-                });
-                return;
-            }
-            sleep(Duration::from_millis(500)).await;
-        }
-    });
-}
-
 impl ServiceManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn start(
@@ -105,18 +69,19 @@ impl ServiceManager {
         command: &str,
         original_port: u16,
         env: Option<&HashMap<String, String>>,
-        ready_pattern: Option<&str>,
+        readiness: &Readiness,
         // Set when the project's port ranges conflict — services refuse to
         // start until the conflict is resolved (ADR 0006 decision 4).
         conflict: Option<&str>,
     ) -> Result<()> {
         let key = format!("{project_name}/{service_name}");
-        // Already running — skip. Stopped/Failed — allow restart.
+        // Already running — skip. Stopped/Failed, or waiting on dependencies
+        // with no process yet — allow start.
         if let Some(existing) = self.services.get(&key) {
             let running = matches!(
                 existing.status,
                 ServiceStatus::Running | ServiceStatus::Starting
-            );
+            ) && existing.waiting_on.is_empty();
             if running {
                 return Ok(());
             }
@@ -154,6 +119,19 @@ impl ServiceManager {
             .collect();
         if allocated_port > 0 {
             port_map.insert(service_name.to_string(), allocated_port);
+        }
+
+        let healthcheck_url = readiness
+            .healthcheck_url
+            .as_deref()
+            .map(|url| ports::interpolate(url, &port_map));
+        if let Some(url) = &healthcheck_url {
+            let probe_env = HashMap::from([("healthcheck.url".to_string(), url.clone())]);
+            if let Some(message) = unresolved_port_placeholder(&probe_env, &port_map, service_name)
+            {
+                self.record_start_failure(&key, project_name, service_name, command, message);
+                return Ok(());
+            }
         }
 
         let mut cmd = Command::new("sh");
@@ -224,39 +202,46 @@ impl ServiceManager {
             port_pinned: pin == ports::PortPin::Strict,
             pgid,
             run_id,
+            waiting_on: Vec::new(),
             stopping: Arc::clone(&stopping),
         };
 
         self.services.insert(key.clone(), managed);
 
-        spawn_port_ready_probe(
+        let run = RunHandle::new(
             self.event_tx.clone(),
             key.clone(),
             run_id,
-            allocated_port,
             Arc::clone(&stopping),
         );
+        let settled = Arc::clone(&run.settled);
+        // A healthcheck is the only authority when configured; log lines are not.
+        let log_pattern = healthcheck_url
+            .is_none()
+            .then(|| readiness.pattern.clone().unwrap_or_default());
+        let probe = Probe::select(
+            healthcheck_url,
+            allocated_port,
+            readiness.pattern.as_deref(),
+        );
+        spawn_readiness(run.clone(), readiness, probe);
 
         // Stream stdout
         if let Some(stdout) = stdout {
-            let tx = self.event_tx.clone();
-            let k = key.clone();
-            let rid = run_id;
-            let pattern = ready_pattern.map(|s| s.to_string());
+            let run = run.clone();
+            let pattern = log_pattern.clone();
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stdout).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    if line_indicates_ready(&line, pattern.as_deref()) {
-                        let _ = tx.send(ServiceEvent::StatusChange {
-                            key: k.clone(),
-                            run_id: rid,
-                            status: ServiceStatus::Running,
-                            exit_code: None,
-                        });
+                    if pattern
+                        .as_deref()
+                        .is_some_and(|p| line_indicates_ready(&line, p))
+                    {
+                        run.report_running();
                     }
-                    let _ = tx.send(ServiceEvent::Log {
-                        key: k.clone(),
-                        run_id: rid,
+                    let _ = run.tx.send(ServiceEvent::Log {
+                        key: run.key.clone(),
+                        run_id: run.run_id,
                         line,
                     });
                 }
@@ -266,24 +251,20 @@ impl ServiceManager {
         // Stream stderr — also check readyPattern here since many dev servers
         // (bun, vite, etc.) write their "ready" message to stderr, not stdout.
         if let Some(stderr) = stderr {
-            let tx = self.event_tx.clone();
-            let k = key.clone();
-            let rid = run_id;
-            let pattern = ready_pattern.map(|s| s.to_string());
+            let run = run.clone();
+            let pattern = log_pattern.clone();
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    if line_indicates_ready(&line, pattern.as_deref()) {
-                        let _ = tx.send(ServiceEvent::StatusChange {
-                            key: k.clone(),
-                            run_id: rid,
-                            status: ServiceStatus::Running,
-                            exit_code: None,
-                        });
+                    if pattern
+                        .as_deref()
+                        .is_some_and(|p| line_indicates_ready(&line, p))
+                    {
+                        run.report_running();
                     }
-                    let _ = tx.send(ServiceEvent::Log {
-                        key: k.clone(),
-                        run_id: rid,
+                    let _ = run.tx.send(ServiceEvent::Log {
+                        key: run.key.clone(),
+                        run_id: run.run_id,
                         line: format!("[err] {line}"),
                     });
                 }
@@ -300,6 +281,7 @@ impl ServiceManager {
             let flag = Arc::clone(&stopping);
             tokio::spawn(async move {
                 let result = child.wait().await;
+                settled.store(true, Ordering::SeqCst);
                 let exit_code = result.as_ref().ok().and_then(|s| s.code());
                 let clean_exit = result.map(|s| s.success()).unwrap_or(false);
                 let status = if flag.load(Ordering::SeqCst) || clean_exit {
@@ -321,7 +303,7 @@ impl ServiceManager {
     /// Record a refused start (pinned port taken / outside range / range
     /// conflict) as a `Failed` service so the reason reaches the client the
     /// same way any other failure does: a status change plus a log marker.
-    fn record_start_failure(
+    pub(super) fn record_start_failure(
         &mut self,
         key: &str,
         project_name: &str,
@@ -352,6 +334,7 @@ impl ServiceManager {
             port_pinned: false,
             pgid: None,
             run_id,
+            waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
         };
         managed.push_log(format!("[service failed] {message}"));

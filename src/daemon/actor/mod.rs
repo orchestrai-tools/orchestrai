@@ -50,6 +50,7 @@ mod pr_assistant;
 pub(crate) mod project;
 mod prompt;
 mod run;
+mod service_start;
 mod session;
 mod spawn;
 mod transcript;

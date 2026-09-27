@@ -38,6 +38,7 @@ impl Daemon {
             Command::StopService { project, service } => {
                 self.services.stop(&project, &service).await.ok();
                 self.emit_service_status(&project, &service);
+                self.advance_waiting(&project).await;
             }
             Command::RestartService { project, service } => {
                 self.services.stop(&project, &service).await.ok();

@@ -7,7 +7,8 @@ use std::path::Path;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceHealthcheck {
     pub url: String,
-    pub interval: String,
+    #[serde(default)]
+    pub interval: Option<String>,
 }
 
 /// Explicit override for how a service reacts when its configured `port` is
@@ -29,6 +30,8 @@ pub struct ServiceConfig {
     pub healthcheck: Option<ServiceHealthcheck>,
     #[serde(rename = "readyPattern")]
     pub ready_pattern: Option<String>,
+    #[serde(rename = "readyTimeout", default)]
+    pub ready_timeout: Option<String>,
     /// Services that must be running before this one starts
     #[serde(rename = "dependsOn", default)]
     pub depends_on: Vec<String>,
@@ -181,6 +184,7 @@ fn auto_detect(project_path: &Path) -> Option<WorkspaceConfig> {
                             env: None,
                             healthcheck: None,
                             ready_pattern: None,
+                            ready_timeout: None,
                             depends_on: vec![],
                             port_fallback: None,
                         },
@@ -224,6 +228,7 @@ fn auto_detect(project_path: &Path) -> Option<WorkspaceConfig> {
                                                     env: None,
                                                     healthcheck: None,
                                                     ready_pattern: None,
+                                                    ready_timeout: None,
                                                     depends_on: vec![],
                                                     port_fallback: None,
                                                 },
@@ -328,28 +333,19 @@ pub fn parse_range(s: &str) -> Option<(u16, u16)> {
     Some((start, end))
 }
 
-/// Parse human-readable interval string ("5s", "100ms", "2m") to milliseconds.
-#[allow(dead_code)]
-pub fn parse_interval_ms(interval: &str) -> u64 {
-    let (num_str, unit) = if let Some(stripped) = interval.strip_suffix("ms") {
-        (stripped, "ms")
-    } else if let Some(stripped) = interval.strip_suffix('s') {
-        (stripped, "s")
-    } else if let Some(stripped) = interval.strip_suffix('m') {
-        (stripped, "m")
+/// Parse a duration string ("5s", "100ms", "2m"). `None` for anything
+/// unparseable or zero.
+pub fn parse_duration(value: &str) -> Option<std::time::Duration> {
+    let value = value.trim();
+    let (num, scale) = if let Some(n) = value.strip_suffix("ms") {
+        (n, 1)
+    } else if let Some(n) = value.strip_suffix('s') {
+        (n, 1000)
     } else {
-        return 5000;
+        (value.strip_suffix('m')?, 60_000)
     };
-    let num: u64 = match num_str.parse() {
-        Ok(n) => n,
-        Err(_) => return 5000,
-    };
-    match unit {
-        "ms" => num,
-        "s" => num * 1000,
-        "m" => num * 60_000,
-        _ => 5000,
-    }
+    let ms = num.trim().parse::<u64>().ok()?.checked_mul(scale)?;
+    (ms > 0).then(|| std::time::Duration::from_millis(ms))
 }
 
 #[cfg(test)]

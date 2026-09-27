@@ -126,6 +126,11 @@ pub fn interpolate_env(
         .collect()
 }
 
+/// Replace `${service.port}` placeholders in a single string.
+pub fn interpolate(s: &str, port_map: &HashMap<String, u16>) -> String {
+    regex_replace(s, port_map)
+}
+
 fn regex_replace(s: &str, port_map: &HashMap<String, u16>) -> String {
     let mut result = String::with_capacity(s.len());
     // Replace ${svcName.port} with the allocated port number. Simple manual

@@ -179,8 +179,8 @@ impl Daemon {
                     }
                 }
                 Some(ev) = agent_rx.recv() => self.handle_agent_event(ev),
-                Some(ev) = service_rx.recv() => self.handle_service_event(ev),
-                Some(ev) = pf_rx.recv() => self.handle_pf_event(ev),
+                Some(ev) = service_rx.recv() => self.handle_service_event(ev).await,
+                Some(ev) = pf_rx.recv() => self.handle_pf_event(ev).await,
                 Some((task_id, update)) = acp_rx.recv() => self.handle_acp_update(task_id, update).await,
                 Some(check) = policy_rx.recv() => self.handle_policy_check(check).await,
                 _ = config_poll.tick() => self.handle_config_changes().await,
@@ -281,7 +281,7 @@ impl Daemon {
         }
     }
 
-    pub(crate) fn handle_service_event(&mut self, ev: ServiceEvent) {
+    pub(crate) async fn handle_service_event(&mut self, ev: ServiceEvent) {
         let broadcast = match &ev {
             ServiceEvent::Log { key, line, .. } => {
                 let (project, service) = split_key(key);
@@ -305,6 +305,15 @@ impl Daemon {
                     allocated_port,
                 }
             }
+            ServiceEvent::NotReady { key, .. } | ServiceEvent::LateReady { key, .. } => {
+                let (project, service) = split_key(key);
+                Event::ServiceStatus {
+                    project,
+                    service,
+                    status: ServiceStatus::Failed,
+                    allocated_port: 0,
+                }
+            }
         };
         self.services.apply_event(ev);
         match &broadcast {
@@ -312,6 +321,7 @@ impl Daemon {
                 project, service, ..
             } => {
                 self.emit_service_status(project, service);
+                self.advance_waiting(project).await;
             }
             Event::ServiceLog {
                 project, service, ..
@@ -320,7 +330,7 @@ impl Daemon {
         }
     }
 
-    pub(crate) fn handle_pf_event(&mut self, ev: PfEvent) {
+    pub(crate) async fn handle_pf_event(&mut self, ev: PfEvent) {
         let key = format!("{}/{}", ev.project(), ev.name());
         let broadcast = match &ev {
             PfEvent::Log {
@@ -345,9 +355,14 @@ impl Daemon {
                 status: PfStatus::Failed,
             },
         };
+        let status_changed = !matches!(ev, PfEvent::Log { .. });
+        let project = ev.project().to_string();
         self.portforwards.apply_event(ev);
         if self.portforwards.forwards.contains_key(&key) {
             self.emit(broadcast);
+        }
+        if status_changed {
+            self.advance_waiting(&project).await;
         }
     }
 

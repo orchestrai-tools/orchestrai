@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 
-use crate::config::{load_workspace_config, sorted_services, WorkspaceConfig};
+use crate::config::{load_workspace_config, WorkspaceConfig};
 use crate::portforward::PfStatus;
 use crate::registry::ProjectEntry;
 use crate::service::{kill_listeners_on_ports, ServiceStatus};
@@ -64,6 +64,7 @@ impl Daemon {
         for forward in removed_or_changed_forwards {
             self.portforwards.remove(project, &forward);
         }
+        self.advance_waiting(project).await;
     }
 
     /// Register a new project: write to registry, generate config if missing,
@@ -221,40 +222,6 @@ impl Daemon {
         Ok(())
     }
 
-    /// Start every declared service for a project (no port-forwards).
-    pub(crate) async fn start_services(&mut self, name: &str) {
-        let Some(path) = self.project_path(name) else {
-            return;
-        };
-        let Some(config) = load_workspace_config(std::path::Path::new(&path)) else {
-            return;
-        };
-        let blocker = self.start_blocker_for(name);
-        let range = self.port_range_for(name).unwrap_or((4000, 4099));
-
-        for svc_name in sorted_services(&config) {
-            if let Some(svc) = config.services.get(&svc_name) {
-                let pin = self.port_pin_for(name, svc);
-                self.services
-                    .start(
-                        name,
-                        &path,
-                        range,
-                        pin,
-                        &svc_name,
-                        &svc.command,
-                        svc.port.unwrap_or(0),
-                        svc.env.as_ref(),
-                        svc.ready_pattern.as_deref(),
-                        blocker.as_deref(),
-                    )
-                    .await
-                    .ok();
-                self.emit_service_status(name, &svc_name);
-            }
-        }
-    }
-
     /// Start every declared port-forward for a project (no services).
     pub(crate) async fn start_portforwards(&mut self, name: &str) {
         let Some(path) = self.project_path(name) else {
@@ -289,37 +256,6 @@ impl Daemon {
             })
             .collect();
         self.portforwards.start_all(project, &matched).await;
-    }
-
-    pub(crate) async fn start_one_service(&mut self, project: &str, service: &str) {
-        let Some(path) = self.project_path(project) else {
-            return;
-        };
-        let Some(config) = load_workspace_config(std::path::Path::new(&path)) else {
-            return;
-        };
-        let Some(svc) = config.services.get(service) else {
-            return;
-        };
-        let pin = self.port_pin_for(project, svc);
-        let blocker = self.start_blocker_for(project);
-        let range = self.port_range_for(project).unwrap_or((4000, 4099));
-        self.services
-            .start(
-                project,
-                &path,
-                range,
-                pin,
-                service,
-                &svc.command,
-                svc.port.unwrap_or(0),
-                svc.env.as_ref(),
-                svc.ready_pattern.as_deref(),
-                blocker.as_deref(),
-            )
-            .await
-            .ok();
-        self.emit_service_status(project, service);
     }
 
     /// A context block describing the project's currently-running services and

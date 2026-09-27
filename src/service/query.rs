@@ -1,6 +1,7 @@
 //! Read-only accessors, log windowing, and event application — the state
 //! queries other modules (snapshots, TUI, wire) are built on.
 
+use super::ready::format_duration;
 use super::{ManagedService, ServiceEvent, ServiceManager, ServiceStatus};
 
 impl ServiceManager {
@@ -89,6 +90,28 @@ impl ServiceManager {
                             ServiceStatus::Starting => "[service starting]".to_string(),
                         });
                     }
+                }
+            }
+            ServiceEvent::NotReady {
+                key,
+                run_id,
+                reason,
+            } => {
+                if let Some(svc) = self.services.get_mut(&key) {
+                    if svc.run_id != run_id || svc.status != ServiceStatus::Starting {
+                        return;
+                    }
+                    svc.status = ServiceStatus::Failed;
+                    svc.push_log(format!("[service failed] {reason}"));
+                }
+            }
+            ServiceEvent::LateReady { key, run_id, after } => {
+                if let Some(svc) = self.services.get_mut(&key) {
+                    if svc.run_id != run_id || svc.status != ServiceStatus::Failed {
+                        return;
+                    }
+                    svc.status = ServiceStatus::Running;
+                    svc.push_log(format!("[service ready] after {}", format_duration(after)));
                 }
             }
         }

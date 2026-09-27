@@ -1,7 +1,10 @@
 // Service manager behaviour tests. Lives in a child module so it can
 // still reach the manager's private fields.
 
-use super::spawn::spawn_port_ready_probe;
+mod deps;
+mod readiness;
+
+use super::ready::{spawn_readiness, Probe, RunHandle};
 use super::*;
 use crate::ports;
 use std::time::Duration;
@@ -22,7 +25,7 @@ async fn crashed_service_reports_failed() {
         "exit 7",
         0,
         None,
-        None,
+        &Readiness::default(),
         None,
     )
     .await
@@ -59,7 +62,7 @@ async fn clean_exit_reports_stopped() {
         "true",
         0,
         None,
-        None,
+        &Readiness::default(),
         None,
     )
     .await
@@ -99,13 +102,8 @@ async fn open_port_reports_running_without_logs() {
         let _ = listener.accept().await;
     });
 
-    spawn_port_ready_probe(
-        tx,
-        "p/web".to_string(),
-        1,
-        port,
-        Arc::new(AtomicBool::new(false)),
-    );
+    let run = RunHandle::new(tx, "p/web".to_string(), 1, Arc::new(AtomicBool::new(false)));
+    spawn_readiness(run, &Readiness::default(), Some(Probe::Tcp(port)));
 
     let mut saw_running = false;
     while let Ok(Some(ev)) = timeout(Duration::from_secs(5), rx.recv()).await {
@@ -139,7 +137,7 @@ async fn range_conflict_refuses_service_start() {
         "true",
         3000,
         None,
-        None,
+        &Readiness::default(),
         Some("conflicts with project \"other\""),
     )
     .await
@@ -184,7 +182,7 @@ async fn strict_allocation_failure_fails_the_service() {
         "true",
         taken,
         None,
-        None,
+        &Readiness::default(),
         None,
     )
     .await
@@ -229,6 +227,7 @@ fn stale_run_events_do_not_overwrite_current_service() {
             port_pinned: false,
             pgid: None,
             run_id: 2,
+            waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
         },
     );
@@ -283,6 +282,7 @@ fn log_window_cursor_and_lifecycle_markers() {
             port_pinned: false,
             pgid: None,
             run_id: 1,
+            waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
         },
     );
@@ -350,7 +350,7 @@ async fn failed_pin_refuses_dependents_with_port_placeholders() {
         "true",
         taken,
         None,
-        None,
+        &Readiness::default(),
         None,
     )
     .await
@@ -371,7 +371,7 @@ async fn failed_pin_refuses_dependents_with_port_placeholders() {
         "true",
         0,
         Some(&env),
-        None,
+        &Readiness::default(),
         None,
     )
     .await

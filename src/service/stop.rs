@@ -87,6 +87,7 @@ impl ServiceManager {
             let pgid = svc.pgid.take();
             kill_group(pgid).await;
             svc.status = ServiceStatus::Stopped;
+            svc.waiting_on.clear();
         }
     }
 

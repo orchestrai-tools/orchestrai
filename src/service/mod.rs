@@ -4,13 +4,17 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
+mod deps;
 mod query;
+mod ready;
 mod spawn;
 mod stop;
 
 #[cfg(test)]
 mod tests;
 
+pub use deps::{dependency_gate, DepState, Gate};
+pub use ready::Readiness;
 pub use stop::kill_listeners_on_ports;
 
 /// A single retained log line with a monotonic per-service sequence number and
@@ -72,6 +76,9 @@ pub struct ManagedService {
     /// Monotonic run identifier. Async log/status tasks include this so late
     /// events from an older process cannot overwrite a newer restart.
     run_id: u64,
+    /// Dependencies this entry is waiting on before its process is spawned.
+    /// Non-empty only for a `Starting` placeholder with no process yet.
+    pub waiting_on: Vec<String>,
     /// Set true when we're deliberately stopping, so the exit waiter can tell
     /// an intentional stop from a crash and report the right status.
     stopping: Arc<AtomicBool>,
@@ -90,6 +97,18 @@ pub enum ServiceEvent {
         /// Exit code from a stopped/crashed process, when known (None for a
         /// signal kill). Drives the `[service failed: exit code=N]` marker.
         exit_code: Option<i32>,
+    },
+    /// The run's ready timeout elapsed; the process is left running.
+    NotReady {
+        key: String,
+        run_id: u64,
+        reason: String,
+    },
+    /// A run that timed out became ready after all, `after` its spawn.
+    LateReady {
+        key: String,
+        run_id: u64,
+        after: std::time::Duration,
     },
 }
 

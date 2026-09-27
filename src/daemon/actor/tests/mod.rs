@@ -5,5 +5,6 @@ mod merge_worktree;
 mod pending_permissions;
 mod ports;
 mod project_removal;
+mod service_deps;
 mod transcript_projection;
 mod worktree_start;
