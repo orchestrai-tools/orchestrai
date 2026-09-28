@@ -141,7 +141,10 @@ export function capTabList(tabs: string[]): string[] {
   return tabs.length > MAX_TABS ? tabs.slice(tabs.length - MAX_TABS) : tabs;
 }
 
-export function capViews(views: Record<string, EditorViewState>, keep: string[]): Record<string, EditorViewState> {
+export function capViews(
+  views: Record<string, EditorViewState>,
+  keep: string[],
+): Record<string, EditorViewState> {
   const keys = Object.keys(views);
   if (keys.length <= MAX_VIEWS) return views;
   const kept = new Set(keep);
@@ -170,7 +173,10 @@ export function preferredActivePath(
 ): { activePath: string | null; tabs: string[] } {
   const validTabs = tabs.filter((path) => knownPaths.has(path));
   if (activePath && knownPaths.has(activePath)) {
-    return { activePath, tabs: validTabs.includes(activePath) ? validTabs : [...validTabs, activePath] };
+    return {
+      activePath,
+      tabs: validTabs.includes(activePath) ? validTabs : [...validTabs, activePath],
+    };
   }
   return { activePath: validTabs[validTabs.length - 1] ?? null, tabs: validTabs };
 }

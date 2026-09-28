@@ -69,10 +69,7 @@ function taskIdentityMatches(
   return session.project === project && (session.worktree ?? undefined) === (worktree ?? undefined);
 }
 
-function projectIdentityMatches(
-  session: ProjectWorkspaceSession,
-  rootPath?: string,
-): boolean {
+function projectIdentityMatches(session: ProjectWorkspaceSession, rootPath?: string): boolean {
   return (session.rootPath ?? undefined) === (rootPath ?? undefined);
 }
 

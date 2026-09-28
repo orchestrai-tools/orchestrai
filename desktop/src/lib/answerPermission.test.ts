@@ -28,7 +28,7 @@ describe("answerPermission", () => {
 
   it("counts a request that already resolved as answered", async () => {
     vi.spyOn(daemon, "request").mockRejectedValue(
-      new DaemonRpcError("permission_already_resolved", "already resolved as \"deny\""),
+      new DaemonRpcError("permission_already_resolved", 'already resolved as "deny"'),
     );
 
     expect(await answerPermission("t_1", "req-1", "allow")).toBe(true);

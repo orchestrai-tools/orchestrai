@@ -8,8 +8,8 @@ import {
 } from "../../hooks/useNativeContextMenu";
 import type { FileDiff } from "../../protocol";
 import { toUnifiedPatch } from "./filePatch";
-import { leaves, type FlatRow } from "./treeUtils";
 import { reportGitFailure } from "./reportGitFailure";
+import { leaves, type FlatRow } from "./treeUtils";
 
 /**
  * Right-click menu for a Changes rail row. Tracked and unversioned files get
@@ -175,22 +175,34 @@ export function useChangesContextMenu({
             if (t?.path) onSelect(t.path);
           },
         ],
-        ["addVcs", () => {
-          const t = targetRef.current;
-          if (t) mutate(t.paths, "git.add", "Could not add to VCS");
-        }],
-        ["shelve", () => {
-          const t = targetRef.current;
-          if (t) onShelve(t.paths);
-        }],
-        ["stash", () => {
-          const t = targetRef.current;
-          if (t) onStash(t.paths);
-        }],
-        ["ignore", () => {
-          const t = targetRef.current;
-          if (t) mutate(t.paths, "git.ignore", "Could not update .gitignore");
-        }],
+        [
+          "addVcs",
+          () => {
+            const t = targetRef.current;
+            if (t) mutate(t.paths, "git.add", "Could not add to VCS");
+          },
+        ],
+        [
+          "shelve",
+          () => {
+            const t = targetRef.current;
+            if (t) onShelve(t.paths);
+          },
+        ],
+        [
+          "stash",
+          () => {
+            const t = targetRef.current;
+            if (t) onStash(t.paths);
+          },
+        ],
+        [
+          "ignore",
+          () => {
+            const t = targetRef.current;
+            if (t) mutate(t.paths, "git.ignore", "Could not update .gitignore");
+          },
+        ],
         [
           "del",
           () => {

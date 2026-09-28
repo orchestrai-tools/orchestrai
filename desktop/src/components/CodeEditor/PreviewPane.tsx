@@ -1,5 +1,5 @@
-import { Markdown } from "../Markdown";
 import type { FileDoc } from "../../protocol";
+import { Markdown } from "../Markdown";
 import { getMimeType } from "./mime";
 
 export function BinaryPreview({ doc }: { doc: FileDoc }) {

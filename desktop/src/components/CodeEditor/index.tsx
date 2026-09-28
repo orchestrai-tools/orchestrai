@@ -8,7 +8,6 @@ import type { EditorViewState } from "@/lib/sessionStore";
 import { cn } from "@/lib/utils";
 
 import type { FileDoc, FileRange, SymbolMatch } from "../../protocol";
-import { BinaryPreview, PreviewPane } from "./PreviewPane";
 import { ChangePopup } from "./ChangePopup";
 import {
   isBinaryImagePath,
@@ -20,6 +19,7 @@ import {
 import { EditorToolbar } from "./EditorToolbar";
 import { buildEditorExtensions } from "./extensions";
 import { GotoPopup } from "./GotoPopup";
+import { BinaryPreview, PreviewPane } from "./PreviewPane";
 import { installEditorSession, applyEditorPosition, type EditorPosition } from "./session";
 import { useChangeGutter } from "./useChangeGutter";
 import { useEditorSave } from "./useEditorSave";

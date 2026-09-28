@@ -154,11 +154,7 @@ export const PullRequestRow = React.memo(function PullRequestRow({
 
       <span className="flex min-w-0 items-center gap-1.5">
         {unseen && (
-          <span
-            aria-hidden
-            data-unread
-            className="size-1.5 shrink-0 rounded-full bg-primary"
-          />
+          <span aria-hidden data-unread className="size-1.5 shrink-0 rounded-full bg-primary" />
         )}
         {/* The title is the brightest text in the row; the meta line is the
             only thing allowed to be quieter. */}

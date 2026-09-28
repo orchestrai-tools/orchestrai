@@ -88,8 +88,7 @@ function FoldHarness({ updates: source }: { updates: SessionUpdate[] }) {
         onOpenFileDiff: vi.fn<(path: string) => void>(),
         onOpenTask: vi.fn<(id: string) => void>(),
         onRequestBranch: vi.fn<(agent: string, index: number) => void>(),
-        onToggleWorkGroup: (id, open) =>
-          setOverrides((current) => new Map(current).set(id, open)),
+        onToggleWorkGroup: (id, open) => setOverrides((current) => new Map(current).set(id, open)),
         project: "app",
         resolveFilePath: (value) => value,
         resolved: {},

@@ -77,10 +77,7 @@ export function BodyPicker({
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            <item.icon
-              aria-hidden
-              className={cn("size-3.5 shrink-0", active && "text-primary")}
-            />
+            <item.icon aria-hidden className={cn("size-3.5 shrink-0", active && "text-primary")} />
             <span className="min-w-0 truncate">{item.label}</span>
             {count > 0 && (
               <span className="tnum shrink-0 text-[11px] font-medium text-warn">{count}</span>

@@ -18,7 +18,6 @@ import { cn } from "@/lib/utils";
 import { usePanelLayout } from "@/store/panelLayout";
 
 import type { ServiceInfo } from "../../../protocol";
-
 import {
   browser,
   onBrowserAnnotation,
@@ -49,7 +48,12 @@ function TabIcon({ url }: { url: string }) {
   }
   if (!src || failed) return <Globe className="size-3.5 shrink-0 text-muted-foreground" />;
   return (
-    <img alt="" src={src} onError={() => setFailed(true)} className="size-3.5 shrink-0 rounded-sm" />
+    <img
+      alt=""
+      src={src}
+      onError={() => setFailed(true)}
+      className="size-3.5 shrink-0 rounded-sm"
+    />
   );
 }
 
@@ -264,7 +268,13 @@ export function BrowserSurface({ onAnnotate, onShot, project, services }: Props)
             </button>
           ))}
         </div>
-        <Button size="sm" variant="ghost" aria-label="New tab" className="shrink-0" onClick={newTab}>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label="New tab"
+          className="shrink-0"
+          onClick={newTab}
+        >
           <Plus className="size-3.5" />
         </Button>
       </div>

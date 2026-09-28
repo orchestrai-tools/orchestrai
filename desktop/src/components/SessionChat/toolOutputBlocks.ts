@@ -178,7 +178,10 @@ function separatorAlign(line: string): TableAlign[] {
  * separator row under it, and at least one body row. The separator is what
  * keeps a command's `ps | grep` line from being read as a table.
  */
-function tableAt(lines: string[], index: number): Extract<ToolOutputBlock, { kind: "table" }> | null {
+function tableAt(
+  lines: string[],
+  index: number,
+): Extract<ToolOutputBlock, { kind: "table" }> | null {
   const header = lines[index];
   const separator = lines[index + 1];
   const firstBody = lines[index + 2];

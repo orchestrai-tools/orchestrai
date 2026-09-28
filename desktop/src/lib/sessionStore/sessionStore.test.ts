@@ -1,6 +1,5 @@
 // eslint-disable-next-line import/no-unassigned-import
 import "fake-indexeddb/auto";
-
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { getDB } from "./db";
@@ -129,11 +128,7 @@ describe("eviction", () => {
 
 describe("restore precedence and stale paths", () => {
   it("keeps the stored active path when it still exists", () => {
-    const result = preferredActivePath(
-      ["a.rs", "b.rs"],
-      "a.rs",
-      new Set(["a.rs", "b.rs", "c.rs"]),
-    );
+    const result = preferredActivePath(["a.rs", "b.rs"], "a.rs", new Set(["a.rs", "b.rs", "c.rs"]));
     expect(result.activePath).toBe("a.rs");
     expect(result.tabs).toEqual(["a.rs", "b.rs"]);
   });
@@ -157,13 +152,21 @@ describe("restore precedence and stale paths", () => {
   it("drops view records whose path is no longer listed", () => {
     const views = {
       "a.rs": { anchor: 0, head: 0, path: "a.rs", scrollLeft: 0, scrollTop: 10, updatedAt: 1 },
-      "gone.rs": { anchor: 0, head: 0, path: "gone.rs", scrollLeft: 0, scrollTop: 10, updatedAt: 1 },
+      "gone.rs": {
+        anchor: 0,
+        head: 0,
+        path: "gone.rs",
+        scrollLeft: 0,
+        scrollTop: 10,
+        updatedAt: 1,
+      },
     };
     expect(Object.keys(pruneViews(views, new Set(["a.rs"])))).toEqual(["a.rs"]);
   });
 });
 
-describe("registry scope isolation", () => {  it("does not share tabs between projects", () => {
+describe("registry scope isolation", () => {
+  it("does not share tabs between projects", () => {
     setProjectFiles("alpha", { activePath: "a.rs", tabs: ["a.rs"] });
     setProjectFiles("beta", { activePath: "b.rs", tabs: ["b.rs"] });
 
@@ -260,7 +263,8 @@ describe("task session restore", () => {
     expect(loaded.findInFiles?.query).toBe("typed-early");
   });
 
-  it("no-ops a cursor write whose position did not change", () => {    setTaskEditorView("task-n", "warpforge", "a.rs", { anchor: 1, head: 1 });
+  it("no-ops a cursor write whose position did not change", () => {
+    setTaskEditorView("task-n", "warpforge", "a.rs", { anchor: 1, head: 1 });
     const first = ensureTask("task-n", "warpforge").files.views["a.rs"];
     setTaskEditorView("task-n", "warpforge", "a.rs", { anchor: 1, head: 1 });
     expect(ensureTask("task-n", "warpforge").files.views["a.rs"]).toBe(first);

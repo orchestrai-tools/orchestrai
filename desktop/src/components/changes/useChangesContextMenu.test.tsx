@@ -1,9 +1,8 @@
 import { render, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { MouseEvent } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { daemon } from "../../daemon";
-
 import { showContextMenu, useNativeContextMenu } from "../../hooks/useNativeContextMenu";
 import type { ShowContextMenuRequest } from "../../hooks/useNativeContextMenu";
 import type { FileDiff } from "../../protocol";
@@ -93,9 +92,7 @@ const folderRow = (paths: string[]): FlatRow => ({
   depth: 0,
   key: "folder",
   node: {
-    children: new Map(
-      paths.map((p) => [p, { children: new Map(), name: p, path: p }]),
-    ),
+    children: new Map(paths.map((p) => [p, { children: new Map(), name: p, path: p }])),
     name: "folder",
   },
 });

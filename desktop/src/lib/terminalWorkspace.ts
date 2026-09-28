@@ -82,12 +82,7 @@ export class TerminalWorkspace {
   async spawn(): Promise<string | null> {
     this.spawnError = null;
     try {
-      const terminalId = await daemon.spawnTerminal(
-        this.project,
-        80,
-        24,
-        this.taskId ?? undefined,
-      );
+      const terminalId = await daemon.spawnTerminal(this.project, 80, 24, this.taskId ?? undefined);
       if (!terminalId) {
         this.spawnError = "Daemon returned no terminal id.";
         this.notify();

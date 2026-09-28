@@ -3,11 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionUpdate } from "../../protocol";
-
 import { StreamLine } from "./StreamLine";
 
 const { answerPermission } = vi.hoisted(() => ({
-  answerPermission: vi.fn<(taskId: string, requestId: string, outcome: string) => Promise<boolean>>(),
+  answerPermission:
+    vi.fn<(taskId: string, requestId: string, outcome: string) => Promise<boolean>>(),
 }));
 vi.mock("@/lib/answerPermission", () => ({ answerPermission }));
 

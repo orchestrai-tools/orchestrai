@@ -1,10 +1,6 @@
 import { DEFAULT_INBOX_FILTERS, type InboxFilters } from "@/lib/inboxFilters";
 
-import {
-  clampSidebarWidth,
-  SIDEBAR_WIDTH_DEFAULT,
-  type UiSlice,
-} from "./types";
+import { clampSidebarWidth, SIDEBAR_WIDTH_DEFAULT, type UiSlice } from "./types";
 
 export interface LayoutState {
   missionControlTab: "live" | "needs" | "failed" | "pinned";

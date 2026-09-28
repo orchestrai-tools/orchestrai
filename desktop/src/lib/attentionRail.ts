@@ -85,8 +85,7 @@ export function buildAttentionQueue(
   prunePermissionCache(new Set(tasks.map((task) => task.id)));
   for (const task of tasks) {
     const perm =
-      latestPendingPermission(task.id, sessionUpdates[task.id]) ??
-      syntheticPendingPermission(task);
+      latestPendingPermission(task.id, sessionUpdates[task.id]) ?? syntheticPendingPermission(task);
     const waiting = task.workflowRun?.waiting ?? null;
     if (perm) {
       items.push({ permission: perm, priority: 0, reason: perm.title, task });

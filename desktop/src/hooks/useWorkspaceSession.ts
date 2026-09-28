@@ -27,7 +27,10 @@ export function useTaskSession(task: TaskInfo): TaskSessionHandle {
     () => ensureTask(task.id, task.project, worktree),
     [task.id, task.project, worktree],
   );
-  const subscribe = useCallback((listener: () => void) => subscribeTask(task.id, listener), [task.id]);
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeTask(task.id, listener),
+    [task.id],
+  );
   const session = useSyncExternalStore(subscribe, get, get);
   const [ready, setReady] = useState(() => isTaskLoaded(task.id));
 

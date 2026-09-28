@@ -46,11 +46,7 @@ interface MockXterm {
 let currentTerminals: TerminalInfo[] = [];
 let terminalDataListeners = new Map<string, (data: Uint8Array) => void>();
 
-function terminalInfo(
-  id: string,
-  project = "warpforge",
-  taskId?: string | null,
-): TerminalInfo {
+function terminalInfo(id: string, project = "warpforge", taskId?: string | null): TerminalInfo {
   return {
     cols: 80,
     command: "sh",
@@ -209,7 +205,11 @@ describe("TerminalWorkspaceView — remount ownership", () => {
   }) {
     if (!mounted) return null;
     return (
-      <TerminalWorkspaceView key={taskId ?? "project"} project={project} taskId={taskId ?? undefined} />
+      <TerminalWorkspaceView
+        key={taskId ?? "project"}
+        project={project}
+        taskId={taskId ?? undefined}
+      />
     );
   }
 

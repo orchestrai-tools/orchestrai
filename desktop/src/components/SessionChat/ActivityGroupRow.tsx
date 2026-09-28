@@ -319,9 +319,7 @@ export const ActivityGroupRow = memo(
       case "file_edit":
         return <FileEditStep update={update} bare={bare} />;
       case "tool_call":
-        return (
-          <ToolCallStep update={update} bare={bare} category={item.category} live={live} />
-        );
+        return <ToolCallStep update={update} bare={bare} category={item.category} live={live} />;
       default:
         return null;
     }

@@ -9,4 +9,3 @@ export const hunkKey = (hunk: {
   newStart: number;
   newLines: number;
 }) => `${hunk.oldStart}:${hunk.oldLines}:${hunk.newStart}:${hunk.newLines}`;
-

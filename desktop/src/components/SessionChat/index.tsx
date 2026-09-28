@@ -6,8 +6,8 @@ import { ContinueSessionDialog } from "@/components/ContinueSessionDialog";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSessionHistory } from "@/hooks/useSessionHistory";
-import { pendingPermission } from "@/lib/sessionPermissions";
 import type { SessionActivity } from "@/lib/sessionActivity";
+import { pendingPermission } from "@/lib/sessionPermissions";
 import {
   activityOpenState,
   automaticFoldAnchor,

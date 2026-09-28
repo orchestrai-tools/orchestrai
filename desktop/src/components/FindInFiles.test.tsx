@@ -83,20 +83,16 @@ describe("FindInFiles", () => {
   });
 
   it("seeds the query from the stored workspace session", async () => {
-    const onSessionChange =
-      vi.fn<(session: { query: string; activeIndex: number }) => void>();
+    const onSessionChange = vi.fn<(session: { query: string; activeIndex: number }) => void>();
     const { onSearch } = setup({ initialQuery: "retry", onSessionChange });
 
     expect(screen.getByPlaceholderText("Find in files…")).toHaveValue("retry");
     await waitFor(() => expect(onSearch).toHaveBeenCalledWith("retry"));
-    expect(onSessionChange).toHaveBeenCalledWith(
-      expect.objectContaining({ query: "retry" }),
-    );
+    expect(onSessionChange).toHaveBeenCalledWith(expect.objectContaining({ query: "retry" }));
   });
 
   it("reports the active match index as the user navigates", async () => {
-    const onSessionChange =
-      vi.fn<(session: { query: string; activeIndex: number }) => void>();
+    const onSessionChange = vi.fn<(session: { query: string; activeIndex: number }) => void>();
     setup({ onSessionChange });
     await search();
 

@@ -117,7 +117,9 @@ export function ShelveDialog({
               }
             }}
             placeholder={
-              mode === "shelf" ? "Shelf name (blank for an automatic one)" : "Stash message (blank for git default)"
+              mode === "shelf"
+                ? "Shelf name (blank for an automatic one)"
+                : "Stash message (blank for git default)"
             }
             className="pr-9"
           />

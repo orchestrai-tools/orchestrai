@@ -49,7 +49,10 @@ describe("pinToTop", () => {
     const { runFrame, scheduler } = manualScheduler();
     let rowTop = 400;
     const container = containerAt();
-    const anchor = anchorAt(() => rowTop, () => container);
+    const anchor = anchorAt(
+      () => rowTop,
+      () => container,
+    );
 
     pinToTop({ anchor: () => anchor, container: () => container, scheduler });
 
@@ -78,7 +81,10 @@ describe("pinToTop", () => {
       anchor: () => {
         if (rowTop === null) return null;
         const top = rowTop;
-        return anchorAt(() => top, () => container);
+        return anchorAt(
+          () => top,
+          () => container,
+        );
       },
       container: () => container,
       scheduler,
@@ -96,7 +102,11 @@ describe("pinToTop", () => {
     const { runFrame, scheduler } = manualScheduler();
     const container = containerAt();
     const cancel = pinToTop({
-      anchor: () => anchorAt(() => 200, () => container),
+      anchor: () =>
+        anchorAt(
+          () => 200,
+          () => container,
+        ),
       container: () => container,
       scheduler,
     });
@@ -112,7 +122,11 @@ describe("pinToTop", () => {
     const container = containerAt();
 
     pinToTop({
-      anchor: () => anchorAt(() => (rowTop += 10), () => container),
+      anchor: () =>
+        anchorAt(
+          () => (rowTop += 10),
+          () => container,
+        ),
       container: () => container,
       scheduler,
     });

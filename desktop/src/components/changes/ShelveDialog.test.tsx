@@ -13,7 +13,13 @@ describe("ShelveDialog", () => {
 
   it("renders nothing without paths", () => {
     const { container } = render(
-      <ShelveDialog mode="shelf" paths={null} taskId="task-1" onClose={vi.fn<() => void>()} onShelved={vi.fn<() => void>()} />,
+      <ShelveDialog
+        mode="shelf"
+        paths={null}
+        taskId="task-1"
+        onClose={vi.fn<() => void>()}
+        onShelved={vi.fn<() => void>()}
+      />,
     );
 
     expect(container).toBeEmptyDOMElement();
@@ -87,7 +93,13 @@ describe("ShelveDialog", () => {
       .mockResolvedValue("Add filtering\n\nwith a body");
 
     render(
-      <ShelveDialog mode="shelf" paths={["src/a.ts"]} taskId="task-1" onClose={vi.fn<() => void>()} onShelved={vi.fn<() => void>()} />,
+      <ShelveDialog
+        mode="shelf"
+        paths={["src/a.ts"]}
+        taskId="task-1"
+        onClose={vi.fn<() => void>()}
+        onShelved={vi.fn<() => void>()}
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Draft shelf name" }));
 

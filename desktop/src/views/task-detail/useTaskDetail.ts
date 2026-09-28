@@ -260,12 +260,9 @@ export function useTaskDetail(task: TaskInfo, snapshot: Snapshot) {
   const sendSelectionToChat = useCallback((path: string, range: FileRange) => {
     composerRef.current?.appendDraft(mentionToken(path, range));
   }, []);
-  const attachBrowserContext = useCallback(
-    (chip: { id: string; label: string; body: string }) => {
-      composerRef.current?.attachContext(chip);
-    },
-    [],
-  );
+  const attachBrowserContext = useCallback((chip: { id: string; label: string; body: string }) => {
+    composerRef.current?.attachContext(chip);
+  }, []);
   const setBrowserContextImage = useCallback(
     (id: string, image: { name: string; base64: string }) => {
       composerRef.current?.setContextImage(id, image);

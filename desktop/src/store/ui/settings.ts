@@ -127,8 +127,7 @@ export const createSettingsSlice: UiSlice<SettingsState> = (set) => ({
     set((s) => ({
       monoFontSize: clampMonoFontSize(s.monoFontSize + direction * FONT_SIZE_STEP),
     })),
-  resetFontSizes: () =>
-    set({ fontSize: DEFAULT_FONT_SIZE, monoFontSize: DEFAULT_MONO_FONT_SIZE }),
+  resetFontSizes: () => set({ fontSize: DEFAULT_FONT_SIZE, monoFontSize: DEFAULT_MONO_FONT_SIZE }),
   setTheme: (theme) => set({ theme }),
   // Models are per-agent, so a stored pick is meaningless once the agent changes.
   setPrAssistantAgentId: (prAssistantAgentId) => set({ prAssistantAgentId }),

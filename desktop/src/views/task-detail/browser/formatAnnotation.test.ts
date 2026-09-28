@@ -19,7 +19,7 @@ describe("formatAnnotation", () => {
     expect(out).toContain("</browser_annotation>");
     expect(out).toContain("url: https://example.com/page");
     expect(out).toContain("selector: #submit");
-    expect(out).toContain('role: button');
+    expect(out).toContain("role: button");
     expect(out).toContain("text: Save changes");
   });
 

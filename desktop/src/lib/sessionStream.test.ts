@@ -62,7 +62,13 @@ describe("session stream coalescing", () => {
     expect(group.open).toBe(false);
     expect(group.summary.text).toBe("Read a.ts");
 
-    const expanded = deriveTranscriptRows(updates, new Map([[group.groupId, true]]), null, null, true);
+    const expanded = deriveTranscriptRows(
+      updates,
+      new Map([[group.groupId, true]]),
+      null,
+      null,
+      true,
+    );
     const reopened = expanded[1];
     if (reopened.kind !== "activity") throw new Error("expected an activity group");
     expect(reopened.open).toBe(true);
@@ -167,7 +173,13 @@ describe("session stream coalescing", () => {
 
     // A non-zero exit is not a blocker: unlike an unanswered prompt, the reader
     // may fold it away and the choice sticks.
-    const folded = deriveTranscriptRows(updates, new Map([[group.groupId, false]]), null, null, true);
+    const folded = deriveTranscriptRows(
+      updates,
+      new Map([[group.groupId, false]]),
+      null,
+      null,
+      true,
+    );
     const foldedGroup = folded[0];
     if (foldedGroup.kind !== "activity") throw new Error("expected an activity group");
     expect(foldedGroup.open).toBe(false);
@@ -397,7 +409,13 @@ describe("session stream coalescing", () => {
     const liveRows = deriveTranscriptRows(live, new Map(), null, null, true);
     const liveRow = liveRows[0];
     if (liveRow.kind !== "activity") throw new Error("expected an activity group");
-    const foldedRows = deriveTranscriptRows(live, new Map([[liveRow.groupId, false]]), null, null, true);
+    const foldedRows = deriveTranscriptRows(
+      live,
+      new Map([[liveRow.groupId, false]]),
+      null,
+      null,
+      true,
+    );
 
     expect(
       automaticFoldAnchor(

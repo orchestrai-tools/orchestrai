@@ -19,18 +19,13 @@ import { useUi } from "../../store/ui";
 import { BranchActionsDialog, type BranchAction } from "./BranchActionsDialog";
 import { BranchList } from "./BranchList";
 import {
-  GitMenuAction,
-  handleGitOpError,
-  handleGitOpResult,
-  invalidateAll,
-} from "./gitMenu";
-import { MergeWorktreeDialog } from "./MergeWorktreeDialog";
-import {
   buildBranchTree,
   defaultOpenFolders,
   flattenBranchTree,
   type BranchRow,
 } from "./branchTree";
+import { GitMenuAction, handleGitOpError, handleGitOpResult, invalidateAll } from "./gitMenu";
+import { MergeWorktreeDialog } from "./MergeWorktreeDialog";
 
 export function GitWorkspaceControls({
   taskId,
@@ -69,7 +64,8 @@ export function GitWorkspaceControls({
   const showNewBranch = !normalizedSearch || "new branch".includes(normalizedSearch);
   const canMergeWorktree = Boolean(task?.worktree && task?.baseBranch);
   const showMerge =
-    canMergeWorktree && (!normalizedSearch || "merge worktree into base".includes(normalizedSearch));
+    canMergeWorktree &&
+    (!normalizedSearch || "merge worktree into base".includes(normalizedSearch));
 
   useEffect(() => {
     if (!open) {

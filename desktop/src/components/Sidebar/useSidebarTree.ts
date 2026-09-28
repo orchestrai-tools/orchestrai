@@ -88,7 +88,10 @@ export function useSidebarTree(state: DaemonState, openTaskId: string | null) {
       })
       .filter(({ state: rowState }) => rowState === "working" || needsHuman(rowState))
       .sort((a, b) => b.task.updatedAt - a.task.updatedAt || a.task.id.localeCompare(b.task.id));
-    return { overflow: Math.max(0, live.length - LIVE_LANE_MAX), tasks: live.slice(0, LIVE_LANE_MAX) };
+    return {
+      overflow: Math.max(0, live.length - LIVE_LANE_MAX),
+      tasks: live.slice(0, LIVE_LANE_MAX),
+    };
   }, [nowSec, queue, tasks]);
 
   /** The open task plus every ancestor: the branch the row rails paint. */

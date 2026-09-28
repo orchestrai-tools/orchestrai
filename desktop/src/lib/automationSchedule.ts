@@ -411,7 +411,13 @@ export function describeSchedule(trigger: AutomationTrigger): string {
   if (minutes.length === 1 && everyHour && everyDayOfMonth && everyWeekday && everyMonth) {
     return `every hour at :${String(minutes[0]).padStart(2, "0")}`;
   }
-  if (everyHour && everyDayOfMonth && everyWeekday && everyMonth && trigger.cron === "*/5 * * * *") {
+  if (
+    everyHour &&
+    everyDayOfMonth &&
+    everyWeekday &&
+    everyMonth &&
+    trigger.cron === "*/5 * * * *"
+  ) {
     return "every 5 minutes";
   }
   if (minutes.length !== 1 || hours.length !== 1 || !everyMonth) return `cron ${trigger.cron}`;

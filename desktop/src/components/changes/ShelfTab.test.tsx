@@ -150,9 +150,7 @@ describe("ShelfTab", () => {
     expect(await screen.findByText('Apply & Drop "wip"')).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    await waitFor(() =>
-      expect(screen.queryByText('Apply & Drop "wip"')).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText('Apply & Drop "wip"')).not.toBeInTheDocument());
     expect(request).not.toHaveBeenCalledWith("shelf.apply", expect.anything());
   });
 

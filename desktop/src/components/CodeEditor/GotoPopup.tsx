@@ -1,7 +1,8 @@
 import type { CSSProperties } from "react";
 
-import type { SymbolMatch } from "../../protocol";
 import { cn } from "@/lib/utils";
+
+import type { SymbolMatch } from "../../protocol";
 
 export function GotoPopup({
   gotoResults,

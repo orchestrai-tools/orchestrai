@@ -4,26 +4,28 @@ import userEvent from "@testing-library/user-event";
 import type { PropsWithChildren, ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { agentUpdatesQueryKey } from "@/hooks/useAgentUpdates";
 import type { InstallAgentResult } from "@/daemon/agents";
 import { DaemonRpcError } from "@/daemon/rpcError";
+import { agentUpdatesQueryKey } from "@/hooks/useAgentUpdates";
 import type { DaemonEvent, DetectedAgent } from "@/protocol";
 
-const { daemonState, detectAgents, installAgent, probeAgent, saveAgents, store } = vi.hoisted(() => {
-  const initial = { snapshot: { agents: [] as unknown[] } };
-  return {
-    daemonState: initial,
-    store: {
-      state: initial as typeof initial & { agentHealth?: Record<string, unknown> },
-      listeners: new Set<() => void>(),
-      eventListeners: new Set<(event: DaemonEvent) => void>(),
-    },
-  detectAgents: vi.fn<() => Promise<DetectedAgent[]>>(),
-  installAgent: vi.fn<(id: string, clean?: boolean) => Promise<InstallAgentResult>>(),
-  probeAgent: vi.fn<(id: string) => Promise<void>>(),
-    saveAgents: vi.fn<() => Promise<void>>(),
-  };
-});
+const { daemonState, detectAgents, installAgent, probeAgent, saveAgents, store } = vi.hoisted(
+  () => {
+    const initial = { snapshot: { agents: [] as unknown[] } };
+    return {
+      daemonState: initial,
+      store: {
+        state: initial as typeof initial & { agentHealth?: Record<string, unknown> },
+        listeners: new Set<() => void>(),
+        eventListeners: new Set<(event: DaemonEvent) => void>(),
+      },
+      detectAgents: vi.fn<() => Promise<DetectedAgent[]>>(),
+      installAgent: vi.fn<(id: string, clean?: boolean) => Promise<InstallAgentResult>>(),
+      probeAgent: vi.fn<(id: string) => Promise<void>>(),
+      saveAgents: vi.fn<() => Promise<void>>(),
+    };
+  },
+);
 
 vi.mock("@/daemon", () => ({
   daemon: {
@@ -262,9 +264,7 @@ describe("AgentSetupPanel", () => {
 
       await userEvent.click(screen.getByRole("button", { name: "Update" }));
 
-      expect(
-        await screen.findByText(/Authentication required/),
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/Authentication required/)).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Reinstall" })).not.toBeInTheDocument();
       expect(screen.queryByText("needs reinstall")).not.toBeInTheDocument();
     });
@@ -355,7 +355,9 @@ describe("AgentSetupPanel", () => {
           "Missing optional dependency @anthropic-ai/claude-agent-sdk-darwin-arm64",
         ),
       );
-      render(<AgentSetupPanel detected={[agent("claude", { installed: true, version: "1.0.0" })]} />);
+      render(
+        <AgentSetupPanel detected={[agent("claude", { installed: true, version: "1.0.0" })]} />,
+      );
 
       await userEvent.click(screen.getByRole("button", { name: "Reload models list" }));
 
@@ -390,14 +392,19 @@ describe("AgentSetupPanel", () => {
 
     it("follows live health updates after the list was seeded", () => {
       const summary = "Missing optional dependency @openai/codex-darwin-arm64";
-      render(<AgentSetupPanel detected={[agent("codex", { installed: true, version: "1.0.0" })]} />);
+      render(
+        <AgentSetupPanel detected={[agent("codex", { installed: true, version: "1.0.0" })]} />,
+      );
       expect(screen.getByText("v1.0.0")).toBeInTheDocument();
 
       const push = (broken: { detail: string; summary: string } | null) =>
         act(() => {
           store.state = { ...store.state, agentHealth: { codex: broken } };
           store.listeners.forEach((fn) => fn());
-          const event: DaemonEvent = { data: { broken, id: "codex" }, event: "agents.healthUpdated" };
+          const event: DaemonEvent = {
+            data: { broken, id: "codex" },
+            event: "agents.healthUpdated",
+          };
           store.eventListeners.forEach((fn) => fn(event));
         });
 
