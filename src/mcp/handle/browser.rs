@@ -80,6 +80,17 @@ fn field<'a>(result: &'a Value, key: &str) -> &'a str {
 /// Turn the desktop's result into MCP content. Everything the page produced
 /// goes inside the untrusted block; only the tool's own verdict stays outside.
 fn render(action: &Value, result: &Value) -> Vec<Value> {
+    let mut content = render_page(action, result);
+    let tab = field(result, "tab");
+    if let (false, Some(first)) = (tab.is_empty(), content.first_mut()) {
+        if let Some(text) = first.get("text").and_then(Value::as_str) {
+            *first = self::text(format!("Agent tab {tab}.\n{text}"));
+        }
+    }
+    content
+}
+
+fn render_page(action: &Value, result: &Value) -> Vec<Value> {
     let url = field(result, "url");
     let title = field(result, "title");
     let target = field(action, "ref");
@@ -108,11 +119,21 @@ fn render(action: &Value, result: &Value) -> Vec<Value> {
             ))]
         }
         "navigate" => {
-            let verdict = if result.get("loading").and_then(Value::as_bool) == Some(true) {
-                "The page is still loading; take a browser_snapshot in a moment."
+            let requested = field(result, "requested");
+            let mut verdict = if result.get("loading").and_then(Value::as_bool) == Some(true) {
+                format!(
+                    "{requested} has not loaded: it may be slow or unreachable (check list_runtime \
+                     and the service logs). The tab still shows the page below."
+                )
             } else {
-                "The page loaded."
+                format!("Opened {requested}.")
             };
+            if result.get("unapproved").and_then(Value::as_bool) == Some(true) {
+                verdict.push_str(
+                    " The page ended up on a site that is not approved; its content stays hidden \
+                     until the next action asks the user.",
+                );
+            }
             vec![text(format!("{verdict}\n{}", page("")))]
         }
         "screenshot" => {
@@ -187,6 +208,24 @@ mod tests {
             shot[1],
             json!({ "type": "image", "data": "AAAA", "mimeType": "image/png" })
         );
+    }
+
+    #[test]
+    fn a_navigation_that_did_not_load_says_so_and_every_result_names_its_tab() {
+        let content = render(
+            &json!({ "action": "navigate", "url": "http://localhost:4400/" }),
+            &json!({
+                "tab": "demo:1",
+                "requested": "http://localhost:4400/",
+                "url": "https://www.google.com/",
+                "title": "Google",
+                "loading": true,
+            }),
+        );
+        let body = content[0]["text"].as_str().unwrap();
+        assert!(body.starts_with("Agent tab demo:1."), "{body}");
+        assert!(body.contains("has not loaded"), "{body}");
+        assert!(!body.contains("Opened"), "{body}");
     }
 
     #[test]

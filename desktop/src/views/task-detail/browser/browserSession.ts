@@ -101,25 +101,55 @@ export function recordTabPage(tabId: string, page: { url?: string; title?: strin
   }
 }
 
+type AgentTabListener = (tab: { id: string; url: string }) => void;
+const agentTabListeners = new Map<string, Set<AgentTabListener>>();
+
 /**
- * The tab an agent acts in: the project's active tab as the pane last left it,
- * else as remembered from the last run. With `create`, a project with no tabs
- * gets one, made active.
+ * Follow the agent's tab being shown in a project's browser.
  * @param project the project
- * @param create whether to add a tab when there is none
- * @returns the tab's id and address, or null
+ * @param listener called with the tab to add, if missing, and make active
+ * @returns stops following
  */
-export function agentTab(project: string, create = false): { id: string; url: string } | null {
-  const current = live.get(project) ?? loadBrowserSession(project);
-  const tab = current?.tabs.find((t) => t.id === current.activeId) ?? current?.tabs[0];
-  if (tab) return { id: tab.id, url: tab.url };
-  if (!create) return null;
-  const id = `${project}:${crypto.randomUUID()}`;
-  const url = "about:blank";
-  live.set(project, {
-    tabs: [{ id, url, title: "New tab", loading: false, entries: [url], pos: 0 }],
-    activeId: id,
+export function onAgentTab(project: string, listener: AgentTabListener): () => void {
+  let listeners = agentTabListeners.get(project);
+  if (!listeners) {
+    listeners = new Set();
+    agentTabListeners.set(project, listeners);
+  }
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/**
+ * Put the agent's tab into the project's tab list and make it the active tab,
+ * in a pane showing the project now and in one mounted later.
+ * @param project the project
+ * @param tab the agent's tab and the address it is loading
+ */
+export function showAgentTab(project: string, tab: { id: string; url: string }): void {
+  const saved = loadBrowserSession(project);
+  const current: LiveBrowserSession = live.get(project) ?? {
+    tabs: (saved?.tabs ?? []).map((t) => ({
+      id: t.id,
+      url: t.url,
+      title: "New tab",
+      loading: false,
+      entries: [t.url],
+      pos: 0,
+    })),
+    activeId: saved?.activeId ?? null,
+  };
+  const known = current.tabs.some((t) => t.id === tab.id);
+  const tabs = known
+    ? current.tabs
+    : [
+        ...current.tabs,
+        { id: tab.id, url: tab.url, title: "Agent", loading: true, entries: [tab.url], pos: 0 },
+      ];
+  live.set(project, { tabs, activeId: tab.id });
+  saveBrowserSession(project, {
+    tabs: tabs.map((t) => ({ id: t.id, url: t.url })),
+    activeId: tab.id,
   });
-  saveBrowserSession(project, { tabs: [{ id, url }], activeId: id });
-  return { id, url };
+  for (const listener of agentTabListeners.get(project) ?? []) listener(tab);
 }

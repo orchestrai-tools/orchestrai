@@ -1,71 +1,35 @@
 // Agent driver injected into every browser tab before page scripts run.
 //
 // The host calls `__wfAgent(call)` with `evaluateJavaScript` to outline the
-// page, click, type and read the console messages kept since load; it checks
-// the page's origin natively before every call. The entry point is frozen and
-// non-configurable and the builtins it relies on are captured here, before any
-// page script, so a page cannot swap them out from under it.
+// page, click, type and read the console messages kept since load. Every call
+// carries the origins it may act on and is refused unless the document it runs
+// in is on one of them: the native URL moves to a new address as soon as a load
+// starts, while the old document is still the one being scripted. The entry
+// point is frozen and non-configurable and the builtins it relies on are
+// captured here, before any page script, so a page cannot swap them out.
 (function () {
   if (window.__wfAgent) return;
 
-  const MAX_CONSOLE = 200;
   const MAX_LINES = 600;
   const MAX_CHARS = 24000;
   const TEXT_CAP = 160;
   const NAME_CAP = 80;
 
   const stringify = JSON.stringify;
-  const now = Date.now;
   const inputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
   const textareaValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
   const dispatch = EventTarget.prototype.dispatchEvent;
   const Pointer = typeof PointerEvent === "function" ? PointerEvent : MouseEvent;
-
-  // ── console ──
-  const logs = [];
-  function format(arg) {
-    if (typeof arg === "string") return arg;
-    if (arg instanceof Error) return arg.stack || String(arg);
-    try {
-      const text = stringify(arg);
-      return text === undefined ? String(arg) : text;
-    } catch {
-      return String(arg);
-    }
-  }
-  function record(level, args) {
-    const text = Array.prototype.map.call(args, format).join(" ");
-    logs.push({ level, text: text.slice(0, 1000), time: now() });
-    if (logs.length > MAX_CONSOLE) logs.shift();
-  }
-  for (const level of ["log", "info", "warn", "error", "debug"]) {
-    const original = console[level];
-    if (typeof original !== "function") continue;
-    console[level] = function (...args) {
-      try {
-        record(level, args);
-      } catch {
-        // A message that cannot be recorded still reaches the real console.
-      }
-      return original.apply(this, args);
-    };
-  }
-  window.addEventListener(
-    "error",
-    (e) => {
-      if (e instanceof ErrorEvent) {
-        const where = e.filename ? ` (${e.filename}:${e.lineno})` : "";
-        record("error", [`Uncaught ${e.message}${where}`]);
-      } else if (e.target && e.target !== window) {
-        const t = e.target;
-        record("error", [`Failed to load ${t.tagName.toLowerCase()} ${t.src || t.href || ""}`]);
-      }
-    },
-    true,
-  );
-  window.addEventListener("unhandledrejection", (e) => {
-    record("error", ["Unhandled promise rejection:", e.reason]);
-  });
+  const loc = window.location;
+  // Installed just before this script by `browser_console.js`.
+  const consoleMessages = typeof window.__wfConsole === "function" ? window.__wfConsole : null;
+  const mapGet = Map.prototype.get;
+  const mapSet = Map.prototype.set;
+  const weakGet = WeakMap.prototype.get;
+  const weakSet = WeakMap.prototype.set;
+  const WeakRefOf = WeakRef;
+  const deref = WeakRef.prototype.deref;
+  const connected = Object.getOwnPropertyDescriptor(Node.prototype, "isConnected").get;
 
   // ── refs ──
   // A WeakMap tags elements without touching the DOM, so the same element
@@ -74,17 +38,18 @@
   const ids = new WeakMap();
   let nextRef = 1;
   function refFor(el) {
-    let id = ids.get(el);
+    let id = weakGet.call(ids, el);
     if (!id) {
       id = `e${nextRef++}`;
-      ids.set(el, id);
-      refs.set(id, new WeakRef(el));
+      weakSet.call(ids, el, id);
+      mapSet.call(refs, id, new WeakRefOf(el));
     }
     return id;
   }
   function lookup(ref) {
-    const el = refs.get(ref)?.deref();
-    return el && el.isConnected ? el : null;
+    const held = mapGet.call(refs, ref);
+    const el = held ? deref.call(held) : undefined;
+    return el && connected.call(el) ? el : null;
   }
 
   // ── outline ──
@@ -174,6 +139,9 @@
   ]);
   const GROUPS = { FORM: "form", NAV: "navigation", DIALOG: "dialog", MAIN: "main" };
   const BLOCK = /^(block|flex|grid|list-item|table|table-row|table-cell|flow-root)$/;
+  // A block with none of these inside is plain text, read as laid out.
+  const STRUCTURE =
+    "a[href],button,input,select,textarea,summary,[role],[contenteditable],[onclick],[tabindex],h1,h2,h3,h4,h5,h6,img[alt],iframe,form,nav,dialog,main,slot";
 
   // The line for an element an agent can act on, or null for everything else.
   function control(el) {
@@ -255,7 +223,9 @@
     function walk(node, depth) {
       if (truncated) return;
       if (node.nodeType === Node.TEXT_NODE) {
-        pending += ` ${node.data}`;
+        // Text nodes join as written: a space the page did not put between
+        // two inline pieces is not added here.
+        pending += node.data;
         return;
       }
       if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -305,7 +275,14 @@
         inner = depth + 1;
       }
       const block = group || BLOCK.test(styleOf(el).display);
+      if (block && !group && !el.shadowRoot && typeof el.innerText === "string" && !el.querySelector(STRUCTURE)) {
+        flush(depth);
+        pending = el.innerText;
+        flush(depth);
+        return;
+      }
       if (block) flush(depth);
+      if (tag === "BR") pending += " ";
       for (const child of Array.from(children(el))) walk(child, inner);
       if (block) flush(inner);
     }
@@ -438,10 +415,27 @@
     return { note: "" };
   }
 
+  // A plain loop, so a page that patched Array methods cannot widen the list.
+  function allowed(origins, origin) {
+    if (!origins) return false;
+    for (let i = 0; i < origins.length; i += 1) {
+      if (origins[i] === origin) return true;
+    }
+    return false;
+  }
+
   function run(call) {
+    const origin = loc.origin;
+    if (!call || (call.action !== "origin" && !allowed(call.allowed, origin))) {
+      return stringify({ blocked: origin, origin, url: loc.href });
+    }
     let out;
     try {
-      switch (call && call.action) {
+      switch (call.action) {
+        case "origin":
+        case "check":
+          out = {};
+          break;
         case "snapshot":
           out = snapshot();
           break;
@@ -452,7 +446,7 @@
           out = type(call.ref, String(call.text ?? ""), Boolean(call.submit));
           break;
         case "console":
-          out = { messages: logs.slice() };
+          out = { messages: consoleMessages ? consoleMessages() : [] };
           break;
         default:
           out = { error: `unknown browser action ${call && call.action}` };
@@ -460,7 +454,8 @@
     } catch (e) {
       out = { error: `The page script failed: ${e && e.message ? e.message : String(e)}` };
     }
-    out.url = location.href;
+    out.origin = origin;
+    out.url = loc.href;
     out.title = document.title;
     return stringify(out);
   }

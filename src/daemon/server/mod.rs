@@ -41,6 +41,8 @@ mod stdio;
 mod tests;
 mod util;
 
+#[cfg(test)]
+pub(crate) use client_hub::HubConnection;
 pub(crate) use client_hub::{ClientHub, ClientRequestError};
 use dispatch::dispatch;
 use endpoint::{remove_endpoint, write_endpoint};

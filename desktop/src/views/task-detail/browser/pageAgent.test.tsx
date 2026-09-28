@@ -3,8 +3,11 @@ import { useState } from "react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import script from "../../../../src-tauri/src/browser_agent.js?raw";
+import consoleScript from "../../../../src-tauri/src/browser_console.js?raw";
 
 interface Result {
+  blocked?: string;
+  origin?: string;
   url: string;
   title: string;
   tree?: string;
@@ -20,11 +23,13 @@ type Agent = (call: Record<string, unknown>) => string;
 const ENTRY = "__wfAgent";
 const page = window as unknown as Record<string, unknown>;
 
+/** Run a call as the host does; the page's own origin is allowed unless the
+ *  call says otherwise. */
 function agent(call: Record<string, unknown>): Result {
   const run = page[ENTRY] as Agent;
   let out = "";
   act(() => {
-    out = run(call);
+    out = run({ allowed: [window.location.origin], ...call });
   });
   return JSON.parse(out) as Result;
 }
@@ -42,6 +47,7 @@ beforeAll(() => {
   Element.prototype.getBoundingClientRect = () =>
     ({ x: 0, y: 0, top: 0, left: 0, right: 20, bottom: 20, width: 20, height: 20 }) as DOMRect;
   Element.prototype.scrollIntoView = () => {};
+  new Function(consoleScript)();
   new Function(script)();
 });
 
@@ -214,6 +220,65 @@ describe("page agent", () => {
     expect(messages).toContainEqual(
       expect.objectContaining({ level: "error", text: "Uncaught boom (app.js:4)" }),
     );
+  });
+
+  it("acts only in a document on an allowed origin, whatever the host was told", () => {
+    let clicked = false;
+    render(
+      <button type="button" onClick={() => (clicked = true)}>
+        Delete
+      </button>,
+    );
+    const { tree = "" } = agent({ action: "snapshot" });
+    const ref = refOf(tree, '"Delete"');
+
+    const refused = agent({ action: "click", ref, allowed: ["http://localhost:4400"] });
+    expect(refused.blocked).toBe(window.location.origin);
+    expect(clicked).toBe(false);
+    expect(agent({ action: "snapshot", allowed: [] }).tree).toBeUndefined();
+    expect(agent({ action: "console", allowed: undefined }).blocked).toBe(window.location.origin);
+
+    const report = agent({ action: "origin", allowed: [] });
+    expect(report.blocked).toBeUndefined();
+    expect(report.origin).toBe(window.location.origin);
+  });
+
+  it("joins inline text as written, without spacing out letters", () => {
+    render(
+      <main>
+        <p>
+          <span>T</span>
+          <span>h</span>
+          <span>i</span>
+          <span>s</span> domain is <b>for</b> use
+        </p>
+        <p>
+          one
+          <br />
+          two
+        </p>
+      </main>,
+    );
+    const tree = agent({ action: "snapshot" }).tree ?? "";
+    expect(tree).toContain('text "This domain is for use"');
+    expect(tree).toContain('text "one two"');
+  });
+
+  it("reads a plain text block as the browser lays it out", () => {
+    const innerText = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "innerText");
+    Object.defineProperty(HTMLElement.prototype, "innerText", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.textContent?.toUpperCase() ?? "";
+      },
+    });
+    try {
+      render(<p>laid out</p>);
+      expect(agent({ action: "snapshot" }).tree).toContain('text "LAID OUT"');
+    } finally {
+      if (innerText) Object.defineProperty(HTMLElement.prototype, "innerText", innerText);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>).innerText;
+    }
   });
 
   it("a page script cannot replace the entry point", () => {

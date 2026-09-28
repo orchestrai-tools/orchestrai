@@ -224,6 +224,11 @@ pub enum SessionUpdate {
         /// is not a tool call at all.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tool_call_id: Option<String>,
+        /// Set on the daemon's own prompt to let the agent act on this site in
+        /// the in-app browser. Such a prompt is answered where the site is
+        /// named, never with a one-click approve from a toast or banner.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        browser_origin: Option<String>,
     },
     /// A permission request the developer answered — recorded in the stream so
     /// the resolved state survives reopen/restart (the request itself lingers).

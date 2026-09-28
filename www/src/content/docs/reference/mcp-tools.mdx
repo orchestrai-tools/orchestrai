@@ -193,19 +193,19 @@ Deletes the automation and its run history permanently, and stops a run in fligh
 
 ## Browser — act in the in-app browser
 
-Available in every session bound to a project, while the desktop app is open. The tools work in the project's active [Browser](/guides/browser/) tab — the one you see, signed in as you.
+Available in every session bound to a project, while the desktop app is open. The tools work in the agent's own tab in the project's [Browser](/guides/browser/), signed in as you: `browser_navigate` opens it and makes it active, and every other tool acts in it, never in the user's tabs. Each result names the tab it came from.
 
-The project's own services (every port [Warpforge assigned](/concepts/ports/) to its services and port-forwards, on `localhost`) are allowed. Any other site raises a permission prompt in the task's chat before the action runs: **allow** for that action, **allow always** for that site for the rest of the task, **deny** to stop. The check runs on the page's actual address right before every action. Everything read from a page comes back inside a block marked as untrusted data.
+The project's own services (every port [Warpforge assigned](/concepts/ports/) to its services and port-forwards, on `localhost`) are allowed. Any other site raises a permission prompt in the task's chat before the action runs: **allow** for that action, **allow always** for that site for the rest of the task, **deny** to stop. The check runs right before every action, on the page actually loaded in the tab. Everything read from a page comes back inside a block marked as untrusted data.
 
 ### `browser_navigate`
 
-Opens `url` in the project's tab and waits for it to load, returning the final address and title. A bare `localhost:4001/path` means `http://`; only `http` and `https` pages open. With no tab open, one opens in the background — the user's view doesn't switch.
+Opens `url` in the agent's tab and waits for it to load, returning the final address and title. A bare `localhost:4001/path` means `http://`; only `http` and `https` pages open. The first call opens the tab in the background if the Browser pane isn't showing. A page that doesn't load within about 20 seconds — a service that isn't up, or that listens on another port — is reported as not loaded, not as opened.
 
 **Reach for it first**, with an address from `list_runtime`.
 
 ### `browser_snapshot`
 
-Reads the page as a compact outline: headings, text, and every link, button, field and option, each interactive one tagged with a reference like `[e12]`. A reference keeps pointing at the same element across snapshots until the page reloads. Long text is cut short and a large page is truncated, with a note saying so.
+Reads the agent tab's page as a compact outline: headings, text, and every link, button, field and option, each interactive one tagged with a reference like `[e12]`. A reference keeps pointing at the same element across snapshots until the page reloads. Long text is cut short and a large page is truncated, with a note saying so.
 
 ### `browser_click`
 

@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearBrowserSession } from "./browserSession";
+import { clearBrowserSession, showAgentTab } from "./browserSession";
 import { BROWSER_START, useBrowserTabs } from "./useBrowserTabs";
 
 function activeTab(result: { current: ReturnType<typeof useBrowserTabs> }) {
@@ -21,6 +21,16 @@ describe("useBrowserTabs", () => {
     const { result } = renderHook(() => useBrowserTabs("p"));
     expect(result.current.tabs).toHaveLength(1);
     expect(activeTab(result)?.url).toBe(BROWSER_START);
+  });
+
+  it("adds the agent's tab and makes it active when the agent opens a page", () => {
+    const { result } = renderHook(() => useBrowserTabs("p"));
+    const users = result.current.activeId;
+    act(() => showAgentTab("p", { id: "p:agent", url: "http://localhost:4001/" }));
+    expect(result.current.tabs.map((t) => t.id)).toEqual([users, "p:agent"]);
+    expect(result.current.activeId).toBe("p:agent");
+    act(() => showAgentTab("p", { id: "p:agent", url: "http://localhost:4001/a" }));
+    expect(result.current.tabs).toHaveLength(2);
   });
 
   it("opens a new start tab and makes it active", () => {

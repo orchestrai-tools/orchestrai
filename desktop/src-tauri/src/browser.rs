@@ -94,6 +94,7 @@ pub fn browser_open(
     // survives restarts without any special store handling.
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(target))
         .initialization_script(PICKER_SCRIPT)
+        .initialization_script(crate::browser_agent::CONSOLE_SCRIPT)
         .initialization_script(crate::browser_agent::AGENT_SCRIPT)
         .on_navigation(move |url| {
             if !url.as_str().starts_with(ANNOTATE_SCHEME) {

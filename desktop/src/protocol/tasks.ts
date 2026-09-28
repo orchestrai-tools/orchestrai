@@ -170,6 +170,9 @@ export type SessionUpdate =
       /** The tool call this prompt gates, when the agent named one. Absent on
        *  histories recorded before the daemon carried it through. */
       tool_call_id?: string;
+      /** Set on the daemon's prompt to let the agent use this site in the
+       *  in-app browser; answered in the task, never from a toast or banner. */
+      browser_origin?: string;
     }
   | { kind: "permission_resolved"; request_id: string; outcome: string }
   | { kind: "plan"; entries: PlanEntry[] }

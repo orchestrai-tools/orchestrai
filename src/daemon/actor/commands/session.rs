@@ -310,8 +310,9 @@ impl Daemon {
             Command::AskUser {
                 task_id,
                 title,
+                browser_origin,
                 reply,
-            } => self.ask_user(task_id, title, reply),
+            } => self.ask_user(task_id, title, browser_origin, reply),
             Command::WithdrawAsk {
                 task_id,
                 request_id,

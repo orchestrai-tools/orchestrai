@@ -6,7 +6,7 @@ import PermissionToast from "@/components/PermissionToast";
 import { daemon, DaemonRpcError } from "@/daemon";
 import { agentDisplayName } from "@/lib/agentNames";
 import { attentionToastSummary } from "@/lib/attentionToast";
-import { approvePermissionOption } from "@/lib/permissionApproval";
+import { quickApproveOption } from "@/lib/permissionApproval";
 import { permissionToastContext } from "@/lib/permissionToast";
 import { awaitsReview } from "@/lib/taskGroups";
 import { taskLabel } from "@/lib/taskLabel";
@@ -115,7 +115,7 @@ function bannerOutcome(taskId: string, requestId: string, action: string): strin
   const approve = action === "approve";
   if (request?.kind !== "permission_request") return approve ? "allow" : "deny";
   const outcome = approve
-    ? approvePermissionOption(request.options)
+    ? quickApproveOption(request)
     : request.options.find((option) => option === "deny");
   return outcome ?? null;
 }
@@ -240,7 +240,7 @@ export function useDaemonEvents() {
             update,
             daemon.getState().sessionUpdates[taskId] ?? [],
           );
-          const approveOption = approvePermissionOption(update.options);
+          const approveOption = quickApproveOption(update);
           const toastId = `attention:permission:${update.request_id}`;
           toast.custom(
             (sonnerId) => (

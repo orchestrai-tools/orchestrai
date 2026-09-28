@@ -24,12 +24,19 @@ impl DaemonHandle {
     /// Ask the user on `task_id`'s chat, offering allow, allow always and deny.
     /// @param task_id the task whose chat shows the prompt
     /// @param title the question
+    /// @param browser_origin the site, when the prompt is a browser grant
     /// @returns the pending prompt, or why it cannot be shown
-    pub(crate) async fn ask_user(&self, task_id: &str, title: &str) -> Result<UserAsk, String> {
+    pub(crate) async fn ask_user(
+        &self,
+        task_id: &str,
+        title: &str,
+        browser_origin: Option<&str>,
+    ) -> Result<UserAsk, String> {
         let (reply, rx) = oneshot::channel();
         self.send(Command::AskUser {
             task_id: task_id.into(),
             title: title.into(),
+            browser_origin: browser_origin.map(str::to_string),
             reply,
         })
         .await;
@@ -69,6 +76,7 @@ impl Daemon {
         &mut self,
         task_id: String,
         title: String,
+        browser_origin: Option<String>,
         reply: oneshot::Sender<Result<UserAsk, String>>,
     ) {
         if !self.tasks.contains_key(&task_id) {
@@ -96,6 +104,7 @@ impl Daemon {
                 title,
                 options,
                 tool_call_id: None,
+                browser_origin,
             },
         );
         let _ = reply.send(Ok(UserAsk { request_id, answer }));

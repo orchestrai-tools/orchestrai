@@ -144,6 +144,7 @@ impl Daemon {
                         title,
                         options,
                         tool_call_id,
+                        browser_origin: None,
                     },
                 )
             }

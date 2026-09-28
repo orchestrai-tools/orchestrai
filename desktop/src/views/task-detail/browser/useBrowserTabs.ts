@@ -4,6 +4,7 @@ import { browser, onBrowserState, onBrowserTitle } from "./browserClient";
 import {
   loadBrowserSession,
   loadLiveBrowserSession,
+  onAgentTab,
   saveBrowserSession,
   saveLiveBrowserSession,
 } from "./browserSession";
@@ -135,6 +136,21 @@ export function useBrowserTabs(project: string): BrowserTabs {
       void untitle.then((off) => off());
     };
   }, []);
+
+  // The agent's tab joins the strip and takes focus when the agent opens a page,
+  // so what it acts on is what the pane shows.
+  useEffect(
+    () =>
+      onAgentTab(project, ({ id, url }) => {
+        setTabs((list) =>
+          list.some((t) => t.id === id)
+            ? list
+            : [...list, { id, url, title: "Agent", loading: true, entries: [url], pos: 0 }],
+        );
+        setActiveId(id);
+      }),
+    [project],
+  );
 
   const activeRef = useRef(activeId);
   activeRef.current = activeId;

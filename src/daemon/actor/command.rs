@@ -712,6 +712,7 @@ pub enum Command {
     AskUser {
         task_id: String,
         title: String,
+        browser_origin: Option<String>,
         reply: oneshot::Sender<Result<crate::daemon::actor::user_ask::UserAsk, String>>,
     },
     /// Withdraw an unanswered `AskUser` prompt.

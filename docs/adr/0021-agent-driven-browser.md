@@ -1,6 +1,7 @@
 # 0021 — Agents drive the in-app browser through a daemon → client request
 
-**Status:** accepted (2026-09-28)
+**Status:** accepted (2026-09-28); amended 2026-09-28 (the agent's own tab, the
+document-origin check)
 
 ## Context
 
@@ -27,32 +28,37 @@ waiting, sends `client.requestCancelled`, and a late reply is refused. Only the
 connection a request was sent to may answer it. The desktop registers `browser`
 on every reconnect, only in the Tauri app (`desktop/src/daemon/clientRequests.ts`).
 
-**Browser actions are DOM scripting, not a protocol.** `browser_agent.js` is an
-initialization script in every tab: it keeps console messages from the start
-of the load, outlines the page with refs held in a `WeakMap` (no DOM
-attributes are written, so the page is not changed by being read) and fires
-the event sequence a pointer or keyboard would. Values are set through the
+**Browser actions are DOM scripting, not a protocol.** Two initialization
+scripts run in every tab: `browser_console.js` keeps console messages from the
+start of the load, and `browser_agent.js` outlines the page with refs held in
+a `WeakMap` (no DOM attributes are written, so the page is not changed by
+being read) and fires the event sequence a pointer or keyboard would. Values are set through the
 prototype setter plus `input`/`change`, which is what React's controlled
 inputs observe. Screenshots are `WKWebView.takeSnapshot` (macOS only).
 
-**The target is the project's active tab; `browser_navigate` opens one.** With
-no tab, navigate creates one with a hidden view, and the pane adopts the view
-when it mounts; a remembered tab whose view is gone after a restart is
-reopened the same way before any action. Other
-actions on a project with no page return an error naming `browser_navigate`.
-The user's view is never switched to the browser.
+**The agent acts in a tab of its own** (`desktop/.../browser/agentDriver.ts`).
+The first `browser_navigate` in a project creates it — hidden when no pane
+shows it — adds it to the tab strip and makes it active; every later action
+uses that tab, whichever tab the user switches to. Other actions before a
+navigate, or after the user closed the tab, return an error naming
+`browser_navigate`. The user's view is never switched to the browser.
 
-**The origin gate is the daemon's list, checked natively by the desktop.** The
+**The origin gate is the daemon's list, checked on the page the action runs in.** The
 daemon allows every loopback spelling of the ports the project's services and
 port-forwards were allocated, plus origins the user allowed "always" for the
 task (daemon memory, `browser/origins.rs`). `browser_navigate` checks the
 target before anything loads. Every other action sends the list with the
-request, and the Tauri command compares it with the webview's own URL before
-running the script, answering `{ blocked: origin }` otherwise. Anything outside
+request, and it is checked twice on the desktop before anything runs: against
+the webview's native URL, and inside the script against the origin of the
+document it is running in. Either failing answers `{ blocked: origin }`. The
+daemon checks again that the result names an allowed document origin, and
+treats one that does not, or names none, as refused. Anything outside
 the list raises a permission prompt on the calling task's chat through the
 agent permission flow (`actor/user_ask.rs`): same `PermissionRequest` update,
 same `session.permission` answer, routed back to the daemon instead of to the
-agent. It waits five minutes, then is withdrawn as cancelled.
+agent. It carries `browser_origin`, so toasts and native banners offer only
+Review for it, never a one-click approve. It waits five minutes, then is
+withdrawn as cancelled.
 
 **What the agent reads is wrapped as untrusted** (`mcp/untrusted.rs`): a
 `<browser_page>` block that says it is data, with a zero-width space after
@@ -63,8 +69,20 @@ every `<` from the page — the scheme `formatAnnotation.ts` uses for picks.
 - **CDP or WebDriver.** WKWebView exposes neither to an embedding app.
 - **Broadcasting the request and taking the first answer.** Two apps on one
   daemon (a `tauri dev` next to the installed app) would race to act.
-- **Checking the origin in the page script.** The page can replace anything in
-  its own world; the native URL cannot be scripted.
+- **Checking the origin only in the page script.** The page can patch the
+  builtins the script calls in its own world. The script's check is the one
+  that sees the right document; the native check and the daemon's re-check
+  are what a patched page cannot get past.
+- **Trusting `WKWebView.URL` alone.** It moves to a new address as soon as a
+  load starts, and stays there while that load hangs, while the old document
+  is still the one scripts run in. In the first live test, after a navigation
+  to a localhost service that did not load, snapshot, type and screenshot of
+  the Google page still in the tab went through with no prompt; the native
+  URL was the only check between them and the page.
+- **Acting in the user's active tab.** Actions followed whichever tab was
+  active when each one ran, read from pane state that more than one mounted
+  pane writes, so a navigate and the snapshot after it could reach different
+  pages.
 - **Opening the browser pane for the agent.** It takes the user's screen away
   mid-task; a background tab is adopted by the pane anyway.
 - **Marking elements with `data-*` refs.** It writes to the page's DOM, which
@@ -74,9 +92,11 @@ every `<` from the page — the scheme `formatAnnotation.ts` uses for picks.
 
 1. **A client request goes to one connection.** (`client_hub.rs`) Never
    through the broadcast bus, and only its recipient may reply.
-2. **No page action runs before the native origin check.**
-   (`desktop/src-tauri/src/browser_agent.rs` `gate`) A new action goes through
-   `browser_agent_call` or does its own `gate` first.
+2. **No page action runs unless the document it runs in is on an allowed
+   origin.** (`browser_agent.js` `run`, `browser_agent.rs` `gate`/`checked`)
+   The native URL check alone is not enough; only the `origin` report is
+   exempt, and the daemon keeps the title of a page it reports from an
+   unapproved origin away from the agent.
 3. **`browser_navigate` is gated on its target, before the load.**
    (`daemon/browser/mod.rs`) Checking the page after it loaded has already
    sent the user's cookies to it.
@@ -85,3 +105,5 @@ every `<` from the page — the scheme `formatAnnotation.ts` uses for picks.
    answer a request the agent does not have.
 5. **Everything page-derived stays inside the untrusted block**, URL and title
    included. (`mcp/handle/browser.rs`)
+6. **Every action targets the agent's tab.** (`agentDriver.ts`) Resolving the
+   tab from pane state per action is what split navigate and snapshot.

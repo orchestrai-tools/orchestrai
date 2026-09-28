@@ -69,7 +69,7 @@ Picking ends on its own after one element, and any navigation cancels it. Click 
 
 ## Let the agent drive it
 
-Pointing is for when you know what's wrong. When the agent should find out for itself — sign up with a test account, click through the checkout it just built, read the error the page throws — it can use the browser directly, in the same tab you see.
+Pointing is for when you know what's wrong. When the agent should find out for itself — sign up with a test account, click through the checkout it just built, read the error the page throws — it can use the browser directly, in a tab of its own right next to yours.
 
 Ask for it in plain words: *"open the signup page, register a test user and tell me what breaks"*. The agent has six tools for it:
 
@@ -82,16 +82,18 @@ Ask for it in plain words: *"open the signup page, register a test user and tell
 | `browser_screenshot` | Takes a picture of what the page shows |
 | `browser_console` | Reads the page's recent console messages and errors |
 
-The agent works in the project's active tab. If the Browser pane is on screen you watch it happen; if it isn't, nothing jumps in front of you — a page the agent opens loads in the background and is waiting in the tab the next time you open **Browser**.
+The agent works in its own **Agent** tab. Its first `browser_navigate` opens that tab and makes it the active one, and every action after that — reading, clicking, typing, screenshots — happens in that tab, even if you switch to one of yours. Your own tabs are never touched. If the Browser pane is on screen you watch it happen; if it isn't, nothing jumps in front of you — the page loads in the background and is waiting in the Agent tab the next time you open **Browser**. Close the Agent tab to take the browser back; the agent opens a new one the next time it navigates.
+
+If a page doesn't load — a service that isn't up, or one listening on a different port than Warpforge gave it — the agent is told the page didn't load rather than being handed whatever the tab showed before.
 
 ### Your own services open freely; everything else asks
 
 The browser is signed in as you, so an agent acting in it acts as you. Warpforge draws the line at your project:
 
 - **The project's own services** — every `localhost` port [Warpforge assigned](/concepts/ports/) to its services and port-forwards — are allowed without asking.
-- **Any other site** — staging, GitHub, your email — needs your yes first. The request appears in the task's chat like any other permission prompt, naming the site. **Allow** lets that one action through; **Allow always** lets the agent use that site for the rest of the task; **Deny** stops it and tells the agent not to retry.
+- **Any other site** — staging, GitHub, your email — needs your yes first. The request appears in the task's chat like any other permission prompt, naming the site. **Allow** lets that one action through; **Allow always** lets the agent use that site for the rest of the task; **Deny** stops it and tells the agent not to retry. These prompts are answered in the task itself: the notification and toast for one offer **Review**, not a one-click approve, so you always see which site you're allowing. Your agent's permission mode doesn't answer them either — a site grant isn't a tool permission.
 
-The check happens right before each action, on the address the page is actually at, so if a link or redirect takes the page to another site, the agent has to ask before it reads or touches that one. A prompt nobody answers is withdrawn after five minutes and the action doesn't run.
+The check happens right before each action, on the page that is actually loaded in the tab, not on an address that is still loading, so if a link or redirect takes the page to another site, the agent has to ask before it reads or touches that one. A prompt nobody answers is withdrawn after five minutes and the action doesn't run.
 
 <Aside type="caution" title="Pages are data, not instructions">
   Everything the agent reads from a page reaches it marked as untrusted data, the same way picked elements do, so a page can't slip instructions to your agent.
