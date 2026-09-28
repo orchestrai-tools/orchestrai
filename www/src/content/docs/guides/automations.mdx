@@ -94,6 +94,10 @@ Two shapes, chosen with **Same task every run**:
 
 **Isolated worktree** puts each new task in its own git worktree — the same isolation a hand-created task gets, and the sane default for an automation that edits files while you are working in the same repo.
 
+With it on, **Start each run from** picks the branch every run forks its new task branch from: your **current branch** (the default), **Latest from origin** (fetched just before the run, so a nightly job always starts from what has landed), or any other local branch. Checking out one existing branch or pull request is not offered here, because every run needs a branch of its own.
+
+A run's worktree is created the same way as one from New Task, so the project's [`worktree:` copy and setup](/reference/configuration/#worktree) apply to it too. A run that continues one task (**Same task every run**) keeps that task's worktree instead of creating a new one.
+
 Only one run of an automation is ever in flight. If an occurrence comes due while the previous run is still going, it is recorded as **Skipped · overlap** rather than piling up a second agent on the same work.
 
 ## Run history
@@ -109,8 +113,15 @@ The detail drawer lists every run newest-first: run number, status, when it was 
 | **Skipped · precheck** | The precheck command did not authorize the run. |
 | **Skipped · missed** | Came due while the daemon was down, past the grace window. |
 | **Skipped · overlap** | The previous run had not finished. |
+| **Skipped · quota** | The agent's account was out of quota, so no work was started. |
 
-Skips are reported honestly as three different things rather than folded into one, because the fix for each is different: rewrite the precheck, widen the grace, or make the prompt finish faster.
+Skips are reported honestly as four different things rather than folded into one, because the fix for each is different: rewrite the precheck, widen the grace, make the prompt finish faster, or wait for the quota to reset.
+
+### Skipped when the account is out of quota
+
+A run that would start on an account with no quota left is not started. It is recorded as **Skipped · quota**, and the run's reason names the account and when its limit resets — instead of launching an agent that fails on its first message with nobody watching. This applies to scheduled runs and to **Run now** alike; the next occurrence tries again.
+
+Only a known exhaustion holds a run back. An account that is merely running low, or whose usage could not be checked, never does, and neither does a limit that covers a single model when the run uses another. A run that continues an earlier task is judged on the account that task is pinned to.
 
 Warpforge keeps the **last 100 finished runs** per automation and prunes the rest. The tasks those runs created are not touched by pruning — they are ordinary tasks and live under their normal retention.
 
@@ -128,7 +139,7 @@ Below it, the grid filters by state (**All / Enabled / Paused**) and by last out
 
 ## Agents can manage automations too
 
-Every agent session gets the `automation_*` [MCP tools](/reference/mcp-tools/#automations--schedule-a-prompt-to-run-itself): create, list, read, patch, delete, run now, and read run history. An agent that notices work worth repeating can schedule it instead of telling you to.
+Every agent session gets the `automation_*` [MCP tools](/reference/mcp-tools/#automations--schedule-a-prompt-to-run-itself) — regular tasks as well as orchestrators: create, list, read, patch, delete, run now, and read run history. An agent that notices work worth repeating can schedule it instead of telling you to. Unless it names another project, a new automation belongs to the project the agent is working in.
 
 <Aside type="tip">
   Worth saying out loud in your prompt what the automation is allowed to do. A scheduled run is an unattended run: it commits nothing on its own, but it does everything else a task can, and nobody is watching the turn. You do not need to spell out that part — Warpforge prefixes every run with a line naming the automation and its run number and telling the agent the turn is scheduled and unattended, so it answers instead of asking you a question nobody will read.

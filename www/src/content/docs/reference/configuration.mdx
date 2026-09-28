@@ -1,6 +1,6 @@
 ---
 title: Workspace configuration
-description: Full schema for .warpforge/workspace.yaml — services, ports, port-forwards, and agent templates.
+description: Full schema for .warpforge/workspace.yaml — services, ports, port-forwards, worktree setup, and agent templates.
 sidebar:
   order: 1
   label: Configuration
@@ -36,6 +36,10 @@ portforwards:
     pod: postgres-cluster-pooler
     localPort: 5432
     remotePort: 5432
+
+worktree:
+  copy: [".env*", "config/local.json"]
+  setup: bun install
 
 agentTemplates:
   custom:
@@ -113,6 +117,34 @@ A list of Kubernetes port-forwards to keep alive alongside local services. Requi
 | `name` | string | no | Human-readable label shown in the UI. |
 
 Port-forwards are watched and retried with backoff when they drop.
+
+## `worktree`
+
+Optional. What to carry into, and run in, every new [task worktree](/guides/tasks-and-backlog/#isolated-worktrees), including the ones [automation runs](/guides/automations/#where-runs-land) create — the things git does not check out for you, like a git-ignored `.env`, and the install step a fresh checkout needs. Unknown keys are rejected.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `copy` | string[] | no | Glob patterns, relative to the project root, of files to copy into each new worktree at the same relative path. |
+| `setup` | string | no | A command run in the new worktree, through `sh -c`, after the files are copied. |
+
+```yaml
+worktree:
+  copy: [".env*", "apps/*/.env.local"]
+  setup: bun install
+```
+
+**How `copy` behaves**
+
+- Patterns must be relative: no leading `/`, no `..`, and no `:`. A pattern that breaks this, an invalid glob, or a blank `setup` makes the whole config fail to load, with the reason.
+- `*` matches within one folder; use `**` to reach across folders.
+- Only regular files are copied. Symlinks are not followed or copied.
+- A file that already exists in the worktree is never overwritten, so tracked files keep their checked-out contents.
+- `.git`, `node_modules`, `target`, `dist`, `.next`, and other worktrees are skipped, however broad the pattern.
+
+**How `setup` behaves**
+
+- It has 10 minutes. Its output is written to a log you can read from the project's [Worktrees tab](/guides/projects-and-runtime/#the-worktrees-tab).
+- If copying or setup fails, the task does not start its agent. It stops in **Needs you** with the reason, including the last lines of the command's output, and the worktree is kept. Send a message to work in the worktree anyway, or delete the task. A [workflow](/concepts/orchestration/#workflow-pipelines) that hits the failure ends with the error.
 
 ## `agentTemplates`
 

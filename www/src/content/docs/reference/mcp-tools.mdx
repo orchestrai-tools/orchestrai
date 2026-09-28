@@ -77,6 +77,8 @@ Creates a local backlog item **without** auto-running an agent. It lands in the 
 create_backlog_task(title, project?, body?, priority?, status?)
 ```
 
+`title` is required. Older agents that send `prompt` instead are still accepted; `project` defaults to the one the session is working in.
+
 **When:** an agent finds real work that isn't the work it was asked to do — a bug next door, a missing test, a refactor the change made obvious. Instead of scope-creeping the current diff or silently dropping it, it files it.
 
 **Why it doesn't auto-run:** discovered work is exactly the work a human should triage. The deprecated `create_task(prompt, ...)` alias is retained for compatibility and now creates the same local backlog item.
@@ -148,16 +150,18 @@ Available in **every** session. The same [automations](/guides/automations/) the
 ### `automation_create`
 
 ```
-automation_create(project, name, prompt, agent, model?, preset?, cron?, timezone?,
+automation_create(name, prompt, agent, project?, model?, preset?, cron?, timezone?,
                   precheck?, missed_run_grace_minutes?, reuse_session?, worktree?)
 ```
 
+- **`project`** — defaults to the project the session is working in.
 - **`preset`** — `hourly`, `daily`, `weekdays`, `weekly`, or `custom`. With no preset and no cron it is a daily 09:00 job; a `cron` with no preset is treated as `custom`, never as a silent daily.
 - **`cron`** — 5-field (`min hour dom month dow`), required for `custom` and ignored otherwise. Mind the [two ways this cron is not Unix cron](/guides/automations/#custom-cron). The every-5-minutes preset has no name here — write `*/5 * * * *`.
 - **`timezone`** — IANA name; empty resolves the daemon host's zone and stores it.
 - **`precheck`** — shell command run before each *scheduled* run; a non-zero exit skips the run.
 - **`missed_run_grace_minutes`** — catch-up window for an occurrence the daemon was down for, default `720`.
 - **`reuse_session`** — send every run into the previous run's task instead of creating one per run.
+- **`worktree`** — run each run in an isolated git worktree. The tool always starts them from the current branch; pick another base in the desktop app.
 
 ### `automation_list` · `automation_get` · `automation_runs`
 
@@ -178,7 +182,7 @@ Every field is optional and **absent means unchanged**, so flipping `enabled` is
 
 ### `automation_run_now`
 
-Runs an automation immediately. It **skips the precheck** (an explicit ask is its own authorization), is refused while a run is already in flight, and does **not** move the next scheduled occurrence.
+Runs an automation immediately. It **skips the precheck** (an explicit ask is its own authorization), is refused while a run is already in flight, and does **not** move the next scheduled occurrence. If the agent's account is out of quota the run is recorded as *Skipped · quota* rather than started.
 
 ### `automation_delete`
 
@@ -199,6 +203,8 @@ spawn_agent(agent, task)
 ```
 
 **The point:** the lead keeps its context for coordinating instead of burning it on implementation detail, and you can put the right harness on each piece of work in the same task.
+
+**Refused on an exhausted account.** If the agent's account is known to be out of quota, the call fails with the reason — which account, and when it resets — so the lead can choose another agent. A low or unchecked account is never refused.
 
 ### `read_inbox`
 
@@ -258,7 +264,12 @@ decide_workflow(task_id, decision, rounds?, note?, barrier_id?)
 
 ## Project scoping
 
-Every tool takes an optional `project`, but it is not an escape hatch: a call naming a project other than the session's own is **refused**. The session's scope wins. A bridge configured outside the daemon, with no project set, resolves the project from the working directory instead — including task worktrees — so one setup covers every registered project.
+A session works in one project, and most tools stay inside it:
+
+- **Scoped to the session's project.** The runtime tools (`list_runtime`, the log readers, `service_*`, `portforward_*`) and the orchestrator tools that look at your own children (`list_agents`, `stop_agent`, `cleanup_agents`, and the pipeline tools). Their optional `project` may only repeat the session's own project — naming another is **refused**. `spawn_agent` and `spawn_workflow` always start work in the session's project.
+- **Default to the session's project, but can name another.** `create_backlog_task` (`project`), the `memory_*` tools (`project_id`), and `automation_create` (`project`). `automation_list` lists every project's automations unless you pass a `project`, and the other `automation_*` tools address an automation by `id`, whatever project it belongs to.
+
+A bridge configured outside the daemon, with no project set, resolves the project from the working directory instead — including task worktrees — so one setup covers every registered project.
 
 ## See also
 

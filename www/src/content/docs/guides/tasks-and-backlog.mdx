@@ -95,6 +95,27 @@ A task can run in **its own git worktree** while staying attached to the same pr
 
 The task's **Terminal** tab opens in its worktree. The project's services keep running from the project checkout, though, so restarting one does not pick up the task's edits — the agent is told this when it starts, and `list_runtime` names the checkout each service runs from.
 
+**Choose where it starts.** With **Worktree** on in New Task, the **Worktree base** chip beside it sets the base — it reads *From main*, *From origin*, *On my-branch*, or *PR #42*. It has three tabs, with a search box for long lists:
+
+| Tab | Starts from | Notes |
+| --- | --- | --- |
+| **New branch** | Your **current branch**, **Latest from origin**, or any other local branch | A fresh task branch is forked from it. *Latest from origin* fetches origin's default branch just before the task starts. |
+| **Existing branch** | A local branch, or a remote branch that has no local copy yet | The worktree checks out that branch itself, so a push updates it. Checking out a remote branch creates a local one that tracks it. |
+| **Pull request** | An open pull request's branch, forks included | A push updates the pull request. Needs the [GitHub CLI](https://cli.github.com/) signed in to list them. |
+
+The base also decides what **Merge into &lt;base&gt;** merges into:
+
+| Base | Merges into |
+| --- | --- |
+| Current branch, or another local branch | That branch |
+| Latest from origin | Origin's default branch, by its local name (`main`, not `origin/main`) |
+| Existing branch | The branch your project checkout was on when the task started |
+| Pull request | The pull request's base branch |
+
+Warpforge refuses a base that cannot work, in the dialog, before the task exists: a branch that is already checked out — in your project checkout or in another worktree, and the message says where — a merged pull request, or a branch that does not exist. Removing the worktree of a task on an existing branch or pull request deletes only the checkout. Your branch stays; only the task branches Warpforge creates itself are ever deleted.
+
+**Set new worktrees up automatically.** A `worktree:` section in the [project config](/reference/configuration/#worktree) copies files such as `.env` into each new worktree and runs a setup command there. The project's **Worktrees** tab lists every worktree; see [Worktrees tab](/guides/projects-and-runtime/#the-worktrees-tab).
+
 If the worktree cannot be created — a full disk, say — the task does not quietly fall back to your checkout. It waits in **Needs you** with git's error; send a message to run it in the project checkout instead, or delete it. Deleting a task removes its worktree, including after Warpforge restarts or updates.
 
 When the work is good, **Merge into &lt;base&gt;** in the task's branch menu brings it back. Warpforge fast-forwards the base when it has not moved, or writes a merge commit otherwise, and it never changes your own checkout unless the base branch is the one checked out there — and then only if that checkout is clean. A conflict leaves every branch untouched and tells you to update the task branch from the base first. By default the worktree and its branch are removed after a successful merge and the task is marked **Done**, because the merged work is finished; clear **Remove the worktree after merging** to keep both and leave the task as it is. Prefer a pull request? Push the branch and open one as usual. A task without a worktree just works in the project checkout, which is often what you want for a quick change.

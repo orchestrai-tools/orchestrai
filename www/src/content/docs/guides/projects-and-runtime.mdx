@@ -8,7 +8,7 @@ sidebar:
 
 **Register a project once.** In **Projects → Add Project**, pick a folder. Warpforge keeps a local registry and reads or creates `.warpforge/workspace.yaml` — optionally prefilled from a `package.json` `dev` script or a Docker Compose file, or generated interactively by an agent in the bootstrap wizard. Existing `.warpforge.yaml`, `.wf.yaml`, and `.workspace.yaml` files remain supported. Removing a project only unregisters it; the directory and its config stay untouched.
 
-**A project opens into tabs**, the same way a task does: **Backlog**, **Files**, **Runtime**, and **Terminal**. Files browses the project's own checkout without starting a task — pick anything in the tree and it opens in a syntax-highlighted preview, with several files open at once across a tab strip. Each project remembers the tab you left it on, and its name, path, and port range stay pinned above them all.
+**A project opens into tabs**, the same way a task does: **Backlog**, **Pull Requests**, **Explorer**, **Runtime**, **Terminal**, and **Worktrees**. Explorer browses the project's own checkout without starting a task — pick anything in the tree and it opens in a syntax-highlighted preview, with several files open at once across a tab strip. Each project remembers the tab you left it on, and its name, path, and port range stay pinned above them all.
 
 **Bring the real runtime online.** Services start in dependency order with captured logs, interpolated environment variables, and readiness detection: a service waits until the services it depends on are ready, and one that never comes up is marked failed with the reason instead of starting forever. Kubernetes port-forwards run alongside local processes and are watched and retried with backoff when they drop. Runtime shows services and port-forwards in one place with their live logs and the `http://localhost:…` address of anything that is up; start, restart, and stop appear on a row when you point at it, and starting or stopping everything at once is a single click in the section heading. Each project also has interactive terminals inside the app, so a quick `git log` or one-off script does not need another window.
 
@@ -17,6 +17,23 @@ sidebar:
 **Your work is kept; running services are not.** A local Rust daemon owns projects, services, sessions, and task state behind a WebSocket API; the Tauri app is a thin client. Quitting stops services, port-forwards, and agent sessions — after one confirmation that lists everything running — while task history and agent configuration persist in `~/.warpforge/warpforge.db` and the project registry in `~/.warpforge/projects.json`, so every conversation is exactly where you left it.
 
 **Review, commit, ship.** Browse changed files, read unified or split diffs, revert individual hunks, edit files inline, draft a commit message, commit or amend, update the branch, and push with `--force-with-lease` — all through `git` directly. **Open pull request** additionally needs the [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated; see [Install → Requirements](/getting-started/install/#requirements-beyond-the-app-itself).
+
+## The Worktrees tab
+
+Every task that runs [isolated](/guides/tasks-and-backlog/#isolated-worktrees) leaves a checkout on disk, and `node_modules` and `target` folders make them large. **Worktrees** lists the ones Warpforge manages for the project, so you can see what they cost and clear out the ones you no longer need. Checkouts you made yourself elsewhere are not listed.
+
+Each row shows:
+
+- **The branch**, and the task that owns the worktree. A worktree no task owns — left behind by a deleted task, say — is marked **orphan**.
+- **Its size on disk**, or a dash when it could not be measured in time.
+- **Setup log**, when a [`worktree.setup`](/reference/configuration/#worktree) command ran for it.
+
+Two actions, both behind a confirmation:
+
+- **Reclaim build artifacts** deletes `node_modules`, `target`, `dist`, and `.next` folders inside that one worktree and tells you how much space came back. Source files stay and the next build recreates them. Folders that hold tracked files are left alone, and so is anything inside a nested repository.
+- **Remove** deletes the checkout. For a task's worktree it also archives the task, and it deletes the task branch Warpforge created — a branch you chose yourself is kept.
+
+Both refuse while the task's agent is mid-turn. **Remove** also refuses while the worktree has uncommitted changes or commits that exist nowhere else — push them first.
 
 ## No port roulette
 
