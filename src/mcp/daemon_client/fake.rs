@@ -38,6 +38,8 @@ pub(crate) struct State {
     pub(crate) answers: VecDeque<Answer>,
     pub(crate) panic_on_endpoint: bool,
     pub(crate) dials: Vec<String>,
+    /// Every request frame sent, in order.
+    pub(crate) sent: Vec<Value>,
     /// Daemon pids still running; every other pid has exited.
     pub(crate) alive: Vec<u32>,
 }
@@ -116,7 +118,11 @@ impl Connection for FakeConnection {
         }
         let frame: Value = serde_json::from_str(&text)?;
         let id = frame["id"].clone();
-        let answer = self.daemon.state().answers.pop_front();
+        let answer = {
+            let mut state = self.daemon.state();
+            state.sent.push(frame.clone());
+            state.answers.pop_front()
+        };
         match answer.unwrap_or(Answer::Reply) {
             Answer::Reply => {
                 self.inbox

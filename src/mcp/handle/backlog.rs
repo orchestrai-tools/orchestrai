@@ -12,12 +12,14 @@ pub(super) async fn dispatch(
 ) -> Result<String> {
     match name {
         "create_backlog_task" | "create_task" => {
-            let title = args
-                .get("title")
-                .or_else(|| args.get("prompt"))
-                .and_then(Value::as_str)
-                .filter(|s| !s.trim().is_empty())
-                .ok_or_else(|| anyhow!("'title' or 'prompt' is required"))?;
+            let text = |key| {
+                args.get(key)
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.trim().is_empty())
+            };
+            let title = text("title")
+                .or_else(|| text("prompt"))
+                .ok_or_else(|| anyhow!("'title' is required (or the legacy 'prompt')"))?;
             let proj = args
                 .get("project")
                 .and_then(Value::as_str)

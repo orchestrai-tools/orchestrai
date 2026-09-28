@@ -23,3 +23,22 @@ pub(crate) fn tool_defs(is_orchestrator: bool) -> Value {
     }
     Value::Array(tools)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_input_schema_is_a_plain_object_without_top_level_combinators() {
+        for is_orchestrator in [false, true] {
+            for tool in tool_defs(is_orchestrator).as_array().unwrap() {
+                let name = &tool["name"];
+                let schema = tool["inputSchema"].as_object().expect("inputSchema");
+                assert_eq!(schema.get("type"), Some(&Value::from("object")), "{name}");
+                for combinator in ["anyOf", "oneOf", "allOf"] {
+                    assert!(!schema.contains_key(combinator), "{name} has {combinator}");
+                }
+            }
+        }
+    }
+}

@@ -14,7 +14,7 @@ pub(super) fn defs() -> Vec<Value> {
                     },
                     "title": {
                         "type": "string",
-                        "description": "Short backlog item title."
+                        "description": "Short backlog item title. Required unless the legacy prompt is given."
                     },
                     "prompt": {
                         "type": "string",
@@ -32,8 +32,7 @@ pub(super) fn defs() -> Vec<Value> {
                         "type": "string",
                         "description": "Optional backlog status. Defaults to todo."
                     }
-                },
-                "anyOf": [{ "required": ["title"] }, { "required": ["prompt"] }]
+                }
             }
         }),
         json!({

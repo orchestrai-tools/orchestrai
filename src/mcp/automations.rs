@@ -15,7 +15,7 @@ pub fn tool_defs() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "project": { "type": "string", "description": "Project name to run in." },
+                    "project": { "type": "string", "description": "Project name to run in. Defaults to the current project." },
                     "name": { "type": "string" },
                     "prompt": { "type": "string" },
                     "agent": { "type": "string", "description": "claude, codex, opencode, ..." },
@@ -28,7 +28,7 @@ pub fn tool_defs() -> Value {
                     "reuse_session": { "type": "boolean", "description": "Send each run into the previous run's task instead of creating a new one." },
                     "worktree": { "type": "boolean", "description": "Run each run in an isolated git worktree." }
                 },
-                "required": ["project", "name", "prompt", "agent"]
+                "required": ["name", "prompt", "agent"]
             }
         },
         {
@@ -128,10 +128,12 @@ fn resolve_trigger(preset: Option<&str>, cron: Option<&str>) -> Result<wire::Aut
 pub async fn handle_tool_call(
     name: &str,
     args: &Value,
+    session_project: &str,
     client: &mut DaemonClient,
 ) -> Result<Option<String>> {
     match name {
         "automation_create" => {
+            let project = target_project(args, session_project)?;
             let trigger = resolve_trigger(
                 args.get("preset").and_then(Value::as_str),
                 args.get("cron").and_then(Value::as_str),
@@ -140,7 +142,7 @@ pub async fn handle_tool_call(
                 .request(
                     "automation.create",
                     json!({
-                        "project": args.get("project").and_then(Value::as_str).unwrap_or(""),
+                        "project": project,
                         "name": args.get("name").and_then(Value::as_str).unwrap_or("Untitled"),
                         "prompt": args.get("prompt").and_then(Value::as_str).unwrap_or(""),
                         "agent": args.get("agent").and_then(Value::as_str).unwrap_or("claude"),
@@ -148,8 +150,8 @@ pub async fn handle_tool_call(
                         "trigger": trigger,
                         "timezone": args.get("timezone").and_then(Value::as_str).unwrap_or(""),
                         "precheck": args.get("precheck").and_then(Value::as_str),
-                        "missedRunGraceMinutes": args.get("missed_run_grace_minutes").and_then(Value::as_u64).unwrap_or(720) as u32,
-                        "reuseSession": args.get("reuse_session").and_then(Value::as_bool).unwrap_or(false),
+                        "missed_run_grace_minutes": args.get("missed_run_grace_minutes").and_then(Value::as_u64).unwrap_or(720) as u32,
+                        "reuse_session": args.get("reuse_session").and_then(Value::as_bool).unwrap_or(false),
                         "worktree": args.get("worktree").and_then(Value::as_bool).unwrap_or(false),
                     }),
                 )
@@ -234,6 +236,18 @@ pub async fn handle_tool_call(
         }
         _ => Ok(None),
     }
+}
+
+fn target_project(args: &Value, session_project: &str) -> Result<String> {
+    args.get("project")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .or(Some(session_project.trim()).filter(|p| !p.is_empty()))
+        .map(str::to_string)
+        .ok_or_else(|| {
+            anyhow!("'project' is required: this session is not inside a registered project")
+        })
 }
 
 fn require_id(args: &Value) -> Result<String> {

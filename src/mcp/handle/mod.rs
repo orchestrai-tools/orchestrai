@@ -8,6 +8,8 @@ mod agents;
 mod backlog;
 mod memory;
 mod runtime;
+#[cfg(test)]
+mod tests;
 mod workflows;
 
 pub(crate) async fn handle_tool_call(
@@ -47,6 +49,12 @@ pub(crate) async fn handle_tool_call(
         | "memory_resolve_compaction"
         | "memory_addEdge"
         | "memory_edges" => memory::dispatch(name, client, &args, project).await,
+        "automation_create" | "automation_list" | "automation_get" | "automation_update"
+        | "automation_delete" | "automation_run_now" | "automation_runs" => {
+            automations::handle_tool_call(name, &args, project, client)
+                .await?
+                .ok_or_else(|| anyhow!("unknown tool: {name}"))
+        }
         _ if !is_orchestrator => Err(anyhow!(
             "tool '{name}' is only available in an orchestrator session"
         )),
@@ -56,9 +64,6 @@ pub(crate) async fn handle_tool_call(
         }
         "spawn_workflow" | "pause_workflow" | "resume_workflow" | "answer_workflow"
         | "decide_workflow" => workflows::dispatch(name, client, parent_task, project, &args).await,
-        other => match automations::handle_tool_call(other, &args, client).await? {
-            Some(text) => Ok(text),
-            None => Err(anyhow!("unknown tool: {other}")),
-        },
+        other => Err(anyhow!("unknown tool: {other}")),
     }
 }
