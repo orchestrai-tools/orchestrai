@@ -32,3 +32,4 @@ stale and then misleads.
 | [0017](0017-daemon-origin-and-path-confinement.md) | The daemon checks WebSocket origins and confines client paths |
 | [0018](0018-session-bridge-identity.md) | A session's warpforge bridge takes its identity from the agent's environment |
 | [0019](0019-quota-gate-at-dispatch.md) | Unattended work is gated on known quota exhaustion, at dispatch |
+| [0020](0020-task-pull-request-status.md) | A worktree task's pull request is a daemon cache, pushed as it changes |

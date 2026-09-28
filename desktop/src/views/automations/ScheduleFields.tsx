@@ -12,6 +12,7 @@ import type { AutomationPreset, ProjectInfo } from "@/protocol";
 
 import { EnabledSwitch } from "./AutomationCard";
 import { type AutomationForm, effectiveTrigger, type FormProblems } from "./form";
+import { WorktreeBaseSelect } from "./WorktreeBaseSelect";
 
 const PRESETS: { id: AutomationPreset; label: string }[] = [
   { id: "hourly", label: "Hourly" },
@@ -243,6 +244,13 @@ export function ScheduleFields({ form, now, patch, problems, projects }: Props) 
           onChange={(enabled) => patch({ enabled })}
         />
       </div>
+      {form.worktree && (
+        <WorktreeBaseSelect
+          project={form.project}
+          value={form.worktreeBase}
+          onChange={(worktreeBase) => patch({ worktreeBase })}
+        />
+      )}
     </div>
   );
 }

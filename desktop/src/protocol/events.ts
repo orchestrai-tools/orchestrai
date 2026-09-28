@@ -6,6 +6,7 @@ import type {
   DetectedAgent,
 } from "./agents";
 import type { Automation, AutomationRun } from "./automations";
+import type { TaskPullRequest } from "./pulls";
 import type {
   PortForwardInfo,
   PortForwardStatus,
@@ -49,6 +50,10 @@ export type DaemonEvent =
   | { event: "task.created"; data: TaskInfo }
   | { event: "task.updated"; data: TaskInfo }
   | { event: "task.removed"; data: { id: string } }
+  | {
+      event: "task.pullRequest";
+      data: { task_id: string; pull_request: TaskPullRequest | null };
+    }
   | { event: "session.update"; data: { task_id: string; update: SessionUpdate } }
   | { event: "history.pruned"; data: { updates: number } }
   | {

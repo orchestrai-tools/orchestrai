@@ -41,9 +41,10 @@ pub struct TaskInfo {
     /// `null` / omitted when the task runs in the project's main working dir.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
-    /// The branch this task's worktree forked from, when it runs isolated.
-    /// Persisted so a merge after a daemon restart targets the real base
-    /// rather than whatever branch the root checkout happens to be on.
+    /// The branch this task's worktree merges back into, when it runs
+    /// isolated: the base it forked from, or — for a checked-out existing
+    /// branch — the pull request's base or the project checkout's branch.
+    /// Persisted so a merge after a restart targets the recorded base.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_branch: Option<String>,
     /// Orchestration graph for parent orchestrator tasks. Contains child nodes
@@ -366,4 +367,30 @@ pub enum TextGenKind {
     /// continuing the work in a fresh session. Unlike the other kinds this one
     /// reads the session history rather than the repository.
     Handoff,
+}
+
+/// Where a new task's worktree starts. Absent means a new branch forked from
+/// the project checkout's current HEAD.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum WorktreeBase {
+    /// A new task branch forked from this local branch.
+    Branch { name: String },
+    /// A new task branch forked from origin's default branch, fetched first.
+    Origin,
+    /// Check out an existing branch: a local name (`feature/x`) or a
+    /// remote-tracking one (`origin/feature/x`). The task commits and pushes
+    /// to it.
+    Existing { branch: String },
+    /// Check out a GitHub pull request's head branch; pushes update the PR.
+    PullRequest { number: u64 },
+}
+
+#[cfg(test)]
+#[test]
+fn worktree_base_wire_shape() {
+    let pr: WorktreeBase = serde_json::from_str(r#"{"kind":"pullRequest","number":12}"#).unwrap();
+    assert_eq!(pr, WorktreeBase::PullRequest { number: 12 });
+    let origin = serde_json::to_value(WorktreeBase::Origin).unwrap();
+    assert_eq!(origin, serde_json::json!({ "kind": "origin" }));
 }

@@ -33,6 +33,7 @@ export function AutomationMethods<TBase extends Constructor<CoreClient>>(Base: T
         missed_run_grace_minutes: input.missedRunGraceMinutes,
         reuse_session: input.reuseSession,
         worktree: input.worktree,
+        worktree_base: input.worktreeBase ?? null,
       })) as Automation;
     }
 

@@ -138,6 +138,11 @@ pub enum Event {
     AgentLimitsUpdated {
         accounts: Vec<wire::AgentAccountLimits>,
     },
+    /// A worktree task's pull request changed; `None` once it has none.
+    TaskPullRequest {
+        task_id: String,
+        pull_request: Option<wire::TaskPullRequest>,
+    },
     /// An automation was created or changed — including the scheduler moving
     /// `next_run_at`, which is what keeps the desktop's "Next run" column live.
     AutomationUpdated(Box<wire::Automation>),

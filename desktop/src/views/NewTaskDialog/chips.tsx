@@ -15,9 +15,9 @@ import type { AgentConfig, Snapshot } from "../../protocol";
 /** Deliberately the same shape and weight as `AgentConfigBar`'s selectors —
  *  these sit in the same toolbar row, so anything heavier makes the project and
  *  harness pickers read as a different kind of control than the model picker. */
-const CHIP =
+export const CHIP =
   "flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground";
-const CHIP_ACTIVE = "bg-secondary text-foreground";
+export const CHIP_ACTIVE = "bg-secondary text-foreground";
 
 export function ChipDivider() {
   return <span aria-hidden className="mx-0.5 h-3.5 w-px shrink-0 bg-border" />;

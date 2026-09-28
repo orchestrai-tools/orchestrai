@@ -134,3 +134,22 @@ export interface PullThread {
 export interface PullCommentResult {
   url: string;
 }
+
+/** Lifecycle of a task's pull request; a draft is its own state here. */
+export type TaskPullState = "open" | "draft" | "merged" | "closed";
+
+/** One word for all of a commit's checks: any failure wins, then anything running. */
+export type PullChecks = "passing" | "failing" | "pending";
+
+/** The pull request opened from a worktree task's branch. `task.pullRequests`
+ *  answers `{ pullRequests: Record<taskId, TaskPullRequest> }`; changes arrive
+ *  as `task.pullRequest`. */
+export interface TaskPullRequest {
+  number: number;
+  title: string;
+  url: string;
+  state: TaskPullState;
+  checks?: PullChecks | null;
+  /** Commit the pull request's head points at. */
+  headOid?: string | null;
+}

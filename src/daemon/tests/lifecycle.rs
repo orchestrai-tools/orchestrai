@@ -17,6 +17,7 @@ async fn successful_update_safety_check_stops_commands_queued_behind_it() {
             tags: Vec::new(),
             include_runtime_context: false,
             worktree: false,
+            worktree_base: Default::default(),
             parent_task_id: None,
             attachments: Vec::new(),
             default_model: None,

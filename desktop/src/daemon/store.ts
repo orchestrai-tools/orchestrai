@@ -15,6 +15,10 @@ export class DaemonStore {
   /** Tasks whose full conversation was already fetched via session.history. */
   protected historyLoads = new Map<string, Promise<void>>();
   protected toolCallStarts = new Map<string, number>();
+  /** Sequence number of the latest `task.pullRequest` per task, so a
+   *  `task.pullRequests` reply computed earlier cannot undo a newer event. */
+  protected pullRequestEventSeq = 0;
+  protected pullRequestEventAt = new Map<string, number>();
   protected terminalDataSubscribers = new Map<string, Set<TerminalDataListener>>();
   protected terminalDataBuffers = new Map<
     string,

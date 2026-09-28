@@ -152,6 +152,8 @@ pub(super) fn init(conn: &Connection) -> Result<()> {
     // Migration: record the branch a task's worktree forked from, so a merge
     // after a restart targets the real base instead of the root's branch.
     let _ = conn.execute("ALTER TABLE tasks ADD COLUMN base_branch TEXT", []);
+    // Migration: where an automation's run worktrees fork from (JSON).
+    let _ = conn.execute("ALTER TABLE automations ADD COLUMN worktree_base TEXT", []);
     // Migration: add parent_task_id for orchestrator sub-agent tasks.
     let _ = conn.execute("ALTER TABLE tasks ADD COLUMN parent_task_id TEXT", []);
     // Migration: add title for human-readable task labels.

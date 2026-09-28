@@ -5,15 +5,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { configRole } from "@/lib/configRole";
 import { cn } from "@/lib/utils";
+import { worktreeBaseBranch } from "@/lib/worktreeBase";
 
 import { AgentConfigBar } from "../../components/AgentConfigBar";
 import type { ComposerHandle } from "../../components/Composer";
 import { Composer } from "../../components/Composer";
 import { RunPreview } from "../../components/RunPreview";
 import { WorkflowPicker } from "../../components/TaskComposeBar";
-import type { GitBranchList, ProjectFile, Snapshot } from "../../protocol";
+import type { GitBranchList, ProjectFile, Snapshot, WorktreeBase } from "../../protocol";
 import { daemonQuery } from "../../query";
 import { useUi } from "../../store/ui";
+import { BasePicker } from "./BasePicker";
 import { ChipDivider, HarnessChip, ProjectChip, ToggleChip } from "./chips";
 import { ModeSelector } from "./ModeSelector";
 import { useTaskCreation } from "./useTaskCreation";
@@ -68,14 +70,20 @@ export default function NewTaskDialog({
   const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const useWorktree = useUi((s) => s.newTaskWorktree);
   const setUseWorktree = useUi((s) => s.setNewTaskWorktree);
+  const [worktreeBase, setWorktreeBase] = useState<WorktreeBase | null>(null);
   const composerRef = useRef<ComposerHandle>(null);
+
+  // A base names a branch of one repo; it means nothing in another project.
+  useEffect(() => setWorktreeBase(null), [project]);
 
   const branchQuery = useQuery({
     enabled: open && !!project,
     queryFn: daemonQuery<GitBranchList>("git.branches", { project }),
     queryKey: ["branches", "project", project],
   });
-  const branch = branchQuery.data?.current ?? null;
+  const isolated = useWorktree && mode !== "orchestrator";
+  const branch =
+    (isolated ? worktreeBaseBranch(worktreeBase) : null) ?? branchQuery.data?.current ?? null;
   const filesQuery = useQuery({
     enabled: !!project,
     queryFn: daemonQuery<ProjectFile[]>("file.list", { project }),
@@ -89,6 +97,8 @@ export default function NewTaskDialog({
     if (!open) return;
     const handler = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      // Escape inside an open chip menu closes that menu, not the page.
+      if (event.target instanceof Element && event.target.closest("[role=menu]")) return;
       event.preventDefault();
       event.stopPropagation();
       close();
@@ -108,6 +118,7 @@ export default function NewTaskDialog({
     selectedWorkflow,
     useWorktree,
     workflow,
+    worktreeBase,
   });
 
   const selectedProject = snapshot.projects.find((candidate) => candidate.name === project) ?? null;
@@ -126,7 +137,7 @@ export default function NewTaskDialog({
     mode === "orchestrator"
       ? "Lead and workers share your current checkout."
       : useWorktree
-        ? "Runs in an isolated git worktree."
+        ? worktreeLine(worktreeBase)
         : "Runs in your current checkout.";
 
   if (!open) return null;
@@ -235,6 +246,14 @@ export default function NewTaskDialog({
                     }
                     onClick={() => setUseWorktree(!useWorktree)}
                   />
+                  {isolated && (
+                    <BasePicker
+                      branches={branchQuery.data}
+                      project={project}
+                      value={worktreeBase}
+                      onChange={setWorktreeBase}
+                    />
+                  )}
                   <ToggleChip
                     active={shareContext}
                     icon={Share2}
@@ -329,4 +348,17 @@ export default function NewTaskDialog({
       </div>
     </div>
   );
+}
+
+function worktreeLine(base: WorktreeBase | null): string {
+  switch (base?.kind) {
+    case "origin":
+      return "Runs in an isolated worktree on a new branch from origin's latest.";
+    case "existing":
+      return "Runs in an isolated worktree on this branch; pushes go to it.";
+    case "pullRequest":
+      return "Runs in an isolated worktree on pull request #" + base.number + "'s branch.";
+    default:
+      return "Runs in an isolated git worktree.";
+  }
 }

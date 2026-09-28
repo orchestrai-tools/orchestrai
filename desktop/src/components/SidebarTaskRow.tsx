@@ -15,6 +15,8 @@ import { toast } from "sonner";
 
 import { AgentLogo } from "@/components/AgentLogo";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ArchiveMergedTaskDialog } from "@/components/pullRequest/ArchiveMergedTaskDialog";
+import { TaskPullRequestGlyph } from "@/components/pullRequest/TaskPullRequestGlyph";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { daemon } from "@/daemon";
+import { useTaskPullRequest } from "@/hooks/useTaskPullRequest";
 import { buildSnoozePresets } from "@/lib/snooze";
 import { elapsed } from "@/lib/status";
 import { isOrchestratorTask } from "@/lib/taskGroups";
@@ -91,6 +94,9 @@ function RowActions({
   const [busy, setBusy] = useState(false);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const pr = useTaskPullRequest(task.id);
+  const mergedWorktree = pr?.state === "merged" && task.worktree ? pr : null;
   const label = taskLabel(task);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reopening must recompute "1 hour from now"
   const presets = useMemo(() => buildSnoozePresets(Date.now()), [snoozeOpen]);
@@ -206,6 +212,12 @@ function RowActions({
               <Archive className="size-3.5 opacity-70" />
               Archive task
             </DropdownMenuItem>
+            {mergedWorktree && (
+              <DropdownMenuItem onSelect={() => setConfirmingArchive(true)}>
+                <Archive className="size-3.5 opacity-70" />
+                Archive and remove worktree
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
@@ -218,6 +230,14 @@ function RowActions({
         </DropdownMenuPortal>
       </DropdownMenu>
 
+      {mergedWorktree && (
+        <ArchiveMergedTaskDialog
+          task={task}
+          pr={mergedWorktree}
+          open={confirmingArchive}
+          onOpenChange={setConfirmingArchive}
+        />
+      )}
       <ConfirmDialog
         open={confirmingDelete}
         title="Delete this task?"
@@ -321,6 +341,7 @@ export const SidebarTaskRow = memo(function SidebarTaskRow({
             >
               {label}
             </span>
+            {task.worktree && <TaskPullRequestGlyph taskId={task.id} receded={receded} />}
             {orchestrator && (
               <span title="Orchestrator lead" className="inline-flex shrink-0">
                 <Users aria-hidden className="size-3 text-muted-foreground/60" />

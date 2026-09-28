@@ -54,6 +54,7 @@ async fn create_workflow_task(daemon: &DaemonHandle, agent: &str) -> String {
             agent: agent.into(),
             tags: vec![],
             worktree: false,
+            worktree_base: Default::default(),
             workflow: "test".into(),
             attachments: vec![],
             default_model: None,

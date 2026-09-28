@@ -298,7 +298,7 @@ fn looks_like_conflict(message: &str) -> bool {
 /// Run a git command in `cwd`, capturing output. `LC_ALL=C` keeps git's prose
 /// and conflict markers stable regardless of the user's locale. Spawn failure
 /// is an error; a non-zero exit is left for the caller to interpret.
-async fn run_git(cwd: &Path, args: &[&str]) -> Result<std::process::Output> {
+pub(super) async fn run_git(cwd: &Path, args: &[&str]) -> Result<std::process::Output> {
     tokio::process::Command::new("git")
         .args(args)
         .env("LC_ALL", "C")

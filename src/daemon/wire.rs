@@ -248,6 +248,13 @@ pub fn to_wire(ev: &Event) -> Option<wire::Event> {
         Event::AgentLimitsUpdated { accounts } => Some(wire::Event::AgentLimitsUpdated {
             accounts: accounts.clone(),
         }),
+        Event::TaskPullRequest {
+            task_id,
+            pull_request,
+        } => Some(wire::Event::TaskPullRequest {
+            task_id: task_id.clone(),
+            pull_request: pull_request.clone(),
+        }),
         Event::AutomationUpdated(automation) => {
             Some(wire::Event::AutomationUpdated((**automation).clone()))
         }

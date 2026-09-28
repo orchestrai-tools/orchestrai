@@ -64,8 +64,8 @@ impl Store {
                 (id, project, name, prompt, agent, model, config_overrides, trigger,
                  timezone, precheck, enabled, missed_run_grace_minutes, reuse_session,
                  worktree, created_at, updated_at, next_run_at, last_run_at, last_status,
-                 last_task_id)
-            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
+                 last_task_id, worktree_base)
+            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)
             ON CONFLICT(id) DO UPDATE SET
                 project=excluded.project,
                 name=excluded.name,
@@ -84,7 +84,8 @@ impl Store {
                 next_run_at=excluded.next_run_at,
                 last_run_at=excluded.last_run_at,
                 last_status=excluded.last_status,
-                last_task_id=excluded.last_task_id
+                last_task_id=excluded.last_task_id,
+                worktree_base=excluded.worktree_base
             "#,
             rusqlite::params![
                 a.id,
@@ -107,6 +108,9 @@ impl Store {
                 a.last_run_at,
                 status_str(a.last_status),
                 a.last_task_id,
+                a.worktree_base
+                    .as_ref()
+                    .and_then(|base| serde_json::to_string(base).ok()),
             ],
         )?;
         Ok(())
@@ -116,8 +120,8 @@ impl Store {
         let mut stmt = self.conn.prepare(
             "SELECT id, project, name, prompt, agent, model, config_overrides, trigger, \
              timezone, precheck, enabled, missed_run_grace_minutes, reuse_session, worktree, \
-             created_at, updated_at, next_run_at, last_run_at, last_status, last_task_id \
-             FROM automations",
+             created_at, updated_at, next_run_at, last_run_at, last_status, last_task_id, \
+             worktree_base FROM automations",
         )?;
         let rows = stmt.query_map([], automation_from_row)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
@@ -127,8 +131,8 @@ impl Store {
         let mut stmt = self.conn.prepare(
             "SELECT id, project, name, prompt, agent, model, config_overrides, trigger, \
              timezone, precheck, enabled, missed_run_grace_minutes, reuse_session, worktree, \
-             created_at, updated_at, next_run_at, last_run_at, last_status, last_task_id \
-             FROM automations WHERE id = ?1",
+             created_at, updated_at, next_run_at, last_run_at, last_status, last_task_id, \
+             worktree_base FROM automations WHERE id = ?1",
         )?;
         let row = stmt
             .query_row(rusqlite::params![id], automation_from_row)
@@ -281,6 +285,9 @@ fn automation_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<wire::Automa
         last_run_at: row.get(17)?,
         last_status: parse_status(row.get(18)?),
         last_task_id: row.get(19)?,
+        worktree_base: row
+            .get::<_, Option<String>>(20)?
+            .and_then(|json| serde_json::from_str(&json).ok()),
     })
 }
 

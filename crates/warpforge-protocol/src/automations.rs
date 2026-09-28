@@ -13,6 +13,8 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
+use crate::WorktreeBase;
+
 /// Deserialize `Option<Option<T>>` so JSON `null` becomes `Some(None)`
 /// ("clear this field") instead of the outer `None` ("leave it alone").
 /// Without this, "clear" is unreachable over the wire.
@@ -152,6 +154,10 @@ pub struct Automation {
     pub reuse_session: bool,
     /// Run each new task in an isolated git worktree.
     pub worktree: bool,
+    /// Where each run's worktree forks from. `None` is the project checkout's
+    /// current HEAD; only `branch` and `origin` are accepted.
+    #[serde(default)]
+    pub worktree_base: Option<WorktreeBase>,
     pub created_at: i64,
     pub updated_at: i64,
     /// Next occurrence, epoch seconds. `None` when disabled.
@@ -226,4 +232,10 @@ pub struct AutomationPatch {
     pub reuse_session: Option<bool>,
     #[serde(default)]
     pub worktree: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub worktree_base: Option<Option<WorktreeBase>>,
 }

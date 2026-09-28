@@ -13,6 +13,7 @@ use crate::daemon::task::{Task, TaskStatus};
 pub struct DaemonHandle {
     pub cmd_tx: mpsc::Sender<Command>,
     pub(crate) event_tx: broadcast::Sender<Event>,
+    pub(crate) pulls: std::sync::Arc<crate::daemon::pull_status::PullWatch>,
 }
 
 impl DaemonHandle {
@@ -65,6 +66,7 @@ impl DaemonHandle {
             tags,
             include_runtime_context,
             worktree,
+            worktree_base: Default::default(),
             parent_task_id,
             attachments,
             default_model,
@@ -103,6 +105,7 @@ impl DaemonHandle {
             tags,
             include_runtime_context,
             worktree,
+            worktree_base: Default::default(),
             parent_task_id,
             attachments,
             default_model,

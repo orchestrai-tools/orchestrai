@@ -24,6 +24,7 @@ async fn reuse_automation(daemon: &DaemonHandle, task_id: &str, prompt: &str) ->
                 missed_run_grace_minutes: 0,
                 reuse_session: true,
                 worktree: false,
+                worktree_base: None,
                 created_at: 0,
                 updated_at: 0,
                 next_run_at: None,

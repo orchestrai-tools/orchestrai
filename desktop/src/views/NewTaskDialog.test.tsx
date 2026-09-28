@@ -102,6 +102,13 @@ beforeEach(() => {
   vi.spyOn(daemon, "request").mockImplementation(async (method) => {
     if (method === "file.list") return [{ changed: false, path: "src/app.ts" }];
     if (method === "task.create") return { taskId: "created-task" };
+    if (method === "git.branches") {
+      return {
+        branches: ["main", "develop", "warpforge/task/t_1"],
+        current: "main",
+        remotes: ["origin/main", "origin/feature/login"],
+      };
+    }
     return {};
   });
   vi.spyOn(daemon, "workflowList").mockResolvedValue([]);
@@ -277,6 +284,98 @@ describe("NewTaskDialog", () => {
       expect(daemon.request).toHaveBeenCalledWith(
         "task.create",
         expect.objectContaining({ worktree: true }),
+      ),
+    );
+  });
+
+  it("hides the base picker until the task runs in a worktree", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    expect(screen.queryByRole("button", { name: "Worktree base" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Worktree" }));
+    expect(await screen.findByRole("button", { name: "Worktree base" })).toHaveTextContent(
+      "From main",
+    );
+  });
+
+  it("starts a worktree from origin's latest", async () => {
+    const user = userEvent.setup();
+    useUi.setState({ newTaskWorktree: true });
+    renderDialog();
+
+    await user.click(await screen.findByRole("button", { name: "Worktree base" }));
+    await user.click(screen.getByRole("menuitem", { name: /Latest from origin/ }));
+    expect(screen.getByRole("button", { name: "Worktree base" })).toHaveTextContent("From origin");
+
+    await user.type(screen.getByPlaceholderText("What should the agent do?"), "Ship it");
+    await user.click(screen.getByRole("button", { name: "Start task" }));
+    await waitFor(() =>
+      expect(daemon.request).toHaveBeenCalledWith(
+        "task.create",
+        expect.objectContaining({ worktree: true, worktree_base: { kind: "origin" } }),
+      ),
+    );
+  });
+
+  it("checks out an existing remote branch, hiding task branches", async () => {
+    const user = userEvent.setup();
+    useUi.setState({ newTaskWorktree: true });
+    renderDialog();
+
+    await user.click(await screen.findByRole("button", { name: "Worktree base" }));
+    await user.click(screen.getByRole("tab", { name: "Existing branch" }));
+    expect(screen.queryByRole("menuitem", { name: /warpforge\/task/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^main/ })).toHaveAttribute("data-disabled");
+    await user.type(screen.getByRole("textbox", { name: "Search" }), "login");
+    await user.click(screen.getByRole("menuitem", { name: "origin/feature/login" }));
+
+    expect(screen.getByText("origin/feature/login")).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText("What should the agent do?"), "Fix it");
+    await user.click(screen.getByRole("button", { name: "Start task" }));
+    await waitFor(() =>
+      expect(daemon.request).toHaveBeenCalledWith(
+        "task.create",
+        expect.objectContaining({
+          worktree_base: { branch: "origin/feature/login", kind: "existing" },
+        }),
+      ),
+    );
+  });
+
+  it("starts on a pull request's branch", async () => {
+    const user = userEvent.setup();
+    useUi.setState({ newTaskWorktree: true });
+    vi.spyOn(daemon, "listPulls").mockResolvedValue([
+      {
+        assignees: [],
+        baseRefName: "main",
+        createdAt: 0,
+        draft: false,
+        headRefName: "fix-typo",
+        labels: [],
+        number: 42,
+        project: "warpforge",
+        repo: "acme/warpforge",
+        state: "open",
+        title: "Fix the typo",
+        updatedAt: 0,
+        url: "https://github.com/acme/warpforge/pull/42",
+      },
+    ]);
+    renderDialog();
+
+    await user.click(await screen.findByRole("button", { name: "Worktree base" }));
+    await user.click(screen.getByRole("tab", { name: "Pull request" }));
+    await user.click(await screen.findByRole("menuitem", { name: /#42 Fix the typo/ }));
+    expect(screen.getByRole("button", { name: "Worktree base" })).toHaveTextContent("PR #42");
+
+    await user.type(screen.getByPlaceholderText("What should the agent do?"), "Review");
+    await user.click(screen.getByRole("button", { name: "Start task" }));
+    await waitFor(() =>
+      expect(daemon.request).toHaveBeenCalledWith(
+        "task.create",
+        expect.objectContaining({ worktree_base: { kind: "pullRequest", number: 42 } }),
       ),
     );
   });

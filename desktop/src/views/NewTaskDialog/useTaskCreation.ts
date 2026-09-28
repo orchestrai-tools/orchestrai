@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import type { TaskMode } from "../../components/TaskComposeBar";
 import { daemon } from "../../daemon";
-import type { ConfigOption, PromptSubmission, WorkflowMeta } from "../../protocol";
+import type { ConfigOption, PromptSubmission, WorkflowMeta, WorktreeBase } from "../../protocol";
 import { useUi } from "../../store/ui";
 
 export function useTaskCreation({
@@ -18,6 +18,7 @@ export function useTaskCreation({
   selectedWorkflow,
   useWorktree,
   workflow,
+  worktreeBase,
 }: {
   agent: string;
   agentOptions: ConfigOption[];
@@ -29,6 +30,7 @@ export function useTaskCreation({
   selectedWorkflow: WorkflowMeta | null;
   useWorktree: boolean;
   workflow: string | null;
+  worktreeBase: WorktreeBase | null;
 }) {
   const queryClient = useQueryClient();
   const openTask = useUi((s) => s.openTask);
@@ -69,6 +71,8 @@ export function useTaskCreation({
         tags: mode === "orchestrator" ? [...userTags, "orchestrator-chat"] : userTags,
         include_runtime_context: shareContext,
         worktree: mode === "orchestrator" ? false : useWorktree,
+        worktree_base:
+          mode !== "orchestrator" && useWorktree ? (worktreeBase ?? undefined) : undefined,
         default_model: modelPick,
         config_overrides: configOverrides,
         workflow: workflow ?? undefined,

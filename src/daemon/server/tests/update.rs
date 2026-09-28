@@ -54,6 +54,7 @@ async fn handshake_is_refused_once_the_actor_has_panicked() {
     let handle = DaemonHandle {
         cmd_tx,
         event_tx: broadcast::channel(1).0,
+        pulls: Default::default(),
     };
     let lifecycle = Arc::new(ServerLifecycle::new(wire::DaemonOwner::Desktop));
     let handshake = || {

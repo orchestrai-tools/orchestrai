@@ -184,3 +184,52 @@ async fn subagent_create_on_an_exhausted_account_is_refused() {
     assert!(handle.tasks().await.is_empty(), "no task is created");
     handle.shutdown().await;
 }
+
+/// A worktree base that cannot be used is refused before the task exists, so
+/// New Task keeps the prompt and shows why.
+#[tokio::test]
+async fn a_checked_out_branch_is_refused_before_the_task_is_created() {
+    let dir = tempfile::tempdir().unwrap();
+    crate::daemon::diff::testsupport::init_repo(dir.path()).await;
+    crate::daemon::diff::testsupport::git(dir.path(), &["checkout", "-q", "-b", "main"]).await;
+    crate::daemon::diff::testsupport::git(
+        dir.path(),
+        &["commit", "-q", "--allow-empty", "-m", "i"],
+    )
+    .await;
+    let projects = vec![ProjectEntry {
+        name: "demo".into(),
+        path: dir.path().to_string_lossy().into(),
+        added_at: "0".into(),
+        port_range: None,
+        port_range_override: None,
+    }];
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let handle = Daemon::spawn(projects, store);
+    let lifecycle = Arc::new(ServerLifecycle::new(wire::DaemonOwner::External));
+    let method: wire::Method = serde_json::from_value(json!({
+        "method": "task.create",
+        "params": {
+            "project": "demo",
+            "prompt": "fix it",
+            "agent": "mock-agent",
+            "worktree": true,
+            "worktree_base": { "kind": "existing", "branch": "main" },
+            "start": false,
+        }
+    }))
+    .unwrap();
+    let error = dispatch(&handle, method, &lifecycle)
+        .await
+        .expect_err("the project checkout's branch is refused");
+    assert_eq!(error.code, wire::ErrorCode::InvalidRequest);
+    assert!(
+        error
+            .message
+            .contains("already checked out in the project checkout"),
+        "{}",
+        error.message
+    );
+    assert!(handle.tasks().await.is_empty(), "no task is created");
+    handle.shutdown().await;
+}

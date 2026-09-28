@@ -511,6 +511,9 @@ fn automation_roundtrip_and_run_retention() {
         missed_run_grace_minutes: 30,
         reuse_session: true,
         worktree: true,
+        worktree_base: Some(wire::WorktreeBase::Branch {
+            name: "develop".into(),
+        }),
         created_at: 1,
         updated_at: 2,
         next_run_at: Some(99),

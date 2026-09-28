@@ -1,3 +1,5 @@
+import type { WorktreeBase } from "./tasks";
+
 // ── Automations ──────────────────────────────────────────────────────────────
 
 /** Which schedule shape the user picked. Only a hint: `trigger.cron` is always
@@ -42,6 +44,8 @@ export interface Automation {
   missedRunGraceMinutes: number;
   reuseSession: boolean;
   worktree: boolean;
+  /** Where each run's worktree forks from; only `branch` or `origin`. */
+  worktreeBase?: WorktreeBase | null;
   createdAt: number;
   updatedAt: number;
   /** Next occurrence, epoch SECONDS. null when disabled. */
@@ -85,6 +89,7 @@ export interface AutomationInput {
   missedRunGraceMinutes: number;
   reuseSession: boolean;
   worktree: boolean;
+  worktreeBase?: WorktreeBase | null;
 }
 
 /**
@@ -107,6 +112,8 @@ export interface AutomationPatch {
   missedRunGraceMinutes?: number;
   reuseSession?: boolean;
   worktree?: boolean;
+  /** `null` clears it back to the project checkout's current branch. */
+  worktreeBase?: WorktreeBase | null;
 }
 
 export const DEFAULT_MISSED_RUN_GRACE_MINUTES = 720;

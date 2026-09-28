@@ -16,6 +16,7 @@ vi.mock("@/daemon", () => ({
     // One stable object: a fresh one per `getState` makes useSyncExternalStore
     // re-render forever.
     getState: () => daemonState,
+    refreshTaskPullRequests: () => Promise.resolve(),
     subscribe: () => () => {},
   },
 }));

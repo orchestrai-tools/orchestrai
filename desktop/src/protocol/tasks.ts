@@ -43,7 +43,7 @@ export interface TaskInfo {
   configOptions?: ConfigOption[];
   /** Path to the git worktree for this task, if isolated. */
   worktree?: string | null;
-  /** Branch this task's worktree forked from, when it is isolated. */
+  /** Branch this task's worktree merges back into, when it is isolated. */
   baseBranch?: string | null;
   /** Orchestration graph for parent orchestrator tasks, and for workflow parents. */
   orchestrationGraph?: OrchGraphInfo | null;
@@ -185,3 +185,11 @@ export interface EditHunk {
   /** Changed lines only, prefixed with "+" or "-". */
   lines: string[];
 }
+
+/** Where a new task's worktree starts (`task.create`'s `worktree_base`).
+ *  Absent means a new branch forked from the project checkout's current HEAD. */
+export type WorktreeBase =
+  | { kind: "branch"; name: string }
+  | { kind: "origin" }
+  | { kind: "existing"; branch: string }
+  | { kind: "pullRequest"; number: number };

@@ -28,6 +28,7 @@ pub mod memory_dream;
 pub mod memory_embed;
 pub mod memory_types;
 pub mod prompt;
+pub mod pull_status;
 pub mod runtime;
 pub mod search;
 pub mod server;

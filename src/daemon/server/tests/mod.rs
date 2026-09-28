@@ -1,5 +1,6 @@
 use super::*;
 
+mod archive_worktree;
 mod config;
 mod connection;
 mod origin;

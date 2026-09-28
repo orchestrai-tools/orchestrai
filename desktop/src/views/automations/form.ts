@@ -12,6 +12,7 @@ import type {
   AutomationPatch,
   AutomationPreset,
   AutomationTrigger,
+  WorktreeBase,
 } from "@/protocol";
 import { DEFAULT_MISSED_RUN_GRACE_MINUTES } from "@/protocol";
 
@@ -37,6 +38,8 @@ export interface AutomationForm {
   graceMinutes: string;
   reuseSession: boolean;
   worktree: boolean;
+  /** `null` forks each run from the project checkout's current branch. */
+  worktreeBase: WorktreeBase | null;
   enabled: boolean;
 }
 
@@ -58,6 +61,7 @@ export function emptyForm(project: string, agent: string): AutomationForm {
     timezone: runtimeTimezone(),
     weekday: DEFAULT_PRESET_TIME.weekday,
     worktree: false,
+    worktreeBase: null,
   };
 }
 
@@ -80,6 +84,7 @@ export function formFromAutomation(automation: Automation): AutomationForm {
     timezone: automation.timezone || runtimeTimezone(),
     weekday: time.weekday,
     worktree: automation.worktree,
+    worktreeBase: automation.worktreeBase ?? null,
   };
 }
 
@@ -142,6 +147,7 @@ export function createInput(form: AutomationForm): AutomationInput {
     timezone: form.timezone.trim(),
     trigger: effectiveTrigger(form),
     worktree: form.worktree,
+    worktreeBase: form.worktreeBase,
   };
 }
 
@@ -166,6 +172,7 @@ export function patchFrom(form: AutomationForm): AutomationPatch {
     timezone: form.timezone.trim(),
     trigger: effectiveTrigger(form),
     worktree: form.worktree,
+    worktreeBase: form.worktreeBase,
   };
   if (form.model) patch.model = form.model;
   return patch;

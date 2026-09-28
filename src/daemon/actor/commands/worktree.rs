@@ -3,6 +3,7 @@ use warpforge_protocol as wire;
 use crate::daemon::actor::lifecycle::apply_lifecycle_action;
 use crate::daemon::actor::lifecycle::LifecycleAction;
 use crate::daemon::actor::{Command, Daemon, Event};
+use crate::daemon::workflow::WorkflowOutcome;
 
 impl Daemon {
     pub(crate) async fn handle_worktree_command(&mut self, cmd: Command) {
@@ -109,37 +110,70 @@ impl Daemon {
                 message,
                 reply,
             } => {
-                // Merged work is finished: stop everything that lives in the
-                // checkout before it is removed, in DeleteTask's order —
-                // terminals first, then the live session.
-                for terminal_id in self.agents.kill_for_task(&task_id) {
-                    self.emit(Event::AgentExited { id: terminal_id });
-                }
-                if let Some(handle) = self.sessions.remove(&task_id) {
-                    let _ = handle.cancel_and_wait().await;
-                }
-                // Removal off the loop: drop the map entry, spawn the git/fs
-                // work. Terminals and session were stopped above (ADR 0002).
-                if let Some((project, base_repo, path, branch)) =
-                    self.worktree_for_removal(&task_id)
-                {
-                    if let Some(mgr) = self.worktrees.get_mut(&project) {
-                        mgr.forget(&task_id);
-                    }
-                    self.spawn_worktree_removal(base_repo, path, branch, task_id.clone());
-                }
+                self.discard_worktree(&task_id).await;
                 if let Some(task) = self.tasks.get_mut(&task_id) {
-                    task.worktree = None;
-                    task.base_branch = None;
-                    // The session lived in the removed checkout; clearing the id
-                    // stops a later resume from starting in a deleted cwd.
-                    task.session_id = None;
                     task.set_status(crate::daemon::task::TaskStatus::Done);
                     let updated = task.clone();
                     self.persist(&updated);
                     self.emit(Event::TaskUpdated(updated));
                 }
                 let _ = reply.send(Ok(message));
+            }
+            Command::DiscardWorktree { task_id } => {
+                self.discard_worktree(&task_id).await;
+                if let Some(task) = self.tasks.get(&task_id) {
+                    let updated = task.clone();
+                    self.persist(&updated);
+                    self.emit(Event::TaskUpdated(updated));
+                }
+            }
+            Command::WorktreeReady { task_id, created } => {
+                // Record the checkout even if nobody is waiting for it any
+                // more: the directory exists on disk either way, and a
+                // worktree the manager does not know about is one nothing can
+                // clean up later.
+                match created {
+                    Ok((project, wt)) => {
+                        if let Some(task) = self.tasks.get_mut(&task_id) {
+                            task.worktree = Some(wt.path.to_string_lossy().to_string());
+                            task.base_branch = Some(wt.base_branch.clone());
+                            let updated = task.clone();
+                            self.persist(&updated);
+                            self.emit(Event::TaskUpdated(updated));
+                        }
+                        if let Some(mgr) = self.worktrees.get_mut(&project) {
+                            mgr.adopt(wt);
+                        }
+                    }
+                    Err(error) => {
+                        // Surface the failure instead of running unisolated; a
+                        // task cancelled mid-checkout has no pending entry, so
+                        // it is left alone.
+                        if self.pending_workflow_starts.remove(&task_id).is_some() {
+                            let _ = self
+                                .workflow_finalize(
+                                    &task_id,
+                                    WorkflowOutcome::Error(format!(
+                                        "could not create an isolated worktree: {error}"
+                                    )),
+                                )
+                                .await;
+                        } else if let Some(start) = self.pending_session_starts.remove(&task_id) {
+                            // Keep the original start so a retry has the task.
+                            self.blocked_starts.insert(task_id.clone(), start);
+                            self.worktree_failed(&task_id, &error);
+                        }
+                    }
+                }
+                // The pending entry is the token: cancelling or deleting the
+                // task removes it, so a checkout that lands afterwards must not
+                // start a session for it (ADR 0002 invariant 5).
+                if let Some(start) = self.pending_session_starts.remove(&task_id) {
+                    self.start_pending_session(&task_id, start);
+                }
+                if let Some(stage) = self.pending_workflow_starts.remove(&task_id) {
+                    self.workflow_spawn_stage(&task_id, stage).await;
+                }
             }
             #[cfg(test)]
             Command::SetWorktreeRemover { remover } => {
@@ -268,6 +302,31 @@ impl Daemon {
             }
 
             other => self.handle_git_command(other).await,
+        }
+    }
+
+    /// Stop everything that lives in a task's checkout, in DeleteTask's order
+    /// (terminals, then the session), then remove it off the loop (ADR 0002)
+    /// and point the task at no checkout. The caller persists and emits.
+    async fn discard_worktree(&mut self, task_id: &str) {
+        for terminal_id in self.agents.kill_for_task(task_id) {
+            self.emit(Event::AgentExited { id: terminal_id });
+        }
+        if let Some(handle) = self.sessions.remove(task_id) {
+            let _ = handle.cancel_and_wait().await;
+        }
+        if let Some((project, base_repo, path, branch)) = self.worktree_for_removal(task_id) {
+            if let Some(mgr) = self.worktrees.get_mut(&project) {
+                mgr.forget(task_id);
+            }
+            self.spawn_worktree_removal(base_repo, path, branch, task_id.to_string());
+        }
+        if let Some(task) = self.tasks.get_mut(task_id) {
+            task.worktree = None;
+            task.base_branch = None;
+            // The session lived in the removed checkout; clearing the id
+            // stops a later resume from starting in a deleted cwd.
+            task.session_id = None;
         }
     }
 }

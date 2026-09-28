@@ -15,6 +15,7 @@ impl Daemon {
                 tags,
                 include_runtime_context,
                 worktree: use_worktree,
+                worktree_base,
                 parent_task_id,
                 attachments,
                 default_model,
@@ -92,7 +93,14 @@ impl Daemon {
                     // board before then, which is also why a new task no longer
                     // delays every other task's messages (ADR 0002).
                     match use_worktree
-                        .then(|| self.worktree_request(&id, &project, branched_from.as_deref()))
+                        .then(|| {
+                            self.worktree_request(
+                                &id,
+                                &project,
+                                branched_from.as_deref(),
+                                worktree_base,
+                            )
+                        })
                         .flatten()
                     {
                         Some(request) => {
@@ -110,54 +118,6 @@ impl Daemon {
                         }
                         None => self.start_pending_session(&id, start),
                     }
-                }
-            }
-            Command::WorktreeReady { task_id, created } => {
-                // Record the checkout even if nobody is waiting for it any
-                // more: the directory exists on disk either way, and a
-                // worktree the manager does not know about is one nothing can
-                // clean up later.
-                match created {
-                    Ok((project, wt)) => {
-                        if let Some(task) = self.tasks.get_mut(&task_id) {
-                            task.worktree = Some(wt.path.to_string_lossy().to_string());
-                            task.base_branch = Some(wt.base_branch.clone());
-                            let updated = task.clone();
-                            self.persist(&updated);
-                            self.emit(Event::TaskUpdated(updated));
-                        }
-                        if let Some(mgr) = self.worktrees.get_mut(&project) {
-                            mgr.adopt(wt);
-                        }
-                    }
-                    Err(error) => {
-                        // Surface the failure instead of running unisolated; a
-                        // task cancelled mid-checkout has no pending entry, so
-                        // it is left alone.
-                        if self.pending_workflow_starts.remove(&task_id).is_some() {
-                            let _ = self
-                                .workflow_finalize(
-                                    &task_id,
-                                    WorkflowOutcome::Error(format!(
-                                        "could not create an isolated worktree: {error}"
-                                    )),
-                                )
-                                .await;
-                        } else if let Some(start) = self.pending_session_starts.remove(&task_id) {
-                            // Keep the original start so a retry has the task.
-                            self.blocked_starts.insert(task_id.clone(), start);
-                            self.worktree_failed(&task_id, &error);
-                        }
-                    }
-                }
-                // The pending entry is the token: cancelling or deleting the
-                // task removes it, so a checkout that lands afterwards must not
-                // start a session for it (ADR 0002 invariant 5).
-                if let Some(start) = self.pending_session_starts.remove(&task_id) {
-                    self.start_pending_session(&task_id, start);
-                }
-                if let Some(stage) = self.pending_workflow_starts.remove(&task_id) {
-                    self.workflow_spawn_stage(&task_id, stage).await;
                 }
             }
             #[cfg(test)]

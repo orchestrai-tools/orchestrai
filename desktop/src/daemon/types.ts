@@ -6,6 +6,7 @@ import type {
   DetectedAgent,
   SessionUpdate,
   Snapshot,
+  TaskPullRequest,
 } from "../protocol";
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -30,6 +31,9 @@ export interface DaemonState {
   /** Agent id → broken-install mark, `null` once healthy. Seeded by every
    *  detection and kept live by `agents.healthUpdated`. */
   agentHealth?: Record<string, AgentBrokenInstall | null>;
+  /** Task id → the pull request its worktree branch has. A task without one
+   *  is absent. Seeded by `task.pullRequests`, kept live by `task.pullRequest`. */
+  taskPullRequests?: Record<string, TaskPullRequest>;
 }
 
 export const MAX_SERVICE_LOGS = 1000;

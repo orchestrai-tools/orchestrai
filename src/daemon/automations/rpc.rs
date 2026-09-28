@@ -53,6 +53,7 @@ pub async fn dispatch(
             missed_run_grace_minutes,
             reuse_session,
             worktree,
+            worktree_base,
         } => {
             let automation = wire::Automation {
                 id: uuid::Uuid::new_v4().to_string(),
@@ -69,6 +70,7 @@ pub async fn dispatch(
                 missed_run_grace_minutes,
                 reuse_session,
                 worktree,
+                worktree_base,
                 created_at: 0,
                 updated_at: 0,
                 next_run_at: None,

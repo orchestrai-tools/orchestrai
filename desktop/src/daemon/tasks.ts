@@ -1,4 +1,4 @@
-import type { DeleteSettledResult, ExternalSession } from "../protocol";
+import type { DeleteSettledResult, ExternalSession, TaskPullRequest } from "../protocol";
 import type { CoreClient } from "./client";
 import type { Constructor } from "./types";
 
@@ -70,8 +70,30 @@ export function TaskMethods<TBase extends Constructor<CoreClient>>(Base: TBase) 
       return (await this.request("task.deleteSettled", { project })) as DeleteSettledResult;
     }
 
-    async archiveTask(taskId: string) {
-      await this.request("task.archive", { task_id: taskId });
+    /** With `removeWorktree`, the checkout and its local branch go too; the
+     *  daemon refuses while the agent is mid-turn or the checkout is dirty. */
+    async archiveTask(taskId: string, removeWorktree = false) {
+      await this.request("task.archive", { remove_worktree: removeWorktree, task_id: taskId });
+    }
+
+    /**
+     * Ask for worktree tasks' pull requests. The answer is the daemon's cache;
+     * entries older than `maxAgeSecs` are re-checked and arrive as events.
+     */
+    async refreshTaskPullRequests(taskIds?: string[], maxAgeSecs?: number) {
+      const asked = this.pullRequestEventSeq;
+      const result = (await this.request("task.pullRequests", {
+        max_age_secs: maxAgeSecs,
+        task_ids: taskIds,
+      })) as { pullRequests?: Record<string, TaskPullRequest> } | null;
+      const next = { ...result?.pullRequests };
+      const current = this.state.taskPullRequests ?? {};
+      for (const [taskId, seq] of this.pullRequestEventAt) {
+        if (seq <= asked) continue;
+        if (current[taskId]) next[taskId] = current[taskId];
+        else delete next[taskId];
+      }
+      this.setState({ taskPullRequests: next });
     }
 
     /** List resumable claude/codex sessions on disk for a project's cwd. */

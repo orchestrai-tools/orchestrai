@@ -233,6 +233,16 @@ export class DaemonEvents extends DaemonStore {
       case "agentLimits.updated":
         this.setState({ agentLimits: ev.data.accounts });
         break;
+      case "task.pullRequest": {
+        this.pullRequestEventAt.set(ev.data.task_id, ++this.pullRequestEventSeq);
+        const { [ev.data.task_id]: _previous, ...rest } = this.state.taskPullRequests ?? {};
+        this.setState({
+          taskPullRequests: ev.data.pull_request
+            ? { ...rest, [ev.data.task_id]: ev.data.pull_request }
+            : rest,
+        });
+        break;
+      }
       // Screen snapshots consumed by TUI clients; desktop uses terminal.data.
       case "terminal.screen":
         break;

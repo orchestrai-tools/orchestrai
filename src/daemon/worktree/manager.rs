@@ -65,7 +65,9 @@ impl WorktreeManager {
             anyhow::bail!("git worktree remove failed (exit {status})");
         }
 
-        // Delete the branch.
+        if !super::owns_branch(&wt.branch) {
+            return Ok(());
+        }
         let _ = tokio::process::Command::new("git")
             .args(["branch", "-D", &wt.branch])
             .current_dir(&self.base_repo)

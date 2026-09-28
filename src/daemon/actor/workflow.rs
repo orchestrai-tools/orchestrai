@@ -196,6 +196,7 @@ impl Daemon {
         agent: String,
         tags: Vec<String>,
         use_worktree: bool,
+        worktree_base: crate::daemon::worktree::StartPoint,
         workflow_id: String,
         attachments: Vec<wire::PromptAttachment>,
         default_model: Option<String>,
@@ -281,7 +282,7 @@ impl Daemon {
         // Checkout off the loop; the first stage starts from WorktreeReady,
         // which also surfaces a failure (ADR 0002).
         match use_worktree
-            .then(|| self.worktree_request(&parent_id, &project, None))
+            .then(|| self.worktree_request(&parent_id, &project, None, worktree_base))
             .flatten()
         {
             Some(request) => {

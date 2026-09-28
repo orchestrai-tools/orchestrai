@@ -1,6 +1,8 @@
 //! Server dispatcher topic: tasks.
 
 use crate::daemon::actor::{Command, DaemonHandle};
+use crate::daemon::server::util::project_path;
+use crate::daemon::worktree::{resolve_start, StartPoint};
 use serde_json::json;
 use std::collections::HashMap;
 use tokio::sync::oneshot;
@@ -15,6 +17,7 @@ pub(super) async fn task_create(
     tags: Vec<String>,
     include_runtime_context: bool,
     worktree: bool,
+    worktree_base: Option<wire::WorktreeBase>,
     parent_task_id: Option<String>,
     attachments: Vec<wire::PromptAttachment>,
     default_model: Option<String>,
@@ -24,6 +27,20 @@ pub(super) async fn task_create(
     origin: Option<String>,
     start: bool,
 ) -> Result<serde_json::Value, wire::RpcError> {
+    // Resolved before the task exists, so a branch that cannot be used is a
+    // refusal the dialog shows, not a task that lands blocked.
+    let worktree_base = match worktree_base.filter(|_| worktree) {
+        Some(base) => {
+            let path = project_path(handle, &project).await?;
+            resolve_start(std::path::Path::new(&path), &base)
+                .await
+                .map_err(|message| wire::RpcError {
+                    code: wire::ErrorCode::InvalidRequest,
+                    message,
+                })?
+        }
+        None => StartPoint::Head,
+    };
     if let Some(workflow) = workflow {
         let (tx, rx) = oneshot::channel();
         handle
@@ -33,6 +50,7 @@ pub(super) async fn task_create(
                 agent,
                 tags,
                 worktree,
+                worktree_base,
                 workflow,
                 attachments,
                 default_model,
@@ -73,6 +91,7 @@ pub(super) async fn task_create(
             tags,
             include_runtime_context,
             worktree,
+            worktree_base,
             parent_task_id,
             attachments,
             default_model,
@@ -104,9 +123,48 @@ pub(super) async fn task_cancel(
 pub(super) async fn task_archive(
     handle: &DaemonHandle,
     task_id: String,
+    remove_worktree: bool,
 ) -> Result<serde_json::Value, wire::RpcError> {
+    if remove_worktree {
+        discard_worktree(handle, &task_id).await?;
+    }
     handle.send(Command::ArchiveTask { id: task_id }).await;
     Ok(json!(null))
+}
+
+/// Refuse while the agent is mid-turn or the checkout holds work that is
+/// neither pushed nor in the pull request (`pull_status::removal_blocker`).
+async fn discard_worktree(handle: &DaemonHandle, task_id: &str) -> Result<(), wire::RpcError> {
+    let conflict = |message: &str| wire::RpcError {
+        code: wire::ErrorCode::Conflict,
+        message: message.to_string(),
+    };
+    let tasks = handle.tasks().await;
+    let Some(task) = tasks.iter().find(|task| task.id == task_id) else {
+        return Err(wire::RpcError {
+            code: wire::ErrorCode::NotFound,
+            message: format!("unknown task {task_id}"),
+        });
+    };
+    let Some(worktree) = task.worktree.as_deref() else {
+        return Ok(());
+    };
+    if task.status == crate::daemon::task::TaskStatus::Running {
+        return Err(conflict("wait for the agent to finish its turn"));
+    }
+    let head_oid = handle.pulls.head_oid(task_id);
+    if let Some(reason) =
+        crate::daemon::pull_status::removal_blocker(worktree, head_oid.as_deref()).await
+    {
+        return Err(conflict(reason));
+    }
+    handle
+        .send(Command::DiscardWorktree {
+            task_id: task_id.to_string(),
+        })
+        .await;
+    handle.pulls.forget(task_id, &handle.event_tx);
+    Ok(())
 }
 
 pub(super) async fn task_delete(
@@ -152,6 +210,16 @@ pub(super) async fn task_merge_worktree(
             message: e,
         }),
     }
+}
+
+pub(super) async fn task_pull_requests(
+    handle: &DaemonHandle,
+    task_ids: Option<Vec<String>>,
+    max_age_secs: Option<u64>,
+) -> Result<serde_json::Value, wire::RpcError> {
+    let pulls =
+        crate::daemon::pull_status::refresh(handle, task_ids.as_deref(), max_age_secs).await;
+    Ok(json!({ "pullRequests": pulls }))
 }
 
 pub(super) async fn task_list_worktrees(

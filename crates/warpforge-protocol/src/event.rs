@@ -7,7 +7,8 @@
 use crate::{
     AccountInfo, AgentAccountLimits, AgentBrokenInstall, AgentConfig, Automation, AutomationRun,
     DetectedAgent, PortForwardInfo, PortForwardStatus, PortRangeSource, ProjectConfigState,
-    ServiceInfo, ServiceStatus, SessionUpdate, TaskInfo, TerminalInfo, TerminalScreen,
+    ServiceInfo, ServiceStatus, SessionUpdate, TaskInfo, TaskPullRequest, TerminalInfo,
+    TerminalScreen,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -70,6 +71,13 @@ pub enum Event {
     /// A task was deleted; clients should drop it from all views.
     #[serde(rename = "task.removed")]
     TaskRemoved { id: String },
+    /// A worktree task's pull request appeared, changed state or checks, or
+    /// went away (`pull_request: null`).
+    #[serde(rename = "task.pullRequest")]
+    TaskPullRequest {
+        task_id: String,
+        pull_request: Option<TaskPullRequest>,
+    },
 
     /// An automation was created or changed — including the scheduler moving
     /// `nextRunAt`, which is what keeps the "Next run" column live.

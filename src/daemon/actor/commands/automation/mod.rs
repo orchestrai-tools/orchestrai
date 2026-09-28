@@ -150,6 +150,7 @@ impl Daemon {
             a.timezone = sched::host_timezone();
         }
         sched::validate_trigger(&a.trigger, &a.timezone).map_err(|e| e.to_string())?;
+        validate_worktree_base(a.worktree_base.as_ref())?;
         let now = now_secs();
         a.created_at = now;
         a.updated_at = now;
@@ -190,6 +191,7 @@ impl Daemon {
             missed_run_grace_minutes,
             reuse_session,
             worktree,
+            worktree_base,
         } = patch;
         let rescheduled = trigger.is_some() || timezone.is_some() || enabled == Some(true);
         if let Some(name) = name {
@@ -231,7 +233,11 @@ impl Daemon {
         if let Some(worktree) = worktree {
             a.worktree = worktree;
         }
+        if let Some(worktree_base) = worktree_base {
+            a.worktree_base = worktree_base;
+        }
         sched::validate_trigger(&a.trigger, &a.timezone).map_err(|e| e.to_string())?;
+        validate_worktree_base(a.worktree_base.as_ref())?;
         a.updated_at = now;
         // Re-derive the next occurrence whenever the schedule moved or the
         // automation came back on: a stale timestamp from the old schedule
@@ -268,5 +274,18 @@ impl Daemon {
         // An explicit click means run: no precheck, no grace check, and the
         // next scheduled occurrence does not move.
         Ok(self.dispatch_run(&a, &run.id).unwrap_or(run))
+    }
+}
+
+/// Every run starts a fresh task branch, so an automation can fork from a
+/// branch or origin but never check out one existing branch run after run.
+fn validate_worktree_base(base: Option<&wire::WorktreeBase>) -> Result<(), String> {
+    match base {
+        None | Some(wire::WorktreeBase::Branch { .. }) | Some(wire::WorktreeBase::Origin) => Ok(()),
+        Some(_) => Err(
+            "an automation's worktree can start from a branch or origin, not an existing \
+             branch or pull request"
+                .into(),
+        ),
     }
 }

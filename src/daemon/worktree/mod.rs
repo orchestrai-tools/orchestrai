@@ -7,9 +7,13 @@
 //! manual inspection. Older tasks may still have checkouts under the legacy
 //! `<project>/.worktrees/<task_id>`; those paths are used exactly as recorded.
 //!
+//! A task can instead start from a chosen base branch, from origin, or on an
+//! existing branch or pull request ([`StartPoint`]).
+//!
 //! Split by topic: [`manager`] holds the manager's git operations, [`detached`]
-//! the manager-free versions that run off the actor, and [`discover`] the boot
-//! rebuild from persisted tasks.
+//! the manager-free versions that run off the actor, [`discover`] the boot
+//! rebuild from persisted tasks, [`resolve`] and [`pull`] the base choice, and
+//! [`start`] the checkouts it produces.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -18,19 +22,37 @@ mod detached;
 mod discover;
 mod manager;
 mod merge;
+mod pull;
+mod resolve;
+mod start;
 
 #[cfg(test)]
 mod merge_tests;
 
 #[cfg(test)]
+mod start_tests;
+
+#[cfg(test)]
 mod tests;
 
-pub use detached::{create_branched_detached, create_detached, default_remover};
+pub use detached::{create_branched_detached, default_remover};
 #[cfg(test)]
-pub use detached::{remove_detached, RemoveFn};
+pub use detached::{create_detached, remove_detached, RemoveFn};
 #[cfg(test)]
 pub use discover::parse_worktree_list;
 pub use merge::merge_detached;
+pub use resolve::resolve_start;
+pub use start::{create_started, ExistingBranch, RemoteBranch, StartPoint};
+
+/// Prefix of the branches Warpforge creates for task worktrees.
+pub(crate) const TASK_BRANCH_PREFIX: &str = "warpforge/task/";
+
+/// Whether removing a task's worktree may delete `branch`. Only branches the
+/// daemon created are; a checked-out existing branch or pull request branch is
+/// the user's and outlives the task.
+pub(crate) fn owns_branch(branch: &str) -> bool {
+    branch.starts_with(TASK_BRANCH_PREFIX)
+}
 
 /// Project-relative directory new task worktrees live under. One constant so
 /// the location is named once; `.warpforge/` is committed project config, and

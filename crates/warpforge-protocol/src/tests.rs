@@ -227,6 +227,7 @@ fn request_wire_shape() {
             tags: vec!["bug".into()],
             include_runtime_context: true,
             worktree: false,
+            worktree_base: None,
             parent_task_id: None,
             attachments: vec![],
             default_model: Some("opus".into()),

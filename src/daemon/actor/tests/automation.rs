@@ -41,6 +41,7 @@ fn base_automation(id: &str, precheck: Option<String>) -> wire::Automation {
         missed_run_grace_minutes: wire::DEFAULT_MISSED_RUN_GRACE_MINUTES,
         reuse_session: false,
         worktree: false,
+        worktree_base: None,
         created_at: 0,
         updated_at: 0,
         next_run_at: None,

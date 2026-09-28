@@ -5,6 +5,7 @@ import AppHeader from "@/components/AppHeader";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { daemon } from "@/daemon";
 import type { ConnectionState } from "@/daemon/types";
+import { useTaskPullRequestSync } from "@/hooks/useTaskPullRequest";
 import { runOnIdle } from "@/lib/idle";
 import type { Snapshot, TaskInfo } from "@/protocol";
 import type { View } from "@/store/ui";
@@ -82,6 +83,7 @@ export function AppContent({
     if (connection !== "connected") return;
     return runOnIdle(prefetchRouteChunks);
   }, [connection]);
+  useTaskPullRequestSync(connection);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">

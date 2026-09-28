@@ -99,6 +99,37 @@ The file tree and `git.roots` skip both locations, matched as a path
 `HEAVY_DIRS` matches names at any depth, so a bare entry would hide an
 unrelated `worktrees/` folder.
 
+## Amendment — Chosen base, existing branches and pull requests (2026-09-28)
+
+`task.create` takes an optional `worktree_base`: a new task branch forked from
+a named local branch, or from origin's default branch (fetched first; the
+default comes from `origin/HEAD`, else `git ls-remote --symref`), or an existing
+branch checked out as-is — a local branch, a remote-tracking one (a local branch
+tracking it is created), or a GitHub pull request's head looked up with
+`gh pr view`. A fork's pull request gets a remote named after the fork owner
+(reused when an existing remote already points at the fork, as `gh pr checkout`
+does), so the branch tracks `<owner>/<head>` and a plain push updates the PR.
+New Task lists pull requests through the existing `tracker.pulls.list`.
+
+The base is resolved in the RPC handler, before the task exists, so an unusable
+choice is an error the dialog shows rather than a blocked task: an unknown
+branch, a merged pull request, or a branch already checked out in the project
+checkout or another worktree (git allows one checkout per branch). Fetching and
+`git worktree add` still run in the detached creation, and a failure there
+blocks the task as before.
+
+`base_branch` is the **merge target**, always a local branch name: the forked
+branch, the default branch's local name for an origin base (never
+`origin/main` — the merge moves `refs/heads/<base>`), the pull request's base
+branch, or the root checkout's branch for a plain existing branch. Forks use
+`--no-track`: from a remote-tracking start point git would otherwise make the
+base the task branch's upstream, and a push would aim at it.
+
+Only branches under `warpforge/task/` are deleted when a worktree is removed;
+an existing branch the task checked out is the user's and survives the task.
+Automations accept only the fork bases (branch, origin) — each run starts a new
+task branch, so checking out one existing branch run after run cannot work.
+
 ## Invariants
 
 1. **`daemon/worktree/` — the manager is a cache, not the source of truth.** The
@@ -124,3 +155,8 @@ unrelated `worktrees/` folder.
    update with no checkout.
 8. **A conflict leaves every ref unchanged.** No partial merge commit, no moved
    branch, and the base checkout is aborted back to its pre-merge state.
+9. **Removing a worktree deletes only a branch the daemon created**
+   (`warpforge/task/*`, `worktree::owns_branch`). A checked-out existing or
+   pull request branch is never deleted with its task.
+10. **`base_branch` is a local branch name.** An origin base records the
+    default branch's local name, not the remote-tracking ref.

@@ -58,6 +58,8 @@ Push uses `--force-with-lease` — the safe force, which refuses if someone else
 
 **Open pull request** goes through the [GitHub CLI](https://cli.github.com/) with a title and body drafted from the branch's outgoing commits and their combined diff. It needs `gh` installed and authenticated; commit and push don't.
 
+Once a worktree task's branch has a pull request, the task says so. Its sidebar row carries the pull request's state — open, draft, merged or closed — with a dot when checks are failing or still running, and the task header shows the number, the state and the checks; click it to open the pull request on GitHub. The status refreshes when you open the task or come back to the window, and every few minutes while the pull request is open. When it merges, **Archive and remove worktree** (in the header, or the row's **More** menu) moves the task to history and deletes its worktree and local branch, after asking. It refuses while the agent is working or the worktree has uncommitted changes. Without `gh`, or for a repository that is not on GitHub, nothing is shown.
+
 ## Everything runs where the diff is
 
 A task can run in [its own worktree](/guides/tasks-and-backlog/#isolated-worktrees). When it does, **every** git operation — commit, update, switch, branch, rebase, merge, rollback — and every file operation runs against **that worktree**, not the project root.

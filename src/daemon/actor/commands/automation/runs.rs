@@ -291,6 +291,9 @@ impl Daemon {
                         tags: vec!["automation".into()],
                         include_runtime_context: false,
                         worktree: a.worktree,
+                        worktree_base: crate::daemon::worktree::StartPoint::fork(
+                            a.worktree_base.as_ref(),
+                        ),
                         parent_task_id: None,
                         attachments: Vec::new(),
                         default_model: a.model.clone(),

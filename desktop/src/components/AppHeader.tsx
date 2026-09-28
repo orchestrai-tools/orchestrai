@@ -1,6 +1,7 @@
 import { Check, ChevronDown, Folder, FolderGit2 } from "lucide-react";
 import { useMemo, useSyncExternalStore } from "react";
 
+import { TaskPullRequestChip } from "@/components/pullRequest/TaskPullRequestChip";
 import { TaskMenu } from "@/components/TaskMenu";
 import { TaskTitleEditor } from "@/components/TaskTitleEditor";
 import {
@@ -90,6 +91,7 @@ export default function AppHeader({ view, openTask, onAddProject, onCloseTask }:
                 Git Worktree
               </span>
             )}
+            {openTask.worktree && <TaskPullRequestChip task={openTask} />}
           </>
         ) : view === "project" ? (
           <>

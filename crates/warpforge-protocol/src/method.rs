@@ -6,7 +6,8 @@
 use crate::{
     default_true, AgentConfig, AutomationPatch, AutomationTrigger, BacklogStorageMode,
     BootstrapAnswers, HunkResolution, OrchestratorConfigDto, PermissionOutcome, PromptAttachment,
-    TextGenKind, WorkItemPriority, WorkflowDecision, DEFAULT_MISSED_RUN_GRACE_MINUTES,
+    TextGenKind, WorkItemPriority, WorkflowDecision, WorktreeBase,
+    DEFAULT_MISSED_RUN_GRACE_MINUTES,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -192,6 +193,10 @@ pub enum Method {
         /// doesn't conflict with the main working tree or other tasks.
         #[serde(default)]
         worktree: bool,
+        /// Where the worktree starts; ignored unless `worktree`. Absent forks
+        /// from the project checkout's current HEAD.
+        #[serde(default)]
+        worktree_base: Option<WorktreeBase>,
         /// When set, this task is a sub-agent spawned by the given orchestrator
         /// task; its result is delivered back into that orchestrator's inbox.
         #[serde(default)]
@@ -233,9 +238,15 @@ pub enum Method {
     },
     #[serde(rename = "task.cancel")]
     TaskCancel { task_id: String },
-    /// Archive a finished task off the board.
+    /// Archive a finished task off the board. With `remove_worktree` its
+    /// checkout and local branch are removed too; refused while the agent is
+    /// mid-turn or the checkout has uncommitted changes.
     #[serde(rename = "task.archive")]
-    TaskArchive { task_id: String },
+    TaskArchive {
+        task_id: String,
+        #[serde(default)]
+        remove_worktree: bool,
+    },
     /// Delete a task and its persisted session history permanently.
     #[serde(rename = "task.delete")]
     TaskDelete { task_id: String },
@@ -265,6 +276,18 @@ pub enum Method {
     /// List active worktrees for a project.
     #[serde(rename = "task.listWorktrees")]
     TaskListWorktrees { project: String },
+    /// Cached pull-request state of worktree tasks, as
+    /// `{ "pullRequests": { <taskId>: TaskPullRequest } }`. Asked-for tasks
+    /// (every worktree task when `task_ids` is absent) whose state is older
+    /// than `max_age_secs` (default 120) are re-checked in the background;
+    /// changes arrive as `task.pullRequest` events.
+    #[serde(rename = "task.pullRequests")]
+    TaskPullRequests {
+        #[serde(default)]
+        task_ids: Option<Vec<String>>,
+        #[serde(default)]
+        max_age_secs: Option<u64>,
+    },
 
     // ── Lifecycle (settle/snooze visibility overlay) ──
     /// Mark a task as settled (user acknowledged, hide from attention).
@@ -1290,6 +1313,9 @@ pub enum Method {
         reuse_session: bool,
         #[serde(default)]
         worktree: bool,
+        /// Where each run's worktree forks from. Only `branch` and `origin`.
+        #[serde(default)]
+        worktree_base: Option<WorktreeBase>,
     },
     /// Patch an automation. Absent fields are left alone. Returns the row.
     #[serde(rename = "automation.update")]

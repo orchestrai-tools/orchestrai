@@ -156,5 +156,6 @@ pub(super) async fn git_create_pr(
             code: wire::ErrorCode::Internal,
             message,
         })?;
+    crate::daemon::pull_status::refresh(handle, Some(&[task_id]), Some(0)).await;
     Ok(json!({ "url": url }))
 }

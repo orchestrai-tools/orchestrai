@@ -43,6 +43,7 @@ pub(super) fn method_runs_concurrently(method: &wire::Method) -> bool {
             | PortForwardLogs { .. }
             | RuntimeList { .. }
             | TaskListWorktrees { .. }
+            | TaskPullRequests { .. }
             | SessionsList { .. }
             | SessionHistory { .. }
             | OrchestratorListAgents { .. }
@@ -75,6 +76,7 @@ pub(super) fn method_is_mutation(method: &wire::Method) -> bool {
             | PortForwardLogs { .. }
             | RuntimeList { .. }
             | TaskListWorktrees { .. }
+            | TaskPullRequests { .. }
             | SessionsList { .. }
             | SessionHistory { .. }
             | HistoryGetSettings {}

@@ -225,6 +225,46 @@ pub struct PullThread {
     pub head_ref_name: String,
 }
 
+/// The pull request opened from a worktree task's branch, as the sidebar row
+/// and the task header show it. Served by `task.pullRequests` and pushed as
+/// `task.pullRequest` when it changes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskPullRequest {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    pub state: TaskPullState,
+    /// Rollup of the head commit's checks; `None` when it has none.
+    #[serde(default)]
+    pub checks: Option<PullChecks>,
+    /// Commit the pull request's head points at. Removing a merged task's
+    /// worktree is allowed only when local HEAD is contained in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_oid: Option<String>,
+}
+
+/// Lifecycle of a task's pull request. A draft is its own state here because
+/// the UI renders it as one.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskPullState {
+    Open,
+    Draft,
+    Merged,
+    Closed,
+}
+
+/// One word for all of a commit's checks: any failure wins, then anything
+/// still running.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PullChecks {
+    Passing,
+    Failing,
+    Pending,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,6 +293,59 @@ mod tests {
         assert_eq!(summary.additions, 0);
         assert_eq!(summary.deletions, 0);
         assert_eq!(summary.changed_files, 0);
+    }
+
+    #[test]
+    fn a_task_pull_request_event_and_its_query_keep_their_wire_shape() {
+        let event = crate::Event::TaskPullRequest {
+            task_id: "t1".into(),
+            pull_request: Some(TaskPullRequest {
+                number: 12,
+                title: "Fix it".into(),
+                url: "https://github.com/acme/widgets/pull/12".into(),
+                state: TaskPullState::Draft,
+                checks: Some(PullChecks::Failing),
+                head_oid: None,
+            }),
+        };
+        assert_eq!(
+            serde_json::to_value(&event).unwrap(),
+            serde_json::json!({
+                "event": "task.pullRequest",
+                "data": {
+                    "task_id": "t1",
+                    "pull_request": {
+                        "number": 12,
+                        "title": "Fix it",
+                        "url": "https://github.com/acme/widgets/pull/12",
+                        "state": "draft",
+                        "checks": "failing",
+                    },
+                },
+            })
+        );
+        let method: crate::Method = serde_json::from_value(
+            serde_json::json!({ "method": "task.pullRequests", "params": {} }),
+        )
+        .unwrap();
+        assert_eq!(
+            method,
+            crate::Method::TaskPullRequests {
+                task_ids: None,
+                max_age_secs: None,
+            }
+        );
+        let archive: crate::Method = serde_json::from_value(
+            serde_json::json!({ "method": "task.archive", "params": { "task_id": "t1" } }),
+        )
+        .unwrap();
+        assert_eq!(
+            archive,
+            crate::Method::TaskArchive {
+                task_id: "t1".into(),
+                remove_worktree: false,
+            }
+        );
     }
 
     #[test]

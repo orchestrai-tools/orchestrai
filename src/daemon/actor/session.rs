@@ -13,14 +13,16 @@ use crate::daemon::actor::prompt::RUNTIME_MCP_SYSTEM;
 use crate::daemon::actor::PendingSessionStart;
 use crate::daemon::actor::{Daemon, Event};
 use crate::daemon::task::TaskStatus;
-use crate::daemon::worktree::WorktreeManager;
+use crate::daemon::worktree::{StartPoint, WorktreeManager};
 
 pub(crate) struct WorktreeRequest {
     pub(crate) project: String,
     pub(crate) base_repo: PathBuf,
     pub(crate) task_id: String,
-    /// What a conversation branch inherits from.
+    /// What a conversation branch inherits from. Wins over `start`.
     pub(crate) source: Option<BranchSource>,
+    /// Where the checkout starts when it is not a conversation branch.
+    pub(crate) start: StartPoint,
 }
 
 /// Where a branched conversation picks up from.
@@ -45,7 +47,8 @@ impl WorktreeRequest {
                 .await
             }
             None => {
-                crate::daemon::worktree::create_detached(&self.base_repo, &self.task_id, None).await
+                crate::daemon::worktree::create_started(&self.base_repo, &self.task_id, &self.start)
+                    .await
             }
         };
         created
@@ -78,6 +81,7 @@ impl Daemon {
         task_id: &str,
         project: &str,
         branched_from: Option<&str>,
+        start: StartPoint,
     ) -> Option<WorktreeRequest> {
         let path = self.project_path(project)?;
         // Resolve the source's working directory before borrowing the manager.
@@ -98,6 +102,7 @@ impl Daemon {
             base_repo: mgr.base_repo().to_path_buf(),
             task_id: task_id.to_string(),
             source,
+            start,
         })
     }
 

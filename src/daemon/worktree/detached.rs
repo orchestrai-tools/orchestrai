@@ -37,23 +37,6 @@ pub async fn create_detached(
     task_id: &str,
     base_branch: Option<&str>,
 ) -> Result<Worktree> {
-    // New worktrees live under `.warpforge/worktrees/`, kept out of git by a
-    // `.gitignore` inside that folder. Best-effort: a checkout with no worktree
-    // is worse than one whose folder is briefly visible.
-    if let Err(e) = ensure_worktrees_gitignore(base_repo).await {
-        eprintln!("[daemon] could not write .warpforge/worktrees/.gitignore: {e:#}");
-    }
-    // Legacy tasks may still have checkouts under `.worktrees/`; hide those
-    // via info/exclude, but only when that directory actually exists.
-    if base_repo.join(".worktrees").is_dir() {
-        if let Err(e) = ensure_worktrees_excluded(base_repo).await {
-            eprintln!("[daemon] could not add .worktrees/ to info/exclude: {e:#}");
-        }
-    }
-
-    let wt_dir = super::worktree_path(base_repo, task_id);
-    let branch = format!("warpforge/task/{task_id}");
-
     let base = match base_branch {
         Some(b) => b.to_string(),
         None => {
@@ -66,15 +49,34 @@ pub async fn create_detached(
             String::from_utf8_lossy(&output.stdout).trim().to_string()
         }
     };
+    fork_detached(base_repo, task_id, &base, &base).await
+}
+
+/// Fork a new `warpforge/task/<task_id>` branch from `start` into the task's
+/// worktree, recording `target` as the branch it merges back into.
+///
+/// `--no-track` matters when `start` is a remote-tracking ref: git would
+/// otherwise set it as the task branch's upstream, and a push would then aim
+/// at the base branch itself.
+pub(super) async fn fork_detached(
+    base_repo: &Path,
+    task_id: &str,
+    start: &str,
+    target: &str,
+) -> Result<Worktree> {
+    prepare_worktrees_dir(base_repo).await;
+    let wt_dir = super::worktree_path(base_repo, task_id);
+    let branch = format!("{}{task_id}", super::TASK_BRANCH_PREFIX);
 
     let status = tokio::process::Command::new("git")
         .args([
             "worktree",
             "add",
+            "--no-track",
             "-b",
             &branch,
             wt_dir.to_str().unwrap_or(".warpforge/worktrees/task"),
-            &base,
+            start,
         ])
         .current_dir(base_repo)
         .status()
@@ -89,8 +91,24 @@ pub async fn create_detached(
         task_id: task_id.to_string(),
         path: wt_dir,
         branch,
-        base_branch: base,
+        base_branch: target.to_string(),
     })
+}
+
+/// Keep the worktree folders out of git before a checkout lands in them.
+/// Best-effort: a checkout with no worktree is worse than one whose folder is
+/// briefly visible.
+pub(super) async fn prepare_worktrees_dir(base_repo: &Path) {
+    if let Err(e) = ensure_worktrees_gitignore(base_repo).await {
+        eprintln!("[daemon] could not write .warpforge/worktrees/.gitignore: {e:#}");
+    }
+    // Legacy tasks may still have checkouts under `.worktrees/`; hide those
+    // via info/exclude, but only when that directory actually exists.
+    if base_repo.join(".worktrees").is_dir() {
+        if let Err(e) = ensure_worktrees_excluded(base_repo).await {
+            eprintln!("[daemon] could not add .worktrees/ to info/exclude: {e:#}");
+        }
+    }
 }
 
 /// Write `.warpforge/worktrees/.gitignore` (content `*`) so new task checkouts
@@ -198,6 +216,8 @@ pub async fn create_branched_detached(
 
 /// Remove a worktree and delete its branch, without a manager. The caller drops
 /// it from the map with [`WorktreeManager::forget`](super::WorktreeManager::forget).
+/// A branch the task checked out rather than created is kept (see
+/// [`super::owns_branch`]).
 pub async fn remove_detached(base_repo: &Path, path: &Path, branch: &str) -> Result<()> {
     let status = tokio::process::Command::new("git")
         .args(["worktree", "remove", "--force", path.to_str().unwrap_or("")])
@@ -207,6 +227,9 @@ pub async fn remove_detached(base_repo: &Path, path: &Path, branch: &str) -> Res
         .context("failed to run git worktree remove")?;
     if !status.success() {
         anyhow::bail!("git worktree remove failed (exit {status})");
+    }
+    if !super::owns_branch(branch) {
+        return Ok(());
     }
     let _ = tokio::process::Command::new("git")
         .args(["branch", "-D", branch])

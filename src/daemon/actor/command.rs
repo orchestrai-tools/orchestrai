@@ -175,6 +175,8 @@ pub enum Command {
         include_runtime_context: bool,
         /// When true, create an isolated git worktree for this task.
         worktree: bool,
+        /// Where that worktree starts; ignored unless `worktree`.
+        worktree_base: crate::daemon::worktree::StartPoint,
         /// Set when this task is a sub-agent of an orchestrator task.
         parent_task_id: Option<String>,
         attachments: Vec<wire::PromptAttachment>,
@@ -203,6 +205,7 @@ pub enum Command {
         agent: String,
         tags: Vec<String>,
         worktree: bool,
+        worktree_base: crate::daemon::worktree::StartPoint,
         workflow: String,
         attachments: Vec<wire::PromptAttachment>,
         default_model: Option<String>,
@@ -297,6 +300,11 @@ pub enum Command {
         task_id: String,
         remove_worktree: bool,
         reply: oneshot::Sender<Result<String, String>>,
+    },
+    /// Stop a task's terminals and session, then remove its worktree and
+    /// local branch. The task record is kept, pointed at no checkout.
+    DiscardWorktree {
+        task_id: String,
     },
     /// List active worktrees for a project.
     ListWorktrees {

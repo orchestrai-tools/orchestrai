@@ -246,7 +246,11 @@ impl Daemon {
             automation_run_counters,
         };
 
-        let handle = DaemonHandle { cmd_tx, event_tx };
+        let handle = DaemonHandle {
+            cmd_tx,
+            event_tx,
+            pulls: Default::default(),
+        };
 
         // Detect installed agents in background so it doesn't block startup,
         // then emit setup_needed if no agents are configured yet.

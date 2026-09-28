@@ -27,6 +27,7 @@ vi.mock("./daemon", () => {
       subscribe,
       getState,
       dismissAgentSetup: vi.fn<() => void>(),
+      refreshTaskPullRequests: vi.fn<() => Promise<void>>(() => Promise.resolve()),
       request: vi.fn<() => Promise<unknown>>(),
     },
   };
