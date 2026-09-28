@@ -50,8 +50,10 @@ async function call(command: string, args: Record<string, unknown>): Promise<voi
 const opening = new Map<string, Promise<unknown>>();
 
 export const browser = {
-  open(tabId: string, url: string, bounds: BrowserBounds): Promise<void> {
-    const done = call("browser_open", { tabId, url, ...bounds });
+  /** With `reuse`, a tab whose webview already exists keeps its page instead
+   *  of loading `url` again. */
+  open(tabId: string, url: string, bounds: BrowserBounds, reuse = false): Promise<void> {
+    const done = call("browser_open", { tabId, url, ...bounds, reuse });
     const settled = done.catch(() => {});
     opening.set(tabId, settled);
     return done;

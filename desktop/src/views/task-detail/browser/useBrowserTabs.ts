@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { browser, onBrowserState, onBrowserTitle } from "./browserClient";
-import { loadBrowserSession, saveBrowserSession } from "./browserSession";
+import {
+  loadBrowserSession,
+  loadLiveBrowserSession,
+  saveBrowserSession,
+  saveLiveBrowserSession,
+} from "./browserSession";
 
 export interface BrowserTab {
   id: string;
@@ -55,6 +60,9 @@ export interface BrowserTabs {
 
 export function useBrowserTabs(project: string): BrowserTabs {
   const [tabs, setTabs] = useState<BrowserTab[]>(() => {
+    const current = loadLiveBrowserSession(project);
+    // A load that finished while the pane was away never reported back.
+    if (current) return current.tabs.map((t) => ({ ...t, loading: false }));
     const saved = loadBrowserSession(project);
     if (saved) {
       return saved.tabs.map((t) => ({
@@ -71,9 +79,10 @@ export function useBrowserTabs(project: string): BrowserTabs {
   // A back/forward click is expected to move the position rather than push a
   // new entry; the next navigation event for that tab consumes this.
   const pendingMove = useRef(new Map<string, number>());
-  const [activeId, setActiveId] = useState<string | null>(
-    () => loadBrowserSession(project)?.activeId ?? null,
-  );
+  const [activeId, setActiveId] = useState<string | null>(() => {
+    const current = loadLiveBrowserSession(project);
+    return current ? current.activeId : (loadBrowserSession(project)?.activeId ?? null);
+  });
 
   // First tab becomes active once, after mount, so the surface can open it.
   useEffect(() => {
@@ -84,6 +93,7 @@ export function useBrowserTabs(project: string): BrowserTabs {
 
   // Persist the open pages so a restart reopens them into the kept-alive login.
   useEffect(() => {
+    saveLiveBrowserSession(project, { tabs, activeId });
     saveBrowserSession(project, { tabs: tabs.map((t) => ({ id: t.id, url: t.url })), activeId });
   }, [project, tabs, activeId]);
 

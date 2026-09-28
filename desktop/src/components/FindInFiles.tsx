@@ -149,6 +149,8 @@ export function FindInFiles({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 pt-[10vh]"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();

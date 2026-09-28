@@ -9,6 +9,8 @@
  * Tiny data, so localStorage rather than a migration of the IndexedDB session
  * schema; the per-project key is what makes cleanup a single `remove`.
  */
+import type { BrowserTab } from "./useBrowserTabs";
+
 const PREFIX = "warpforge.browser.";
 
 export interface PersistedTab {
@@ -19,6 +21,24 @@ export interface PersistedTab {
 export interface BrowserSession {
   tabs: PersistedTab[];
   activeId: string | null;
+}
+
+export interface LiveBrowserSession {
+  tabs: BrowserTab[];
+  activeId: string | null;
+}
+
+/** The tabs as last rendered, for this app run. A remounted pane reuses the
+ *  still-open webviews, which report no new title or history, so it takes
+ *  those from here rather than from the saved session. */
+const live = new Map<string, LiveBrowserSession>();
+
+export function loadLiveBrowserSession(project: string): LiveBrowserSession | null {
+  return live.get(project) ?? null;
+}
+
+export function saveLiveBrowserSession(project: string, session: LiveBrowserSession): void {
+  live.set(project, session);
 }
 
 function keyFor(project: string): string {
@@ -49,6 +69,7 @@ export function saveBrowserSession(project: string, session: BrowserSession): vo
 
 /** Called when a project is removed, so its tabs do not outlive it. */
 export function clearBrowserSession(project: string): void {
+  live.delete(project);
   if (typeof localStorage === "undefined") return;
   localStorage.removeItem(keyFor(project));
 }

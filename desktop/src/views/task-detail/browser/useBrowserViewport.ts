@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { browser, type BrowserBounds } from "./browserClient";
+import { watchOverlays } from "./overlayCover";
 
 function boundsOf(el: HTMLElement): BrowserBounds {
   const r = el.getBoundingClientRect();
@@ -34,8 +35,9 @@ export function isFullyOnScreen(entry: Sighting): boolean {
 
 /**
  * Keep the active tab's native webview glued to the placeholder, and shown only
- * while the placeholder is fully on screen: a folded pane keeps it mounted and
- * merely clips it, which nothing but an intersection check sees.
+ * while the placeholder is fully on screen and no overlay covers it: a folded
+ * pane keeps it mounted and merely clips it, which nothing but an intersection
+ * check sees.
  *
  * @param activeTabId The tab whose webview is driven, or null when none shows.
  * @param ref The placeholder the webview is painted over.
@@ -71,15 +73,27 @@ export function useBrowserViewport(
 
     // On a tab switch the previous tab's verdict still holds for the same
     // placeholder, so the page shows now instead of on the first report.
-    if (seen.current) apply(true);
+    let onScreen: boolean | null = seen.current ? true : null;
+    let covered = false;
+    const update = () => {
+      if (covered) apply(false);
+      else if (onScreen !== null) apply(onScreen);
+    };
     const intersection = new IntersectionObserver(
       (entries) => {
         seen.current = isFullyOnScreen(entries[entries.length - 1]);
-        apply(seen.current);
+        onScreen = seen.current;
+        update();
       },
       { threshold: [0, FULL] },
     );
     intersection.observe(el);
+    // The native page paints above every DOM layer, so it steps aside for an
+    // open dialog, menu or toast; hiding keeps the page loaded.
+    const stopOverlays = watchOverlays(el, (c) => {
+      covered = c;
+      update();
+    });
 
     // The placeholder moves with the split resizer and the window; a scroll of
     // an ancestor moves it too. ResizeObserver catches size, the listeners catch
@@ -92,6 +106,7 @@ export function useBrowserViewport(
     return () => {
       cancelled = true;
       intersection.disconnect();
+      stopOverlays();
       observer.disconnect();
       window.removeEventListener("resize", sync);
       window.removeEventListener("scroll", sync, true);

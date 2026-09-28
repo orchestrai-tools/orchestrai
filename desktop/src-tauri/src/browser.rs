@@ -53,8 +53,10 @@ fn parse_url(url: &str) -> Result<tauri::Url, String> {
 }
 
 /// Create the tab's webview if it does not exist yet, then position and show it.
-/// A second call for the same tab just navigates and repositions.
+/// A second call for the same tab navigates and repositions, or with `reuse`
+/// only repositions, so a remounted pane keeps the page it left.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn browser_open(
     app: AppHandle,
     tab_id: String,
@@ -63,11 +65,15 @@ pub fn browser_open(
     y: f64,
     width: f64,
     height: f64,
+    reuse: Option<bool>,
 ) -> Result<(), String> {
     let target = parse_url(&url)?;
     let label = label_for(&tab_id);
 
     if let Some(webview) = app.get_webview(&label) {
+        if reuse == Some(true) {
+            return set_bounds(&app, &tab_id, x, y, width, height);
+        }
         webview.navigate(target).map_err(|e| e.to_string())?;
         set_bounds(&app, &tab_id, x, y, width, height)?;
         webview.show().map_err(|e| e.to_string())?;

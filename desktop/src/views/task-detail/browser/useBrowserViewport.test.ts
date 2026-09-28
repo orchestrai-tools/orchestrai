@@ -77,4 +77,24 @@ describe("useBrowserViewport", () => {
     rerender({ id: "p:b" });
     expect(vi.mocked(browser.setVisible)).toHaveBeenLastCalledWith("p:b", true);
   });
+
+  it("hides the page while a dialog is open and shows it again once it closes", async () => {
+    const ref = { current: document.createElement("div") };
+    renderHook(() => useBrowserViewport("p:tab", ref));
+    act(() => report([sighting(1)]));
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("data-state", "open");
+    document.body.append(dialog);
+    await vi.waitFor(() => expect(browser.setVisible).toHaveBeenLastCalledWith("p:tab", false));
+    dialog.setAttribute("data-state", "closed");
+    await vi.waitFor(() => expect(browser.setVisible).toHaveBeenLastCalledWith("p:tab", true));
+    const calls = vi.mocked(browser.setVisible).mock.calls.filter(([id]) => id === "p:tab");
+    expect(calls).toEqual([
+      ["p:tab", true],
+      ["p:tab", false],
+      ["p:tab", true],
+    ]);
+    dialog.remove();
+  });
 });

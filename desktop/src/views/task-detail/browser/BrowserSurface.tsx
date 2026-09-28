@@ -154,11 +154,12 @@ export function BrowserSurface({ onAnnotate, onShot, project, services }: Props)
 
   // Open the webview for a tab that already has a real URL (e.g. a restored
   // session). A start-page tab has no webview until the user opens something.
+  // A webview left by an earlier mount is reused as is, not reloaded.
   useEffect(() => {
     const el = pageRef.current;
     if (!active || !el || isStartUrl(active.url) || opened.current.has(active.id)) return;
     opened.current.add(active.id);
-    void browser.open(active.id, active.url, boundsOf(el));
+    void browser.open(active.id, active.url, boundsOf(el), true);
   }, [active]);
 
   const chatOnRight = usePanelLayout((s) => s.chatOnRight);
