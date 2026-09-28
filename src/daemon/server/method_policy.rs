@@ -43,7 +43,11 @@ pub(super) fn method_runs_concurrently(method: &wire::Method) -> bool {
             | PortForwardLogs { .. }
             | RuntimeList { .. }
             | TaskListWorktrees { .. }
+            | WorktreeList { .. }
+            | WorktreeSetupLog { .. }
             | TaskPullRequests { .. }
+            | WorktreeReclaim { .. }
+            | WorktreeRemoveOrphan { .. }
             | SessionsList { .. }
             | SessionHistory { .. }
             | OrchestratorListAgents { .. }
@@ -76,6 +80,8 @@ pub(super) fn method_is_mutation(method: &wire::Method) -> bool {
             | PortForwardLogs { .. }
             | RuntimeList { .. }
             | TaskListWorktrees { .. }
+            | WorktreeList { .. }
+            | WorktreeSetupLog { .. }
             | TaskPullRequests { .. }
             | SessionsList { .. }
             | SessionHistory { .. }

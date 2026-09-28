@@ -276,6 +276,21 @@ pub enum Method {
     /// List active worktrees for a project.
     #[serde(rename = "task.listWorktrees")]
     TaskListWorktrees { project: String },
+    /// Every task worktree of a project with its owner, disk size and setup
+    /// log, as `{ "worktrees": [WorktreeRow] }`.
+    #[serde(rename = "worktree.list")]
+    WorktreeList { project: String },
+    /// Delete build artifact directories inside one worktree of the project.
+    /// Returns `{ "freedBytes": n }`.
+    #[serde(rename = "worktree.reclaim")]
+    WorktreeReclaim { project: String, path: String },
+    /// Remove a worktree no task owns. Refused while it holds uncommitted or
+    /// unpushed work. Returns `null`.
+    #[serde(rename = "worktree.removeOrphan")]
+    WorktreeRemoveOrphan { project: String, path: String },
+    /// Output of the task's worktree setup command, as `{ "log": string }`.
+    #[serde(rename = "worktree.setupLog")]
+    WorktreeSetupLog { task_id: String },
     /// Cached pull-request state of worktree tasks, as
     /// `{ "pullRequests": { <taskId>: TaskPullRequest } }`. Asked-for tasks
     /// (every worktree task when `task_ids` is absent) whose state is older

@@ -120,7 +120,7 @@ pub enum Command {
     /// A task's worktree checkout finished (or failed); start its session.
     WorktreeReady {
         task_id: String,
-        created: Result<(String, crate::daemon::worktree::Worktree), String>,
+        created: Result<crate::daemon::actor::session::WorktreeCreated, String>,
     },
     /// Test-only: report whether a finished turn's output has a consumer.
     #[cfg(test)]

@@ -77,6 +77,8 @@ pub struct WorkspaceConfig {
     pub portforwards: Vec<PortForwardConfig>,
     #[serde(default)]
     pub ports: Option<PortsConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<crate::worktree_config::WorktreeConfig>,
 }
 
 /// Topologically sorted service names respecting `depends_on`.
@@ -137,10 +139,20 @@ pub fn try_load_workspace_config(project_path: &Path) -> Result<Option<Workspace
                 .with_context(|| format!("reading {}", config_path.display()))?;
             let config = serde_yaml::from_str(&text)
                 .with_context(|| format!("parsing {}", config_path.display()))?;
+            validate_worktree(&config, &config_path)?;
             return Ok(Some(config));
         }
     }
     Ok(auto_detect(project_path))
+}
+
+fn validate_worktree(config: &WorkspaceConfig, path: &Path) -> Result<()> {
+    match &config.worktree {
+        Some(wt) => wt
+            .validate()
+            .with_context(|| format!("validating {}", path.display())),
+        None => Ok(()),
+    }
 }
 
 pub fn load_workspace_config(project_path: &Path) -> Option<WorkspaceConfig> {
@@ -255,6 +267,7 @@ fn auto_detect(project_path: &Path) -> Option<WorkspaceConfig> {
         agent_templates: None,
         portforwards: vec![],
         ports: None,
+        worktree: None,
     })
 }
 

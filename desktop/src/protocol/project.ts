@@ -6,6 +6,20 @@ export interface WorktreeInfo {
   baseBranch: string;
 }
 
+/** One worktree of a project, as the Worktrees panel lists it. */
+export interface WorktreeRow {
+  path: string;
+  /** Absent on a detached HEAD. */
+  branch?: string | null;
+  /** The owning task; absent for an orphan. */
+  taskId?: string | null;
+  taskTitle?: string | null;
+  orphan: boolean;
+  /** Bytes on disk; absent while unknown because measuring timed out. */
+  sizeBytes?: number | null;
+  hasSetupLog: boolean;
+}
+
 /** An agent session discovered on disk (claude/codex), resumable via task.resume. */
 export interface ExternalSession {
   agent: string;

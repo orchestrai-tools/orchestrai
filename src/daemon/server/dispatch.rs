@@ -28,6 +28,7 @@ mod tasks;
 mod tracker;
 mod workflow;
 mod workitem;
+mod worktrees;
 
 #[rustfmt::skip]
 pub(super) async fn dispatch(
@@ -115,6 +116,10 @@ pub(super) async fn dispatch(
         TaskSetTitle { task_id, title } => tasks::task_set_title(handle, task_id, title).await,
         TaskMergeWorktree { task_id, remove_worktree } => tasks::task_merge_worktree(handle, task_id, remove_worktree).await,
         TaskListWorktrees { project } => tasks::task_list_worktrees(handle, project).await,
+        WorktreeList { project } => worktrees::worktree_list(handle, project).await,
+        WorktreeReclaim { project, path } => worktrees::worktree_reclaim(handle, project, path).await,
+        WorktreeRemoveOrphan { project, path } => worktrees::worktree_remove_orphan(handle, project, path).await,
+        WorktreeSetupLog { task_id } => worktrees::worktree_setup_log(handle, task_id).await,
         TaskPullRequests { task_ids, max_age_secs } => tasks::task_pull_requests(handle, task_ids, max_age_secs).await,
         TaskSettle { task_id } => tasks::task_settle(handle, task_id).await,
         TaskUnsettle { task_id } => tasks::task_unsettle(handle, task_id).await,

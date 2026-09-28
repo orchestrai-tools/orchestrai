@@ -25,6 +25,7 @@ import { TerminalMethods } from "./terminals";
 import { TextMethods } from "./text";
 import { TrackerMethods } from "./tracker";
 import { WorkItemMethods } from "./workItems";
+import { WorktreeMethods } from "./worktrees";
 
 export { base64ToBytes, bytesToBase64 } from "./base64";
 export { DaemonRpcError } from "./rpcError";
@@ -41,7 +42,9 @@ const ComposedClient = TerminalMethods(
               BacklogMethods(
                 WorkItemMethods(
                   PullMethods(
-                    TrackerMethods(TextMethods(AgentMethods(SessionMethods(CoreClient)))),
+                    TrackerMethods(
+                      TextMethods(AgentMethods(SessionMethods(WorktreeMethods(CoreClient)))),
+                    ),
                   ),
                 ),
               ),

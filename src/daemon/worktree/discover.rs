@@ -99,7 +99,7 @@ pub fn parse_worktree_list(output: &str) -> Vec<PorcelainWorktree> {
 /// Compare two worktree paths tolerantly: git reports real paths, while a
 /// persisted task may hold the path as constructed — which differs under a
 /// symlinked temp dir (`/var` vs `/private/var` on macOS).
-fn paths_equal(a: &Path, b: &Path) -> bool {
+pub(super) fn paths_equal(a: &Path, b: &Path) -> bool {
     if a == b {
         return true;
     }

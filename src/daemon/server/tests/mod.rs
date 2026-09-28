@@ -9,3 +9,4 @@ mod requests;
 mod terminals;
 mod update;
 mod workflow;
+mod worktree_panel;

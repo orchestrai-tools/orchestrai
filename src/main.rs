@@ -15,6 +15,7 @@ mod registry;
 mod service;
 mod tui;
 mod workflow_config;
+mod worktree_config;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};

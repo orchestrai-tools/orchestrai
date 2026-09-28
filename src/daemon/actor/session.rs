@@ -34,8 +34,12 @@ pub(crate) struct BranchSource {
     pub(crate) path: PathBuf,
 }
 
+/// A finished checkout: its project, the worktree, and why the project's
+/// copy/setup step failed, if it did.
+pub(crate) type WorktreeCreated = (String, crate::daemon::worktree::Worktree, Option<String>);
+
 impl WorktreeRequest {
-    pub(crate) async fn run(self) -> Result<(String, crate::daemon::worktree::Worktree), String> {
+    pub(crate) async fn run(self) -> Result<WorktreeCreated, String> {
         let created = match self.source {
             Some(ref source) => {
                 crate::daemon::worktree::create_branched_detached(
@@ -51,11 +55,11 @@ impl WorktreeRequest {
                     .await
             }
         };
-        created
-            .map(|wt| (self.project, wt))
-            // `{:#}` keeps the context chain: the top line alone says only
-            // "failed to copy working state", never which git step failed.
-            .map_err(|e| format!("{e:#}"))
+        // `{:#}` keeps the context chain: the top line alone says only
+        // "failed to copy working state", never which git step failed.
+        let wt = created.map_err(|e| format!("{e:#}"))?;
+        let setup_error = crate::daemon::worktree::apply_config(&self.base_repo, &wt).await;
+        Ok((self.project, wt, setup_error))
     }
 }
 
@@ -163,6 +167,22 @@ impl Daemon {
             task.blocked_reason = Some(format!(
                 "could not create an isolated worktree: {error}; send a message to run it in \
                  the project checkout instead, or delete the task"
+            ));
+            task.set_status(TaskStatus::Blocked);
+            let updated = task.clone();
+            self.persist(&updated);
+            self.emit(Event::TaskUpdated(updated));
+        }
+    }
+
+    /// The checkout exists but the project's copy/setup step failed. Block the
+    /// task like a failed checkout, keeping the worktree; sending a message
+    /// starts it there anyway.
+    pub(crate) fn worktree_setup_failed(&mut self, task_id: &str, error: &str) {
+        if let Some(task) = self.tasks.get_mut(task_id) {
+            task.blocked_reason = Some(format!(
+                "worktree setup failed: {error}; send a message to work in the worktree \
+                 anyway, or delete the task"
             ));
             task.set_status(TaskStatus::Blocked);
             let updated = task.clone();

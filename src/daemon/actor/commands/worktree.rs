@@ -132,8 +132,10 @@ impl Daemon {
                 // more: the directory exists on disk either way, and a
                 // worktree the manager does not know about is one nothing can
                 // clean up later.
+                let mut setup_error = None;
                 match created {
-                    Ok((project, wt)) => {
+                    Ok((project, wt, setup)) => {
+                        setup_error = setup;
                         if let Some(task) = self.tasks.get_mut(&task_id) {
                             task.worktree = Some(wt.path.to_string_lossy().to_string());
                             task.base_branch = Some(wt.base_branch.clone());
@@ -163,6 +165,19 @@ impl Daemon {
                             self.blocked_starts.insert(task_id.clone(), start);
                             self.worktree_failed(&task_id, &error);
                         }
+                    }
+                }
+                if let Some(error) = setup_error {
+                    if self.pending_workflow_starts.remove(&task_id).is_some() {
+                        let _ = self
+                            .workflow_finalize(
+                                &task_id,
+                                WorkflowOutcome::Error(format!("worktree setup failed: {error}")),
+                            )
+                            .await;
+                    } else if let Some(start) = self.pending_session_starts.remove(&task_id) {
+                        self.blocked_starts.insert(task_id.clone(), start);
+                        self.worktree_setup_failed(&task_id, &error);
                     }
                 }
                 // The pending entry is the token: cancelling or deleting the

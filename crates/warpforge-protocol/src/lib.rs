@@ -54,6 +54,9 @@ pub use tracker::*;
 pub mod workflow;
 pub use workflow::*;
 
+pub mod worktrees;
+pub use worktrees::*;
+
 #[cfg(test)]
 mod agent_health_tests;
 #[cfg(test)]

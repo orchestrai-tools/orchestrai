@@ -13,21 +13,30 @@
 //! Split by topic: [`manager`] holds the manager's git operations, [`detached`]
 //! the manager-free versions that run off the actor, [`discover`] the boot
 //! rebuild from persisted tasks, [`resolve`] and [`pull`] the base choice, and
-//! [`start`] the checkouts it produces.
+//! [`start`] the checkouts it produces. [`setup`] applies the project's
+//! `worktree:` config to a new one; [`inventory`], [`size`] and [`reclaim`]
+//! serve the Worktrees panel.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 mod detached;
 mod discover;
+mod inventory;
 mod manager;
 mod merge;
 mod pull;
+mod reclaim;
 mod resolve;
+mod setup;
+mod size;
 mod start;
 
 #[cfg(test)]
 mod merge_tests;
+
+#[cfg(test)]
+mod setup_tests;
 
 #[cfg(test)]
 mod start_tests;
@@ -35,13 +44,17 @@ mod start_tests;
 #[cfg(test)]
 mod tests;
 
-pub use detached::{create_branched_detached, default_remover};
+pub use detached::{create_branched_detached, default_remover, remove_detached};
 #[cfg(test)]
-pub use detached::{create_detached, remove_detached, RemoveFn};
+pub use detached::{create_detached, RemoveFn};
 #[cfg(test)]
 pub use discover::parse_worktree_list;
+pub use inventory::{list_managed, same_path, Listed};
 pub use merge::merge_detached;
+pub use reclaim::reclaim_artifacts;
 pub use resolve::resolve_start;
+pub use setup::{apply_config, setup_log_path};
+pub use size::{cached_size, forget_size};
 pub use start::{create_started, ExistingBranch, RemoteBranch, StartPoint};
 
 /// Prefix of the branches Warpforge creates for task worktrees.

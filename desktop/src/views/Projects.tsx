@@ -30,6 +30,7 @@ import { ProjectRuntimeSurface } from "./projects/ProjectRuntimeSurface";
 import { PROJECT_SURFACE_TABS, ProjectSurfaceBar } from "./projects/ProjectSurfaceBar";
 import { PullRequestSurface } from "./projects/PullRequestSurface";
 import { type ProjectLiveCounts, RemoveProjectDialog } from "./projects/RemoveProjectDialog";
+import { WorktreesSurface } from "./projects/WorktreesSurface";
 
 interface Props {
   snapshot: Snapshot;
@@ -294,6 +295,8 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
             portforwards={pfs}
             onAppendToChat={(formattedLogs) => onNewTask(project.name, formattedLogs)}
           />
+        ) : surface === "worktrees" ? (
+          <WorktreesSurface project={project.name} />
         ) : surface === "pulls" ? (
           <PullRequestSurface
             project={project.name}

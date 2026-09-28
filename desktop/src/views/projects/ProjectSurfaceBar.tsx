@@ -1,4 +1,11 @@
-import { FolderTree, GitPullRequest, ListTodo, Server, TerminalSquare } from "lucide-react";
+import {
+  FolderTree,
+  GitBranch,
+  GitPullRequest,
+  ListTodo,
+  Server,
+  TerminalSquare,
+} from "lucide-react";
 
 import { SurfaceTabs, type SurfaceTab } from "@/components/workspace";
 import type { ProjectSurface } from "@/store/ui";
@@ -12,6 +19,7 @@ export const PROJECT_SURFACE_TABS: readonly SurfaceTab<ProjectSurface>[] = [
   { id: "files", label: "Explorer", icon: FolderTree },
   { id: "runtime", label: "Runtime", icon: Server },
   { id: "terminal", label: "Terminal", icon: TerminalSquare },
+  { id: "worktrees", label: "Worktrees", icon: GitBranch },
 ];
 
 export interface ProjectSurfaceBarProps {
