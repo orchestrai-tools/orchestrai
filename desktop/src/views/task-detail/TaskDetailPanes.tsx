@@ -8,6 +8,7 @@ import { setTaskDiff, setTaskEditorView, setTaskFiles } from "@/lib/sessionStore
 import { cn } from "@/lib/utils";
 
 import { AgentLimitsExhaustedBanner } from "../../components/AgentLimitsExhaustedBanner";
+import { DiffNotesProvider } from "../../components/diffNotes/DiffNotesContext";
 import { ModelMismatchBanner } from "../../components/ModelMismatchBanner";
 import { TerminalWorkspaceView } from "../../components/runtime/TerminalWorkspace";
 import { RuntimePanel } from "../../components/RuntimePanel";
@@ -263,39 +264,41 @@ export function TaskDetailPanes({ task, onOpenTask, onOpenPush, detail }: Props)
             />
           )}
           {activeSurface === "diff" && (
-            <DiffSurface
-              diff={diff}
-              diffError={diffError}
-              diffView={diffView}
-              editable={editable}
-              localRes={localRes}
-              onOpenFiles={openProjectFiles}
-              onResolve={resolveHunk}
-              onSendToChat={sendDiffToChat}
-              onSetDiffView={setDiffView}
-              taskId={task.id}
-              project={task.project}
-              selected={selectedDiffFile}
-              onSelect={openDiffFile}
-              onOpenFile={openFileTab}
-              commitExpanded={commitExpanded}
-              onCommitExpandedChange={setCommitExpanded}
-              onCommitted={() => {
-                void queryClient.invalidateQueries({ queryKey: ["diff", task.id] });
-                void queryClient.invalidateQueries({ queryKey: ["fileList", task.id] });
-              }}
-              onRefresh={() => {
-                void queryClient.invalidateQueries({ queryKey: ["diff", task.id] });
-                void queryClient.invalidateQueries({ queryKey: ["fileList", task.id] });
-              }}
-              diffWorkspaceRef={diffWorkspaceRef}
-              initialScrollTop={taskSession.diff.scrollTop}
-              onScrollTopChange={(scrollTop) =>
-                setTaskDiff(task.id, task.project, { scrollTop }, task.worktree ?? undefined)
-              }
-              collapsedFiles={collapsedDiffFiles}
-              onToggleCollapsed={toggleDiffFileCollapsed}
-            />
+            <DiffNotesProvider key={task.id} task={task}>
+              <DiffSurface
+                diff={diff}
+                diffError={diffError}
+                diffView={diffView}
+                editable={editable}
+                localRes={localRes}
+                onOpenFiles={openProjectFiles}
+                onResolve={resolveHunk}
+                onSendToChat={sendDiffToChat}
+                onSetDiffView={setDiffView}
+                taskId={task.id}
+                project={task.project}
+                selected={selectedDiffFile}
+                onSelect={openDiffFile}
+                onOpenFile={openFileTab}
+                commitExpanded={commitExpanded}
+                onCommitExpandedChange={setCommitExpanded}
+                onCommitted={() => {
+                  void queryClient.invalidateQueries({ queryKey: ["diff", task.id] });
+                  void queryClient.invalidateQueries({ queryKey: ["fileList", task.id] });
+                }}
+                onRefresh={() => {
+                  void queryClient.invalidateQueries({ queryKey: ["diff", task.id] });
+                  void queryClient.invalidateQueries({ queryKey: ["fileList", task.id] });
+                }}
+                diffWorkspaceRef={diffWorkspaceRef}
+                initialScrollTop={taskSession.diff.scrollTop}
+                onScrollTopChange={(scrollTop) =>
+                  setTaskDiff(task.id, task.project, { scrollTop }, task.worktree ?? undefined)
+                }
+                collapsedFiles={collapsedDiffFiles}
+                onToggleCollapsed={toggleDiffFileCollapsed}
+              />
+            </DiffNotesProvider>
           )}
           {activeSurface === "runtime" && (
             <RuntimePanel

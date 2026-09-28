@@ -134,10 +134,21 @@ function fileList(files: readonly PullRequestFile[]): string {
   return lines.join("\n");
 }
 
+/**
+ * A numbered list of remarks, each body indented under its heading.
+ * @param remarks Heading and body of each remark, in the order to list them.
+ * @returns The list, one blank line between entries.
+ */
+export function formatRemarkList(remarks: readonly { heading: string; body: string }[]): string {
+  return remarks
+    .map((remark, index) => `${index + 1}. ${remark.heading}\n${indent(remark.body)}`)
+    .join("\n\n");
+}
+
 /** One numbered list of remarks, each with where it points. */
 function formatComments(comments: readonly PullComment[]): string {
-  return comments
-    .map((comment, index) => {
+  return formatRemarkList(
+    comments.map((comment) => {
       const who = comment.author?.login || "a reviewer";
       const where =
         comment.kind === "review_comment"
@@ -147,13 +158,13 @@ function formatComments(comments: readonly PullComment[]): string {
           : " — review, changes requested";
       const replies =
         comment.replies.length > 0
-          ? `\n   (${comment.replies.length} ${
+          ? `\n(${comment.replies.length} ${
               comment.replies.length === 1 ? "reply" : "replies"
             } in the thread on GitHub)`
           : "";
-      return `${index + 1}. ${who}${where}\n${indent(trim(comment.body))}${replies}`;
-    })
-    .join("\n\n");
+      return { body: `${trim(comment.body)}${replies}`, heading: `${who}${where}` };
+    }),
+  );
 }
 
 function trim(body: string): string {

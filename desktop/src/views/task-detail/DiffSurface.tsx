@@ -8,6 +8,7 @@ import { PANEL_BOUNDS, useAutoHiddenRail, usePanelSize } from "@/store/panelLayo
 import { useUi } from "@/store/ui";
 
 import { ChangesRail } from "../../components/ChangesRail";
+import { DiffNotesBar } from "../../components/diffNotes/DiffNotesBar";
 import type { EditHunk, FileDiff, HunkResolution, TaskDiff } from "../../protocol";
 import type { DiffView } from "../../store/ui";
 import { ChangesRailSkeleton } from "./ChangesRailSkeleton";
@@ -158,6 +159,7 @@ export function DiffSurface({
       />
       <PanelGroup orientation="horizontal" className="min-h-0 min-w-0 flex-1">
         <Panel pin className="min-h-0 min-w-0">
+          <DiffNotesBar onJump={(path) => diffWorkspaceRef.current?.scrollToFile(path)} />
           {workspaceReady ? (
             <DiffWorkspace
               ref={diffWorkspaceRef}

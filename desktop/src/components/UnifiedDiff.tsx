@@ -5,6 +5,7 @@ import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { Check, ChevronDown, Send, Undo2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { useNoteLayer } from "@/components/diffNotes/useNoteLayer";
 import { Button } from "@/components/ui/button";
 import { PaneHeader } from "@/components/workspace";
 import { useThemeMode } from "@/hooks/useTheme";
@@ -53,6 +54,7 @@ export function UnifiedDiff({
   const onScrolledToHunkRef = useRef(onScrolledToHunk);
   onScrolledToHunkRef.current = onScrolledToHunk;
   const originalRef = useRef(doc.newText);
+  const notes = useNoteLayer(doc.path, doc.newText);
 
   useEffect(() => {
     onSaveRef.current = onSave;
@@ -95,6 +97,7 @@ export function UnifiedDiff({
         doc: doc.newText,
         extensions: [
           ...common,
+          notes.extension,
           EditorState.readOnly.of(!editable),
           keymap.of([{ key: "Mod-s", run: () => (flushSave(), true) }]),
           EditorView.updateListener.of((u) => {
@@ -117,10 +120,12 @@ export function UnifiedDiff({
       });
       view = new EditorView({ parent, state });
       viewRef.current = view;
+      notes.attach(view);
     });
 
     return () => {
       disposed = true;
+      if (view) notes.attach(null);
       view?.destroy();
       if (viewRef.current === view) viewRef.current = null;
     };
@@ -245,6 +250,7 @@ export function UnifiedDiff({
         }
       />
       {!collapsed && <div ref={host} className="warpforge-unified-diff overflow-auto bg-card" />}
+      {notes.portals}
     </div>
   );
 }

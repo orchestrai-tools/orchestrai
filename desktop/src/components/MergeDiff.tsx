@@ -5,6 +5,7 @@ import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { Check, ChevronDown, Send, Undo2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { useNoteLayer } from "@/components/diffNotes/useNoteLayer";
 import { Button } from "@/components/ui/button";
 import { PaneHeader } from "@/components/workspace";
 import { useThemeMode } from "@/hooks/useTheme";
@@ -46,6 +47,7 @@ export function MergeDiff({
   const originalRef = useRef(doc.newText);
   const [status, setStatus] = useState<SaveStatus>("clean");
   const themeMode = useThemeMode();
+  const notes = useNoteLayer(doc.path, doc.newText);
 
   useEffect(() => {
     onSaveRef.current = onSave;
@@ -101,6 +103,7 @@ export function MergeDiff({
           doc: doc.newText,
           extensions: [
             ...common,
+            notes.extension,
             EditorState.readOnly.of(!editable),
             keymap.of([{ key: "Mod-s", run: () => (flushSave(), true) }]),
             EditorView.updateListener.of((u) => {
@@ -120,10 +123,12 @@ export function MergeDiff({
         revertControls: editable ? "a-to-b" : undefined,
       });
       viewRef.current = view;
+      notes.attach(view.b);
     });
 
     return () => {
       disposed = true;
+      if (view) notes.attach(null);
       view?.destroy();
       if (viewRef.current === view) {
         viewRef.current = null;
@@ -230,6 +235,7 @@ export function MergeDiff({
           style={{ fontSize: "var(--app-mono-font-size)" }}
         />
       )}
+      {notes.portals}
     </div>
   );
 }

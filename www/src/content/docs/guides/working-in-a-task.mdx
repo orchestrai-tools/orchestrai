@@ -78,8 +78,31 @@ The diff view gives you the whole spectrum between "accept everything" and "do i
 2. **Revert individual hunks** in split view — the <kbd>↩</kbd> next to a changed hunk discards just that change, not the whole file.
 3. **Edit inline** where it's faster to fix than to explain. <kbd>⌘S</kbd> saves.
 4. **Or send the file back to chat** with *Send to chat* and let the agent fix it, now that it can see exactly what you're looking at.
+5. **Or leave review notes** on the exact lines you have something to say about, and send them all at once — see below.
 
 </Steps>
+
+### Review notes
+
+Review the agent's work the way you'd review a colleague's: note by note, then hand it all back in one go.
+
+<Steps>
+
+1. **Hover a line** in the diff, unified or split, and click the **+** that appears beside its line number. Press and drag along the **+** column to cover a range of lines.
+2. **Write the note** and press <kbd>⌘⏎</kbd> (<kbd>Ctrl Enter</kbd>) to save it, or <kbd>Esc</kbd> to drop it. The note sits under the lines it's about. Add as many as you like, across as many files as you like.
+3. **Press Send N notes** in the strip above the diff. Every note goes to the agent as **one message**, each with its file and line numbers, the lines it quotes, and what you wrote. If the agent is still working, the message waits its turn and goes out when the current reply finishes.
+
+</Steps>
+
+Notes stay on the diff after you send them, marked **Sent**, so you can check each fix against what you asked for. **Resolve** the ones that are done. When some still aren't right, **Resend** puts a note back in the next batch — or, once everything has been sent, the strip's button becomes **Resend N notes** and sends back whatever you haven't resolved.
+
+When the agent rewrites the code around a note, the note follows its lines. If the lines it quoted are gone entirely, the note is marked **Outdated** and shows what they used to say — usually a sign the agent changed that code, so check it and resolve the note.
+
+The strip's note count opens a list of every note, with a link to its file — handy when a note's file has left the diff or its lines are folded away.
+
+<Aside type="note">
+  Notes are kept on this device, per task, until you resolve them. In split view they go on the new version of the file, on the right.
+</Aside>
 
 ## Text you don't have to write
 
