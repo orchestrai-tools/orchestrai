@@ -15,7 +15,7 @@ use super::process::{
 };
 use super::session::parse_permission;
 use super::tool::tool_title;
-use super::update::{parse_update, ToolKinds};
+use super::update::{parse_update, ToolCalls};
 use super::*;
 use crate::daemon::prompt::{PreparedPrompt, PromptContent};
 
@@ -197,7 +197,7 @@ fn tool_call_uses_raw_command_instead_of_technical_id() {
     });
 
     let Some(AcpUpdate::ToolCall { title, content, .. }) =
-        parse_update(&params, &mut ToolKinds::default())
+        parse_update(&params, &mut ToolCalls::default())
     else {
         panic!("expected tool call");
     };
@@ -221,7 +221,7 @@ fn tool_call_exposes_raw_output_and_never_falls_back_to_id() {
     });
 
     let Some(AcpUpdate::ToolCall { title, content, .. }) =
-        parse_update(&params, &mut ToolKinds::default())
+        parse_update(&params, &mut ToolCalls::default())
     else {
         panic!("expected tool call");
     };
@@ -252,7 +252,7 @@ fn file_edit_reports_line_counts_from_acp_diff() {
         additions,
         deletions,
         hunks,
-    }) = parse_update(&params, &mut ToolKinds::default())
+    }) = parse_update(&params, &mut ToolCalls::default())
     else {
         panic!("expected file edit");
     };
@@ -285,7 +285,7 @@ fn file_edit_reports_line_counts_from_acp_diff() {
 
 #[test]
 fn completion_without_kind_still_reads_the_edit_diff() {
-    let mut kinds = ToolKinds::default();
+    let mut kinds = ToolCalls::default();
     let start = json!({
         "update": {
             "sessionUpdate": "tool_call",
@@ -347,7 +347,7 @@ fn unknown_tool_call_id_stays_a_generic_tool_call() {
         }
     });
     assert!(matches!(
-        parse_update(&params, &mut ToolKinds::default()),
+        parse_update(&params, &mut ToolCalls::default()),
         Some(AcpUpdate::ToolCall { .. })
     ));
 }
@@ -374,7 +374,7 @@ fn file_edit_derives_counts_from_tool_input_when_no_diff_content() {
         deletions,
         hunks,
         ..
-    }) = parse_update(&params, &mut ToolKinds::default())
+    }) = parse_update(&params, &mut ToolCalls::default())
     else {
         panic!("expected file edit");
     };
@@ -402,7 +402,7 @@ fn whole_file_write_reports_unknown_counts_rather_than_zero() {
         deletions,
         hunks,
         ..
-    }) = parse_update(&params, &mut ToolKinds::default())
+    }) = parse_update(&params, &mut ToolCalls::default())
     else {
         panic!("expected file edit");
     };
@@ -451,7 +451,7 @@ fn parses_context_usage_and_optional_cost() {
     });
 
     let Some(AcpUpdate::Usage { used, size, cost }) =
-        parse_update(&params, &mut ToolKinds::default())
+        parse_update(&params, &mut ToolCalls::default())
     else {
         panic!("expected usage update");
     };

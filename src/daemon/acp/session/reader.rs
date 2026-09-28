@@ -7,7 +7,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::daemon::acp::rpc::{compact_id, resolve};
-use crate::daemon::acp::update::{parse_update, ToolKinds};
+use crate::daemon::acp::update::{parse_update, ToolCalls};
 use crate::daemon::acp::{AcpUpdate, PolicyCheck};
 use crate::policies::{Phase, PolicyAction, PolicyContext};
 
@@ -23,7 +23,7 @@ pub(super) fn spawn_reader(
 ) {
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
-        let mut tool_kinds = ToolKinds::default();
+        let mut tool_calls = ToolCalls::default();
         while let Ok(Some(line)) = lines.next_line().await {
             let line = line.trim();
             if line.is_empty() {
@@ -63,7 +63,7 @@ pub(super) fn spawn_reader(
 
             match method {
                 "session/update" => {
-                    match parse_update(&params, &mut tool_kinds) {
+                    match parse_update(&params, &mut tool_calls) {
                         Some(update) => {
                             // Drop transcript replayed during `session/load`
                             // but retain current session metadata, which the

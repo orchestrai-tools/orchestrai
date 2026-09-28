@@ -8,39 +8,32 @@ use super::model::parse_config_options;
 use super::tool::{content_text, tool_details, tool_title};
 use super::AcpUpdate;
 
-/// Tool kinds seen per `toolCallId`, for the length of one session.
-///
-/// ACP lets a `tool_call_update` repeat only what changed. opencode's
-/// completion frame drops `kind` — and that frame is the one carrying the edit
-/// diff — so without this the diff would be read as a generic tool call and the
-/// line counts would never be computed.
+/// The last `kind` and `status` per `toolCallId`: ACP updates may omit both.
+/// opencode's edit diff arrives on a frame without `kind`; Claude's compaction
+/// sends its token counts after `completed` on a frame without `status`.
 #[derive(Default)]
-pub(super) struct ToolKinds(HashMap<String, String>);
+pub(super) struct ToolCalls(HashMap<String, (String, String)>);
 
-impl ToolKinds {
-    fn resolve(&mut self, id: &str, kind: Option<&str>, status: &str) -> String {
-        if id.is_empty() {
-            return kind.unwrap_or("other").to_string();
+impl ToolCalls {
+    fn resolve(&mut self, id: &str, kind: Option<&str>, status: Option<&str>) -> (String, String) {
+        let known = self.0.get(id);
+        let kind = kind
+            .map(String::from)
+            .or_else(|| known.map(|(kind, _)| kind.clone()))
+            .unwrap_or_else(|| "other".to_string());
+        let status = status
+            .map(String::from)
+            .or_else(|| known.map(|(_, status)| status.clone()))
+            .unwrap_or_else(|| "in_progress".to_string());
+        if !id.is_empty() {
+            self.0
+                .insert(id.to_string(), (kind.clone(), status.clone()));
         }
-        let resolved = match kind {
-            Some(kind) => {
-                self.0.insert(id.to_string(), kind.to_string());
-                kind.to_string()
-            }
-            None => self
-                .0
-                .get(id)
-                .cloned()
-                .unwrap_or_else(|| "other".to_string()),
-        };
-        if matches!(status, "completed" | "failed") {
-            self.0.remove(id);
-        }
-        resolved
+        (kind, status)
     }
 }
 
-pub(super) fn parse_update(params: &Value, tool_kinds: &mut ToolKinds) -> Option<AcpUpdate> {
+pub(super) fn parse_update(params: &Value, tool_calls: &mut ToolCalls) -> Option<AcpUpdate> {
     let update = params.get("update")?;
     let kind = update.get("sessionUpdate")?.as_str()?;
     match kind {
@@ -54,13 +47,11 @@ pub(super) fn parse_update(params: &Value, tool_kinds: &mut ToolKinds) -> Option
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let status = update
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("in_progress")
-                .to_string();
-            let kind =
-                tool_kinds.resolve(&id, update.get("kind").and_then(|v| v.as_str()), &status);
+            let (kind, status) = tool_calls.resolve(
+                &id,
+                update.get("kind").and_then(|v| v.as_str()),
+                update.get("status").and_then(|v| v.as_str()),
+            );
             // A file edit still emits a dedicated FileEdit for the diff badge…
             if kind == "edit" {
                 if let Some(edit) = edit_info(update) {
@@ -138,5 +129,57 @@ pub(super) fn parse_update(params: &Value, tool_kinds: &mut ToolKinds) -> Option
             Some(AcpUpdate::Usage { used, size, cost })
         }
         _ => None, // user_message_chunk (our own echo), current_mode_update, etc.
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn tool_status(frame: Value, calls: &mut ToolCalls) -> (String, String) {
+        match parse_update(&json!({ "update": frame }), calls) {
+            Some(AcpUpdate::ToolCall { status, kind, .. }) => (status, kind),
+            _ => panic!("expected tool call"),
+        }
+    }
+
+    #[test]
+    fn compaction_token_counts_after_completion_keep_it_completed() {
+        let mut calls = ToolCalls::default();
+        let id = "01d396b3-15f9-4969-a370-39160f1708e4";
+        tool_status(
+            json!({
+                "sessionUpdate": "tool_call",
+                "toolCallId": id,
+                "title": "Compact conversation",
+                "kind": "think",
+                "status": "in_progress"
+            }),
+            &mut calls,
+        );
+        tool_status(
+            json!({ "sessionUpdate": "tool_call_update", "toolCallId": id, "status": "completed" }),
+            &mut calls,
+        );
+        let (status, kind) = tool_status(
+            json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": id,
+                "rawOutput": { "preTokens": 831504, "postTokens": 14907, "trigger": "manual" }
+            }),
+            &mut calls,
+        );
+        assert_eq!((status.as_str(), kind.as_str()), ("completed", "think"));
+    }
+
+    #[test]
+    fn statusless_frame_of_an_unseen_call_is_in_progress() {
+        let (status, kind) = tool_status(
+            json!({ "sessionUpdate": "tool_call_update", "toolCallId": "unseen" }),
+            &mut ToolCalls::default(),
+        );
+        assert_eq!((status.as_str(), kind.as_str()), ("in_progress", "other"));
     }
 }
