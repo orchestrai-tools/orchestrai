@@ -4,7 +4,8 @@ name: warpforge
 services:
   # Landing/docs site (Astro + Tailwind v4). Runs from the www/ subdir.
   web:
-    command: cd www && bun run dev -- --force
+    # astro dev ignores $PORT, so pass the allocated port explicitly.
+    command: cd www && bun run dev -- --force --port $PORT
     port: 4321
     # env:
     #   DATABASE_URL: postgres://localhost:${db.port}/mydb
