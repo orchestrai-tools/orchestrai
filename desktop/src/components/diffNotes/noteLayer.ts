@@ -142,6 +142,16 @@ class AddMarker extends GutterMarker {
 
 const addMarker = new AddMarker();
 
+class RangeMarker extends GutterMarker {
+  toDOM(): Node {
+    const dom = document.createElement("span");
+    dom.className = "cm-note-range-bar";
+    return dom;
+  }
+}
+
+const rangeMarker = new RangeMarker();
+
 /**
  * Build the note layer for one editor.
  * @param callbacks Where picks and slot mounts are reported.
@@ -233,11 +243,14 @@ export function createNoteLayer(callbacks: NoteLayerCallbacks): NoteLayer {
     },
     initialSpacer: () => addMarker,
     lineMarker(editor, line) {
-      const hovered = editor.state.field(hover);
-      if (hovered === null) return null;
-      return editor.state.doc.lineAt(line.from).number === hovered ? addMarker : null;
+      const number = editor.state.doc.lineAt(line.from).number;
+      const range = editor.state.field(field).range;
+      if (range && number >= range.start && number <= range.end) return rangeMarker;
+      return editor.state.field(hover) === number ? addMarker : null;
     },
-    lineMarkerChange: (update) => update.startState.field(hover) !== update.state.field(hover),
+    lineMarkerChange: (update) =>
+      update.startState.field(hover) !== update.state.field(hover) ||
+      update.startState.field(field).range !== update.state.field(field).range,
   });
 
   const theme = EditorView.theme({
@@ -251,6 +264,16 @@ export function createNoteLayer(callbacks: NoteLayerCallbacks): NoteLayer {
       lineHeight: "14px",
       textAlign: "center",
       width: "14px",
+    },
+    // The gutter bar marks the range even where the diff's own backgrounds hide the tint.
+    ".cm-note-range-bar": {
+      background: "hsl(var(--primary))",
+      borderRadius: "1px",
+      display: "inline-block",
+      height: "100%",
+      minHeight: "14px",
+      verticalAlign: "top",
+      width: "4px",
     },
     // An image layer, so the tint shows over the merge view's changed-line background.
     ".cm-note-range": {
