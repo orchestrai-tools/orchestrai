@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { browser, type BrowserBounds } from "./browserClient";
-import { watchOverlays } from "./overlayCover";
+import { type Overlay, visibleArea, watchOverlays } from "./overlayCover";
 
 function boundsOf(el: HTMLElement): BrowserBounds {
   const r = el.getBoundingClientRect();
@@ -35,9 +35,9 @@ export function isFullyOnScreen(entry: Sighting): boolean {
 
 /**
  * Keep the active tab's native webview glued to the placeholder, and shown only
- * while the placeholder is fully on screen and no overlay covers it: a folded
- * pane keeps it mounted and merely clips it, which nothing but an intersection
- * check sees.
+ * while the placeholder is fully on screen and no dialog is open: a folded pane
+ * keeps it mounted and merely clips it, which nothing but an intersection check
+ * sees.
  *
  * @param activeTabId The tab whose webview is driven, or null when none shows.
  * @param ref The placeholder the webview is painted over.
@@ -60,8 +60,11 @@ export function useBrowserViewport(
 
     let cancelled = false;
     let shown: boolean | null = null;
+    let overlays: Overlay[] = [];
+    const area = () => visibleArea(boundsOf(el), overlays);
     const sync = () => {
-      if (!cancelled) void browser.setBounds(activeTabId, boundsOf(el));
+      const bounds = area();
+      if (!cancelled && bounds) void browser.setBounds(activeTabId, bounds);
     };
     const apply = (visible: boolean) => {
       if (cancelled || visible === shown) return;
@@ -74,10 +77,12 @@ export function useBrowserViewport(
     // On a tab switch the previous tab's verdict still holds for the same
     // placeholder, so the page shows now instead of on the first report.
     let onScreen: boolean | null = seen.current ? true : null;
-    let covered = false;
     const update = () => {
-      if (covered) apply(false);
-      else if (onScreen !== null) apply(onScreen);
+      if (area() === null) apply(false);
+      else if (onScreen !== null) {
+        apply(onScreen);
+        if (onScreen) sync();
+      }
     };
     const intersection = new IntersectionObserver(
       (entries) => {
@@ -88,10 +93,10 @@ export function useBrowserViewport(
       { threshold: [0, FULL] },
     );
     intersection.observe(el);
-    // The native page paints above every DOM layer, so it steps aside for an
-    // open dialog, menu or toast; hiding keeps the page loaded.
-    const stopOverlays = watchOverlays(el, (c) => {
-      covered = c;
+    // The native page paints above every DOM layer: it shrinks away from an
+    // open menu or toast and hides under a dialog; hiding keeps the page loaded.
+    const stopOverlays = watchOverlays((next) => {
+      overlays = next;
       update();
     });
 

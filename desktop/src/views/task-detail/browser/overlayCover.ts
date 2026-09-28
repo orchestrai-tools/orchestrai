@@ -50,34 +50,57 @@ function intersects(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 }
 
-/**
- * Whether the native page would paint over an open overlay.
- *
- * @param page The placeholder the page is painted over.
- * @param overlays The overlays currently open.
- * @returns True when any modal is open or a floating overlay overlaps the page.
- */
-export function isCovered(page: Rect, overlays: Overlay[]): boolean {
-  return overlays.some((o) => o.modal || intersects(page, o.rect));
+/** A page cut narrower or shorter than this is hidden instead. */
+const MIN_SIDE = 120;
+
+function areaOf(r: Rect): number {
+  return Math.max(r.width, 0) * Math.max(r.height, 0);
 }
 
 /**
- * Report whether an overlay covers the element, now and on every change. Checks
- * are batched to one per frame; the end of an animation re-checks, since a
- * sliding toast or menu moves without touching the DOM.
+ * The part of the page the native view may occupy without painting over an
+ * overlay: the largest free strip beside each floating overlay it meets.
  *
- * @param el The placeholder the native page is painted over.
- * @param onChange Called with the initial verdict and each time it flips.
+ * @param page The placeholder the page is painted over.
+ * @param overlays The overlays currently open.
+ * @returns The rectangle to show the page in, or null to hide it.
+ */
+export function visibleArea(page: Rect, overlays: Overlay[]): Rect | null {
+  if (overlays.some((o) => o.modal)) return null;
+  let area = page;
+  for (const { rect } of overlays) {
+    if (!intersects(area, rect)) continue;
+    const bottom = area.y + area.height;
+    const right = area.x + area.width;
+    const strips: Rect[] = [
+      { ...area, height: rect.y - area.y },
+      { ...area, y: rect.y + rect.height, height: bottom - rect.y - rect.height },
+      { ...area, width: rect.x - area.x },
+      { ...area, x: rect.x + rect.width, width: right - rect.x - rect.width },
+    ];
+    area = strips.reduce((best, strip) => (areaOf(strip) > areaOf(best) ? strip : best));
+    if (area.width < MIN_SIDE || area.height < MIN_SIDE) return null;
+  }
+  return area;
+}
+
+/**
+ * Report the open overlays, now and on every change. Checks are batched to one
+ * per frame; the end of an animation re-checks, since a sliding toast or menu
+ * moves without touching the DOM.
+ *
+ * @param onChange Called with the initial overlays and each time they change.
  * @returns A function that stops watching.
  */
-export function watchOverlays(el: HTMLElement, onChange: (covered: boolean) => void): () => void {
-  let covered: boolean | null = null;
+export function watchOverlays(onChange: (overlays: Overlay[]) => void): () => void {
+  let last: string | null = null;
   let frame = 0;
   const check = () => {
     frame = 0;
-    const next = isCovered(rectOf(el), findOverlays(document.body));
-    if (next === covered) return;
-    covered = next;
+    const next = findOverlays(document.body);
+    const key = JSON.stringify(next);
+    if (key === last) return;
+    last = key;
     onChange(next);
   };
   const schedule = () => {

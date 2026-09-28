@@ -1,31 +1,44 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { findOverlays, isCovered, type Rect } from "./overlayCover";
+import { findOverlays, type Rect, visibleArea } from "./overlayCover";
 
 const page: Rect = { x: 600, y: 100, width: 600, height: 700 };
 
-describe("isCovered", () => {
-  it("covers the page for any open modal, wherever it sits", () => {
+describe("visibleArea", () => {
+  it("hides the page for any open modal, wherever it sits", () => {
     const rect = { x: 0, y: 0, width: 100, height: 100 };
-    expect(isCovered(page, [{ rect, modal: true }])).toBe(true);
+    expect(visibleArea(page, [{ rect, modal: true }])).toBeNull();
   });
 
-  it("covers the page only where a floating overlay overlaps it", () => {
+  it("keeps the whole page beside a floating overlay that misses it", () => {
     const beside = { x: 100, y: 200, width: 200, height: 300 };
-    const over = { x: 900, y: 750, width: 350, height: 80 };
-    expect(isCovered(page, [{ rect: beside, modal: false }])).toBe(false);
-    expect(isCovered(page, [{ rect: over, modal: false }])).toBe(true);
+    expect(visibleArea(page, [{ rect: beside, modal: false }])).toEqual(page);
+  });
+
+  it("shrinks the page above a toast in its bottom corner", () => {
+    const toast = { x: 900, y: 650, width: 350, height: 180 };
+    expect(visibleArea(page, [{ rect: toast, modal: false }])).toEqual({
+      x: 600,
+      y: 100,
+      width: 600,
+      height: 550,
+    });
+  });
+
+  it("hides the page when an overlay leaves too little of it", () => {
+    const wide = { x: 500, y: 150, width: 800, height: 600 };
+    expect(visibleArea(page, [{ rect: wide, modal: false }])).toBeNull();
   });
 
   it("ignores an overlay that only touches the page edge or has no size", () => {
     const touching = { x: 400, y: 100, width: 200, height: 100 };
     const empty = { x: 700, y: 200, width: 0, height: 0 };
     expect(
-      isCovered(page, [
+      visibleArea(page, [
         { rect: touching, modal: false },
         { rect: empty, modal: false },
       ]),
-    ).toBe(false);
+    ).toEqual(page);
   });
 });
 
