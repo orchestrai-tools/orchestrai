@@ -59,3 +59,11 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
+
+# On macOS "packed" writes one .dSYM per binary instead of leaving debug info
+# in every object file; dependencies carry none, which shrinks target/ severalfold.
+[profile.dev]
+split-debuginfo = "packed"
+
+[profile.dev.package."*"]
+debug = false
