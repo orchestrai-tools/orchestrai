@@ -188,6 +188,20 @@ pub enum Event {
     #[serde(rename = "orchestration.allComplete")]
     OrchestrationAllComplete { graph_id: String, project: String },
 
+    // ── Daemon → client requests ──
+    /// Sent only to the connection chosen to answer it, never broadcast.
+    /// Answer with `client.reply` within `timeout_ms`.
+    #[serde(rename = "client.request")]
+    ClientRequest {
+        request_id: String,
+        timeout_ms: u64,
+        body: crate::ClientRequestBody,
+    },
+    /// The daemon stopped waiting for a request: it timed out or its caller
+    /// went away. A reply sent after this is refused.
+    #[serde(rename = "client.requestCancelled")]
+    ClientRequestCancelled { request_id: String },
+
     // ── LSP ──
     /// An opaque LSP JSON-RPC message from a server's stdout.
     #[serde(rename = "lsp.message")]

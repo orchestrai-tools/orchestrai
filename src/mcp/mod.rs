@@ -56,9 +56,10 @@ mod serve;
 #[cfg(test)]
 mod tests;
 mod tools;
+mod untrusted;
 
 pub(crate) use daemon_client::DaemonClient;
-pub(crate) use tools::tool_defs;
+pub(crate) use tools::{browser_tool_defs, tool_defs};
 
 /// MCP protocol version we implement.
 const MCP_VERSION: &str = "2024-11-05";

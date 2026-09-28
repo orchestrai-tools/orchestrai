@@ -137,7 +137,7 @@ pub(super) fn defs() -> Vec<Value> {
         }),
         json!({
             "name": "memory_resolve_compaction",
-            "description": "Resolve a compaction proposal: approve (applied) or reject. Use after verifying against code.",
+            "description": "Resolve a compaction proposal: approve (applied) or reject. This only records the decision and never deletes a memory; a person applies deletions from the Memory screen. Use after verifying against code.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

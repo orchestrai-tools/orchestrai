@@ -113,7 +113,7 @@ One file per item keeps writes small and makes the directory readable — and di
 Settings for the [shared memory store](/concepts/memory/):
 
 - **Embedding mode** — off (full-text only) or local embeddings, which turns search hybrid.
-- **Memories** — counts per scope, so you can see what's actually accumulated.
+- **Memories** — counts per scope, so you can see what's actually accumulated. Browse and edit them in the [Memory screen](/concepts/memory/#the-memory-screen) (sidebar → Memory).
 - **Active scopes** — which of global and project are on. Read-only here; edit `~/.warpforge/config.yaml`.
 - **Per-project DB** — whether a project overlay database exists. Auto-created, not something you make by hand.
 
@@ -125,7 +125,7 @@ The [compaction pass](/concepts/memory/#dreaming) that reviews memories against 
 - **Dream project** — which project the pass runs against.
 - **Dream now** — run it on demand.
 
-Pending proposals show their count here; nothing is applied without your approval.
+Review the resulting proposals in the [Memory screen](/concepts/memory/#reviewing-proposals) (sidebar → Memory); the pass never changes a memory itself, and each proposal says what approving it will do.
 
 ## Text generation
 

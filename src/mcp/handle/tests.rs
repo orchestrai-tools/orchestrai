@@ -108,3 +108,32 @@ async fn backlog_task_needs_a_title_or_prompt_at_call_time() {
     assert!(text.starts_with("Created backlog item"), "{text}");
     assert_eq!(last_params(&daemon)["title"], "legacy");
 }
+
+#[tokio::test]
+async fn memory_approval_from_an_agent_never_asks_for_deletion() {
+    let daemon = FakeDaemon::at("ws://a");
+    call_single(
+        &daemon,
+        "demo",
+        "memory_resolve_compaction",
+        json!({ "id": 3, "approve": true }),
+    )
+    .await;
+    let sent = last_params(&daemon);
+    assert_eq!(sent["approve"], true);
+    assert_eq!(sent["apply"], false);
+}
+
+#[tokio::test]
+async fn memory_store_records_the_sessions_task() {
+    let daemon = FakeDaemon::at("ws://a");
+    let mut client = DaemonClient::new(Box::new(daemon.clone()));
+    let params = json!({ "name": "memory_store", "arguments": { "content": "a fact" } });
+    for (task, expected) in [("t_42", Some("t_42")), ("", None)] {
+        handle_tool_call(&mut client, task, "demo", false, Some(&params))
+            .await
+            .unwrap();
+        let sent = last_params(&daemon);
+        assert_eq!(sent.get("created_by").and_then(Value::as_str), expected);
+    }
+}

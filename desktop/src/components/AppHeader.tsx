@@ -20,6 +20,7 @@ const VIEW_LABEL: Record<GlobalView, string> = {
   automations: "Automations",
   control: "Mission Control",
   inbox: "Inbox",
+  memory: "Memory",
 };
 
 interface AppHeaderProps {

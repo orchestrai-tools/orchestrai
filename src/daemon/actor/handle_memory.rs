@@ -155,11 +155,13 @@ impl DaemonHandle {
         &self,
         id: i64,
         approve: bool,
+        apply: bool,
     ) -> Result<serde_json::Value, crate::daemon::memory::MemoryError> {
         let (tx, rx) = oneshot::channel();
         self.send(Command::MemoryResolveCompaction {
             id,
             approve,
+            apply,
             reply: tx,
         })
         .await;

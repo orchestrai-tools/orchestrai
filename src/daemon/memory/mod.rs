@@ -33,6 +33,7 @@ mod dream;
 mod edges;
 mod embeddings;
 mod helpers;
+mod locate;
 mod projects;
 mod search;
 mod store;
@@ -40,7 +41,7 @@ mod store;
 #[cfg(test)]
 mod tests;
 
-use helpers::{clean_vec_orphans, content_of, load_by_id, migrate_fts_tags};
+use helpers::{clean_vec_orphans, load_by_id, migrate_fts_tags};
 
 // ── Store ──
 
@@ -89,6 +90,9 @@ pub struct MemoryStore {
     /// `&mut self` embed fits the store's `&self` methods and the struct stays
     /// `Send`; only ever touched from the actor thread.
     embed: Mutex<EmbedEngine>,
+    /// Directory holding one `<project>/.warpforge/memory.db` overlay per project.
+    /// `None` means the default locations; tests point it at a temp dir.
+    projects_root: Option<PathBuf>,
 }
 
 fn seed_meta(conn: &Connection) -> Result<()> {
@@ -135,6 +139,7 @@ impl MemoryStore {
             config: MemoryConfig::default(),
             disabled: None,
             embed: Mutex::new(EmbedEngine::new(false)),
+            projects_root: None,
         })
     }
 
@@ -149,6 +154,7 @@ impl MemoryStore {
                 config,
                 disabled: Some("memory disabled".into()),
                 embed: Mutex::new(EmbedEngine::new(false)),
+                projects_root: None,
             };
         }
         match Self::open() {
@@ -165,6 +171,7 @@ impl MemoryStore {
                 config,
                 disabled: Some(format!("memory disabled: {e}")),
                 embed: Mutex::new(EmbedEngine::new(false)),
+                projects_root: None,
             },
         }
     }
@@ -180,13 +187,8 @@ impl MemoryStore {
             .ok_or_else(|| MemoryError::Disabled("memory disabled".into()))
     }
     pub fn update(&self, id: &str, content: &str) -> Result<Memory, MemoryError> {
-        let conn = self.guard()?;
-        let existing = content_of(conn, id)?;
-        if existing.is_none() {
-            return Err(MemoryError::Other(anyhow::anyhow!(
-                "memory '{id}' not found"
-            )));
-        }
+        let home = self.locate(id)?;
+        let conn = home.conn();
         let now = now_secs() as i64;
         conn.execute(
             "UPDATE memories SET content = ?1, updated_at = ?2 WHERE id = ?3",
@@ -218,13 +220,8 @@ impl MemoryStore {
         load_by_id(conn, id)
     }
     pub fn delete(&self, id: &str) -> Result<(), MemoryError> {
-        let conn = self.guard()?;
-        let existing = content_of(conn, id)?;
-        if existing.is_none() {
-            return Err(MemoryError::Other(anyhow::anyhow!(
-                "memory '{id}' not found"
-            )));
-        }
+        let home = self.locate(id)?;
+        let conn = home.conn();
         let rowid: i64 = conn.query_row(
             "SELECT rowid FROM memories WHERE id = ?1",
             params![id],
@@ -232,14 +229,10 @@ impl MemoryStore {
         )?;
         conn.execute("DELETE FROM memories WHERE id = ?1", params![id])?;
         conn.execute("DELETE FROM memories_fts WHERE id = ?1", params![id])?;
-        conn.execute(
-            "DELETE FROM memory_edges WHERE src_id = ?1 OR dst_id = ?1",
-            params![id],
-        )?;
         if self.embeddings_active() {
             conn.execute("DELETE FROM memories_vec WHERE rowid = ?1", params![rowid])?;
         }
-        Ok(())
+        self.purge_edges(id)
     }
     pub fn stats(&self) -> Result<Stats, MemoryError> {
         let conn = self.guard()?;

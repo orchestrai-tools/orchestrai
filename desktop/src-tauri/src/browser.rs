@@ -25,7 +25,7 @@ const ANNOTATE_SCHEME: &str = "wf-annotate:";
 
 /// Every child webview is labelled `browser:<tabId>`, so one namespace of
 /// labels belongs to the browser and nothing else collides with it.
-fn label_for(tab_id: &str) -> String {
+pub(crate) fn label_for(tab_id: &str) -> String {
     format!("browser:{tab_id}")
 }
 
@@ -52,9 +52,10 @@ fn parse_url(url: &str) -> Result<tauri::Url, String> {
     url.parse().map_err(|_| format!("invalid URL: {url}"))
 }
 
-/// Create the tab's webview if it does not exist yet, then position and show it.
-/// A second call for the same tab navigates and repositions, or with `reuse`
-/// only repositions, so a remounted pane keeps the page it left.
+/// Create the tab's webview if it does not exist yet, then position and show it,
+/// or with `hidden` keep it out of sight (an agent opening a page in the
+/// background). A second call for the same tab navigates and repositions, or
+/// with `reuse` only repositions, so a remounted pane keeps the page it left.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn browser_open(
@@ -66,6 +67,7 @@ pub fn browser_open(
     width: f64,
     height: f64,
     reuse: Option<bool>,
+    hidden: Option<bool>,
 ) -> Result<(), String> {
     let target = parse_url(&url)?;
     let label = label_for(&tab_id);
@@ -92,6 +94,7 @@ pub fn browser_open(
     // survives restarts without any special store handling.
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(target))
         .initialization_script(PICKER_SCRIPT)
+        .initialization_script(crate::browser_agent::AGENT_SCRIPT)
         .on_navigation(move |url| {
             if !url.as_str().starts_with(ANNOTATE_SCHEME) {
                 return true;
@@ -130,13 +133,16 @@ pub fn browser_open(
             }
         });
 
-    window
+    let webview = window
         .add_child(
             builder,
             LogicalPosition::new(x, y),
             LogicalSize::new(width, height),
         )
         .map_err(|e| e.to_string())?;
+    if hidden == Some(true) {
+        webview.hide().map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 

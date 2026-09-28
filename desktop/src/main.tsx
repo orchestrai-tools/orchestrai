@@ -48,6 +48,9 @@ requestAnimationFrame(() => {
     void daemon.connect().catch(() => {
       /* Reconnect loop takes over */
     });
+    void import("./views/task-detail/browser/agentDriver").then(({ installBrowserAgent }) => {
+      installBrowserAgent(daemon);
+    });
   });
 });
 

@@ -10,6 +10,10 @@ vi.mock("../views/InboxView", () => {
   loaded.push("inbox");
   return { default: () => null };
 });
+vi.mock("../views/Memory", () => {
+  loaded.push("memory");
+  return { default: () => null };
+});
 vi.mock("../views/MissionControl", () => {
   loaded.push("mission-control");
   return { default: () => null };
@@ -34,12 +38,13 @@ describe("prefetchRouteChunks", () => {
         expect.arrayContaining([
           "automations",
           "inbox",
+          "memory",
           "mission-control",
           "projects",
           "task-detail",
         ]),
       );
     });
-    expect(loaded).toHaveLength(5);
+    expect(loaded).toHaveLength(6);
   });
 });

@@ -6,6 +6,7 @@ import type {
   DetectedAgent,
 } from "./agents";
 import type { Automation, AutomationRun } from "./automations";
+import type { ClientRequestBody } from "./browser";
 import type { TaskPullRequest } from "./pulls";
 import type {
   PortForwardInfo,
@@ -110,6 +111,12 @@ export type DaemonEvent =
   | { event: "automation.updated"; data: Automation }
   | { event: "automation.removed"; data: { id: string } }
   | { event: "automation.runUpdated"; data: AutomationRun }
+  // ── Daemon → client requests (sent only to the client chosen to answer) ──
+  | {
+      event: "client.request";
+      data: { request_id: string; timeout_ms: number; body: ClientRequestBody };
+    }
+  | { event: "client.requestCancelled"; data: { request_id: string } }
   // ── LSP ──
   | { event: "lsp.message"; data: { server_id: string; payload: unknown } }
   | { event: "lsp.exit"; data: { server_id: string; code: number | null } };

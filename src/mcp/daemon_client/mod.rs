@@ -97,6 +97,21 @@ impl DaemonClient {
     /// @param params the method's parameters
     /// @returns the reply's `result`, or the daemon's error or the transport's
     pub(crate) async fn request(&mut self, method: &str, params: Value) -> Result<Value> {
+        self.request_within(method, params, self.request_timeout)
+            .await
+    }
+
+    /// [`request`](Self::request) for a call that may wait on the user.
+    /// @param method the daemon RPC method
+    /// @param params the method's parameters
+    /// @param timeout how long to wait for the reply
+    /// @returns the reply's `result`, or the daemon's error or the transport's
+    pub(crate) async fn request_within(
+        &mut self,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> Result<Value> {
         let published = self.transport.endpoint()?;
         // The connection is only put back after a complete exchange, so a
         // transport error, a timeout or a panic leaves the next call to redial.
@@ -113,18 +128,16 @@ impl DaemonClient {
         };
         let id = self.next_id;
         self.next_id += 1;
-        let (connection, reply) = tokio::time::timeout(
-            self.request_timeout,
-            exchange(connection, id, method, params),
-        )
-        .await
-        .map_err(|_| {
-            anyhow!(
-                "the daemon did not answer {method} within {}s.{}",
-                self.request_timeout.as_secs_f32(),
-                retry_hint(method)
-            )
-        })??;
+        let (connection, reply) =
+            tokio::time::timeout(timeout, exchange(connection, id, method, params))
+                .await
+                .map_err(|_| {
+                    anyhow!(
+                        "the daemon did not answer {method} within {}s.{}",
+                        timeout.as_secs_f32(),
+                        retry_hint(method)
+                    )
+                })??;
         self.open = Some((endpoint, connection));
         reply.map_err(|error| anyhow!("daemon error: {error}"))
     }

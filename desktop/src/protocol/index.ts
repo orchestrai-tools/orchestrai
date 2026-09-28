@@ -5,6 +5,7 @@
  */
 
 export * from "./envelope";
+export * from "./browser";
 export * from "./events";
 export * from "./runtime";
 export * from "./tasks";

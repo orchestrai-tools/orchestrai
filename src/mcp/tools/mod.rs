@@ -3,6 +3,7 @@ use serde_json::Value;
 use super::automations;
 
 mod backlog;
+mod browser;
 mod memory;
 mod orchestrator;
 mod runtime;
@@ -22,6 +23,12 @@ pub(crate) fn tool_defs(is_orchestrator: bool) -> Value {
         tools.extend(automation);
     }
     Value::Array(tools)
+}
+
+/// The browser tools, offered to sessions bound to a project.
+/// @returns the tool definitions
+pub(crate) fn browser_tool_defs() -> Vec<Value> {
+    browser::defs()
 }
 
 #[cfg(test)]

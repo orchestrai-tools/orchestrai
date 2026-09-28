@@ -42,6 +42,7 @@ pub(super) fn method_runs_concurrently(method: &wire::Method) -> bool {
             | ServiceLogs { .. }
             | PortForwardLogs { .. }
             | RuntimeList { .. }
+            | BrowserAct { .. }
             | TaskListWorktrees { .. }
             | WorktreeList { .. }
             | WorktreeSetupLog { .. }

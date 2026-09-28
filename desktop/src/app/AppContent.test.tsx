@@ -28,6 +28,7 @@ vi.mock("./routePrefetch", () => {
   return {
     loadAutomations: stub,
     loadInboxView: stub,
+    loadMemory: stub,
     loadMissionControl: stub,
     loadProjects: stub,
     loadTaskDetail: stub,

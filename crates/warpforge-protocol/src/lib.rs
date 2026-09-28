@@ -27,6 +27,9 @@ pub use automations::*;
 pub mod backlog;
 pub use backlog::*;
 
+pub mod browser;
+pub use browser::*;
+
 pub mod event;
 pub use event::*;
 

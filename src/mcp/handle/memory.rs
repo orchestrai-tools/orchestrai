@@ -9,6 +9,7 @@ pub(super) async fn dispatch(
     client: &mut DaemonClient,
     args: &Value,
     project: &str,
+    task: &str,
 ) -> Result<String> {
     match name {
         "memory_store" => {
@@ -66,6 +67,9 @@ pub(super) async fn dispatch(
             }
             if let Some(v) = project_id {
                 params["project_id"] = json!(v);
+            }
+            if !task.trim().is_empty() {
+                params["created_by"] = json!(task);
             }
             let result = client.request("memory.store", params).await?;
             json_text(&result)
@@ -170,7 +174,7 @@ pub(super) async fn dispatch(
             let result = client
                 .request(
                     "memory.resolveCompaction",
-                    json!({"id": id, "approve": approve}),
+                    json!({"id": id, "approve": approve, "apply": false}),
                 )
                 .await?;
             json_text(&result)

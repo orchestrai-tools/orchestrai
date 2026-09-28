@@ -56,6 +56,7 @@ mod service_start;
 mod session;
 mod spawn;
 mod transcript;
+mod user_ask;
 mod workflow;
 mod workflow_control;
 mod workflow_review;

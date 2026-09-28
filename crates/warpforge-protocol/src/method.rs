@@ -172,6 +172,32 @@ pub enum Method {
     #[serde(rename = "runtime.list")]
     RuntimeList { project: String },
 
+    // ── Daemon → client requests ──
+    /// Offer this connection as the one that answers `client.request` events
+    /// needing `capabilities` (e.g. `browser`). The newest registration wins;
+    /// it lasts until the connection closes.
+    #[serde(rename = "client.register")]
+    ClientRegister { capabilities: Vec<String> },
+    /// Answer a `client.request` sent to this connection: `result` on
+    /// success, `error` (a message for the agent) otherwise.
+    #[serde(rename = "client.reply")]
+    ClientReply {
+        request_id: String,
+        #[serde(default)]
+        result: Option<serde_json::Value>,
+        #[serde(default)]
+        error: Option<String>,
+    },
+    /// Act in the project's in-app browser for the agent of `task_id`, which
+    /// is asked to approve any origin the project's services do not serve.
+    #[serde(rename = "browser.act")]
+    BrowserAct {
+        project: String,
+        #[serde(default)]
+        task_id: String,
+        action: crate::BrowserAction,
+    },
+
     // ── Tasks (agent sessions on the board) ──
     #[serde(rename = "task.create")]
     TaskCreate {
@@ -367,6 +393,9 @@ pub enum Method {
         tags: Option<Vec<String>>,
         #[serde(default)]
         project_id: Option<String>,
+        /// Id of the task whose agent is saving the memory.
+        #[serde(default)]
+        created_by: Option<String>,
     },
     /// Full-text search over stored memories (FTS5, BM25-ranked).
     #[serde(rename = "memory.search")]
@@ -422,6 +451,10 @@ pub enum Method {
         id: i64,
         #[serde(default)]
         approve: Option<bool>,
+        /// With `approve`, also carry the proposal out (delete duplicates or
+        /// stale memories). Defaults to false: the decision is only recorded.
+        #[serde(default)]
+        apply: Option<bool>,
     },
 
     // ── Agent registry ──

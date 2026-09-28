@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::daemon_client::DaemonClient;
-use super::{handle, tool_defs, MCP_VERSION};
+use super::{browser_tool_defs, handle, tool_defs, MCP_VERSION};
 
 /// The session a server's tools act for.
 pub(crate) struct Session {
@@ -59,7 +59,7 @@ where
                     "version": env!("CARGO_PKG_VERSION"),
                 },
             })),
-            "tools/list" => Ok(json!({ "tools": tool_defs(session.is_orchestrator) })),
+            "tools/list" => Ok(json!({ "tools": session_tools(session) })),
             "tools/call" => Ok(call_tool(client, session, message.get("params")).await),
             "ping" => Ok(json!({})),
             other => {
@@ -76,8 +76,16 @@ where
     }
 }
 
+fn session_tools(session: &Session) -> Value {
+    let mut tools = tool_defs(session.is_orchestrator);
+    if let (Value::Array(list), false) = (&mut tools, session.project.is_empty()) {
+        list.extend(browser_tool_defs());
+    }
+    tools
+}
+
 async fn call_tool(client: &mut DaemonClient, session: &Session, params: Option<&Value>) -> Value {
-    let call = handle::handle_tool_call(
+    let call = handle::tool_content(
         client,
         &session.parent_task,
         &session.project,
@@ -85,7 +93,7 @@ async fn call_tool(client: &mut DaemonClient, session: &Session, params: Option<
         params,
     );
     let error = match AssertUnwindSafe(call).catch_unwind().await {
-        Ok(Ok(text)) => return json!({ "content": [{ "type": "text", "text": text }] }),
+        Ok(Ok(content)) => return json!({ "content": content }),
         Ok(Err(error)) => format!("Error: {error:#}"),
         // The panic hook has already written the message to stderr.
         Err(_) => "Error: the tool crashed inside the warpforge MCP server".to_string(),
@@ -183,6 +191,26 @@ mod tests {
             text.contains("only available in an orchestrator session"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn browser_tools_are_listed_only_for_a_session_bound_to_a_project() {
+        for (project, listed) in [("demo", true), ("", false)] {
+            let session = Session {
+                parent_task: "t_1".into(),
+                project: project.into(),
+                is_orchestrator: false,
+            };
+            let tools = session_tools(&session);
+            let names: Vec<&str> = tools
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|tool| tool["name"].as_str())
+                .collect();
+            assert_eq!(names.contains(&"browser_snapshot"), listed, "{project:?}");
+            assert!(names.contains(&"list_runtime"));
+        }
     }
 
     #[tokio::test]

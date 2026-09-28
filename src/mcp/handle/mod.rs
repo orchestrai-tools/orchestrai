@@ -6,11 +6,42 @@ use super::daemon_client::DaemonClient;
 
 mod agents;
 mod backlog;
+mod browser;
 mod memory;
 mod runtime;
 #[cfg(test)]
 mod tests;
 mod workflows;
+
+/// Run a tool call and return its MCP `content` items. The browser tools
+/// return an image next to their text; every other tool returns text.
+/// @param client the daemon connection
+/// @param parent_task the session's task
+/// @param project the session's project, empty when unbound
+/// @param is_orchestrator whether the orchestrator tools are available
+/// @param params the `tools/call` params
+/// @returns the content items, or the tool's error
+pub(crate) async fn tool_content(
+    client: &mut DaemonClient,
+    parent_task: &str,
+    project: &str,
+    is_orchestrator: bool,
+    params: Option<&Value>,
+) -> Result<Vec<Value>> {
+    let name = params
+        .and_then(|p| p.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if browser::is_browser_tool(name) {
+        let args = params
+            .and_then(|p| p.get("arguments"))
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        return browser::dispatch(name, client, parent_task, project, &args).await;
+    }
+    let text = handle_tool_call(client, parent_task, project, is_orchestrator, params).await?;
+    Ok(vec![json!({ "type": "text", "text": text })])
+}
 
 pub(crate) async fn handle_tool_call(
     client: &mut DaemonClient,
@@ -48,7 +79,7 @@ pub(crate) async fn handle_tool_call(
         | "memory_list_compaction"
         | "memory_resolve_compaction"
         | "memory_addEdge"
-        | "memory_edges" => memory::dispatch(name, client, &args, project).await,
+        | "memory_edges" => memory::dispatch(name, client, &args, project, parent_task).await,
         "automation_create" | "automation_list" | "automation_get" | "automation_update"
         | "automation_delete" | "automation_run_now" | "automation_runs" => {
             automations::handle_tool_call(name, &args, project, client)

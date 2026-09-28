@@ -12,6 +12,7 @@ pub(super) async fn memory_store(
     kind: Option<String>,
     tags: Option<Vec<String>>,
     project_id: Option<String>,
+    created_by: Option<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
         .memory_store(
@@ -20,7 +21,7 @@ pub(super) async fn memory_store(
             kind.as_deref(),
             tags.as_deref(),
             project_id.as_deref(),
-            None,
+            created_by.as_deref(),
         )
         .await
         .map_err(memory_error)
@@ -141,9 +142,10 @@ pub(super) async fn memory_resolve_compaction(
     handle: &DaemonHandle,
     id: i64,
     approve: Option<bool>,
+    apply: Option<bool>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     let status = handle
-        .memory_resolve_compaction(id, approve.unwrap_or(true))
+        .memory_resolve_compaction(id, approve.unwrap_or(true), apply.unwrap_or(false))
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::InvalidRequest,

@@ -40,6 +40,17 @@ pub(super) fn sanitize_query(query: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Turn sanitized text into an FTS5 MATCH expression: every word becomes a
+/// quoted phrase, so operators and punctuation (`#`, `AND`, `NOT`) are literal.
+/// `joiner` is `" "` for AND semantics or `" OR "` for the ranked fallback.
+pub(super) fn fts_match(sanitized: &str, joiner: &str) -> String {
+    sanitized
+        .split_whitespace()
+        .map(|w| format!("\"{}\"", w.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(joiner)
+}
+
 /// Strict project-id validator used wherever a project id becomes a filesystem
 /// path. Rejects empty, `.`, `..`, `/`, `\`, and anything outside
 /// `[a-zA-Z0-9_-]`.

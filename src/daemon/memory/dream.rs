@@ -1,6 +1,7 @@
 use anyhow::Result;
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 
+use super::helpers::load_by_id;
 use super::MemoryStore;
 use crate::daemon::memory_types::MemoryError;
 use crate::daemon::task::now_secs;
@@ -15,19 +16,73 @@ impl MemoryStore {
         )
         .unwrap_or(0)
     }
-    pub fn resolve_compaction(&self, id: i64, approve: bool) -> Result<String, MemoryError> {
+    /// Resolve a proposal. Rejecting only records the decision. Approving
+    /// records it too, and with `apply` also carries it out: `duplicate` keeps
+    /// the oldest target and deletes the rest; `stale` and `delete` delete every
+    /// target. Other kinds (`merge`, `contradiction`, `superseded_by`) carry no
+    /// replacement text or keeper, so `apply` does nothing for them.
+    /// An already-approved proposal can still be applied later, which is how a
+    /// person finishes one an agent only recorded.
+    pub fn resolve_compaction(
+        &self,
+        id: i64,
+        approve: bool,
+        apply: bool,
+    ) -> Result<String, MemoryError> {
         let conn = self.guard()?;
-        let status = if approve { "applied" } else { "rejected" };
-        let changed = conn.execute(
-            "UPDATE memory_compaction_log SET status=?1 WHERE id=?2 AND status='pending'",
-            params![status, id],
-        )?;
-        if changed == 0 {
+        let row: Option<(Option<String>, Option<String>, String)> = conn
+            .query_row(
+                "SELECT proposal_type, target_ids, status FROM memory_compaction_log WHERE id=?1",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        let reapply = approve && apply;
+        let resolvable = |status: &str| status == "pending" || (reapply && status == "applied");
+        let Some((kind, targets, status)) = row.filter(|(_, _, s)| resolvable(s)) else {
             return Err(MemoryError::Other(anyhow::anyhow!(
                 "not found or not pending"
             )));
+        };
+        if reapply {
+            self.apply_proposal(
+                kind.as_deref().unwrap_or(""),
+                targets.as_deref().unwrap_or(""),
+            )?;
         }
+        if status == "applied" {
+            return Ok(status);
+        }
+        let status = if approve { "applied" } else { "rejected" };
+        conn.execute(
+            "UPDATE memory_compaction_log SET status=?1 WHERE id=?2",
+            params![status, id],
+        )?;
         Ok(status.to_string())
+    }
+    fn apply_proposal(&self, kind: &str, target_ids: &str) -> Result<(), MemoryError> {
+        let mut found = Vec::new();
+        for id in target_ids
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            if let Ok(home) = self.locate(id) {
+                found.push(load_by_id(home.conn(), id)?);
+            }
+        }
+        let doomed: Vec<String> = match kind {
+            "duplicate" => {
+                found.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+                found.into_iter().skip(1).map(|m| m.id).collect()
+            }
+            "stale" | "delete" => found.into_iter().map(|m| m.id).collect(),
+            _ => Vec::new(),
+        };
+        for id in doomed {
+            self.delete(&id)?;
+        }
+        Ok(())
     }
     pub fn resolve_compaction_for_targets(
         &self,

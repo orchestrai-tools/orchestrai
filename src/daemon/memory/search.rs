@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::{params, Connection};
 
-use super::helpers::{load_by_id, row_to_memory, sanitize_query, valid_kind};
+use super::helpers::{fts_match, load_by_id, row_to_memory, sanitize_query, valid_kind};
 use super::MemoryStore;
 use crate::daemon::memory_embed::{f32_to_blob, rrf_merge};
 use crate::daemon::memory_types::{Memory, MemoryError};
@@ -50,7 +50,7 @@ impl MemoryStore {
         let recall = (cap * 2).min(100);
         let mut merged = self.search_on_conn(conn, query, scope, Some(recall), mode)?;
         if self.config.project {
-            for path in Self::project_dbs() {
+            for path in self.project_dbs() {
                 if !path.exists() {
                     continue;
                 }
@@ -97,22 +97,19 @@ impl MemoryStore {
         predicate: &str,
         limit: i64,
     ) -> Result<Vec<Memory>, MemoryError> {
-        let results = self.fts_search_inner(conn, sanitized, predicate, limit)?;
+        let results = self.fts_search_inner(conn, &fts_match(sanitized, " "), predicate, limit)?;
         if !results.is_empty() || !sanitized.contains(' ') {
             return Ok(results);
         }
         // Ranked-OR fallback: strict AND returned 0 → retry with OR so partial matches surface (bug #2)
-        let or_query = sanitized
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" OR ");
+        let or_query = fts_match(sanitized, " OR ");
         let or_results = self.fts_search_inner(conn, &or_query, predicate, limit)?;
         Ok(or_results)
     }
     fn fts_search_inner(
         &self,
         conn: &Connection,
-        sanitized: &str,
+        expr: &str,
         predicate: &str,
         limit: i64,
     ) -> Result<Vec<Memory>, MemoryError> {
@@ -130,7 +127,7 @@ impl MemoryStore {
              ORDER BY (m.scope = 'global') ASC, rank LIMIT ?2"
         );
         let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(params![sanitized, limit], |row| {
+        let rows = stmt.query_map(params![expr, limit], |row| {
             let snippet: Option<String> = row.get(11)?;
             row_to_memory(row, snippet)
         })?;
@@ -180,7 +177,9 @@ impl MemoryStore {
              WHERE {where_sql} ORDER BY rank LIMIT ?2"
         );
         let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(params![sanitized, recall], |row| row.get::<_, String>(0))?;
+        let rows = stmt.query_map(params![fts_match(sanitized, " "), recall], |row| {
+            row.get::<_, String>(0)
+        })?;
         let mut ids = Vec::new();
         for row in rows {
             ids.push(row?);
@@ -275,7 +274,7 @@ impl MemoryStore {
     ) -> Result<Vec<Memory>, MemoryError> {
         let mut merged = Self::list_on_conn(conn, self, scope, kind, None, None)?;
         if self.config.project {
-            for path in Self::project_dbs() {
+            for path in self.project_dbs() {
                 if !path.exists() {
                     continue;
                 }

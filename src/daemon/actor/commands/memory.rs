@@ -105,10 +105,18 @@ impl Daemon {
                 });
                 let _ = reply.send(r);
             }
-            Command::MemoryResolveCompaction { id, approve, reply } => {
-                let r = self.memory.resolve_compaction(id, approve).and_then(|s| {
-                    serde_json::to_value(s).map_err(crate::daemon::memory::MemoryError::from)
-                });
+            Command::MemoryResolveCompaction {
+                id,
+                approve,
+                apply,
+                reply,
+            } => {
+                let r = self
+                    .memory
+                    .resolve_compaction(id, approve, apply)
+                    .and_then(|s| {
+                        serde_json::to_value(s).map_err(crate::daemon::memory::MemoryError::from)
+                    });
                 let _ = reply.send(r);
             }
             Command::MemoryDream {
@@ -149,7 +157,7 @@ impl Daemon {
                             task.status = crate::daemon::task::TaskStatus::Waiting;
                             // Rich prompt so conversation isn't blank
                             task.prompt = format!(
-                                "Dreaming finished for '{}' — {} proposal(s).\n\n{}\n\n→ Review in Memory → Compaction (approve/reject). No agent session needed.",
+                                "Dreaming finished for '{}' — {} proposal(s).\n\n{}\n\n→ Review in Memory → Proposals (approve/reject). No agent session needed.",
                                 pid, inserted, v
                             );
                             let tid = task.id.clone();

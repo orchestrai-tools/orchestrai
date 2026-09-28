@@ -708,6 +708,17 @@ pub enum Command {
         /// answered (first-writer-wins), carrying the outcome that won.
         reply: oneshot::Sender<Result<(), crate::daemon::actor::lifecycle::PermissionAnswerError>>,
     },
+    /// Raise a permission prompt of the daemon's own on a task's chat.
+    AskUser {
+        task_id: String,
+        title: String,
+        reply: oneshot::Sender<Result<crate::daemon::actor::user_ask::UserAsk, String>>,
+    },
+    /// Withdraw an unanswered `AskUser` prompt.
+    WithdrawAsk {
+        task_id: String,
+        request_id: String,
+    },
     /// Change a session selector (model/mode/…) the agent exposes. The reply
     /// carries the agent's verdict so the UI can undo a rejected pick.
     SessionSetConfigOption {
@@ -931,6 +942,7 @@ pub enum Command {
     MemoryResolveCompaction {
         id: i64,
         approve: bool,
+        apply: bool,
         reply: oneshot::Sender<Result<serde_json::Value, crate::daemon::memory::MemoryError>>,
     },
     Shutdown {

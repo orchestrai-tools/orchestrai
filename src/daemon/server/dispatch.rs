@@ -13,6 +13,7 @@ mod agents;
 mod automations;
 mod backlog;
 mod branch;
+mod clients;
 mod files;
 mod git;
 mod history;
@@ -62,7 +63,7 @@ pub(super) async fn dispatch(
         OrchestratorReadInbox { parent_task_id } => orchestration::orchestrator_read_inbox(handle, parent_task_id).await,
         OrchestratorListAgents { parent_task_id, project, } => orchestration::orchestrator_list_agents(handle, parent_task_id, project).await,
         DiffGet { task_id, include_ignored, } => files::diff_get(handle, task_id, include_ignored).await,
-        MemoryStore { content, scope, kind, tags, project_id, } => memory::memory_store(handle, content, scope, kind, tags, project_id).await,
+        MemoryStore { content, scope, kind, tags, project_id, created_by, } => memory::memory_store(handle, content, scope, kind, tags, project_id, created_by).await,
         MemorySearch { query, scope, limit, mode, } => memory::memory_search(handle, query, scope, limit, mode).await,
         MemoryList { scope, kind, limit, offset, } => memory::memory_list(handle, scope, kind, limit, offset).await,
         MemoryUpdate { id, content } => memory::memory_update(handle, id, content).await,
@@ -135,6 +136,8 @@ pub(super) async fn dispatch(
         PortForwardStopAll { project } => runtime::port_forward_stop_all(handle, project).await,
         PortForwardLogs { project, name, after, limit, } => runtime::port_forward_logs(handle, project, name, after, limit).await,
         RuntimeList { project } => runtime::runtime_list(handle, project).await,
+        ClientRegister { .. } | ClientReply { .. } => clients::connection_scoped().await,
+        BrowserAct { project, task_id, action } => clients::browser_act(handle, lifecycle, project, task_id, action).await,
         // ── Legacy PTY terminals (the TUI's live agent panes) ──
         TerminalSpawn { project, command, cols, rows, task_id, } => runtime::terminal_spawn(handle, project, command, cols, rows, task_id).await,
         TerminalInput { terminal_id, data_b64, } => runtime::terminal_input(handle, terminal_id, data_b64).await,
@@ -219,6 +222,6 @@ pub(super) async fn dispatch(
         WorkItemLinkTask { item_id, task_id } => backlog::work_item_link_task(handle, item_id, task_id).await,
         MemoryDream { dry_run, project_id, } => memory::memory_dream(handle, dry_run, project_id).await,
         MemoryListCompaction {} => memory::memory_list_compaction(handle).await,
-        MemoryResolveCompaction { id, approve } => memory::memory_resolve_compaction(handle, id, approve).await,
+        MemoryResolveCompaction { id, approve, apply } => memory::memory_resolve_compaction(handle, id, approve, apply).await,
     }
 }

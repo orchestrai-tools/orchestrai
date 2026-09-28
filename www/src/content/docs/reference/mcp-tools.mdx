@@ -190,6 +190,46 @@ Deletes the automation and its run history permanently, and stops a run in fligh
 
 ---
 
+## Browser — act in the in-app browser
+
+Available in every session bound to a project, while the desktop app is open. The tools work in the project's active [Browser](/guides/browser/) tab — the one you see, signed in as you.
+
+The project's own services (every port [Warpforge assigned](/concepts/ports/) to its services and port-forwards, on `localhost`) are allowed. Any other site raises a permission prompt in the task's chat before the action runs: **allow** for that action, **allow always** for that site for the rest of the task, **deny** to stop. The check runs on the page's actual address right before every action. Everything read from a page comes back inside a block marked as untrusted data.
+
+### `browser_navigate`
+
+Opens `url` in the project's tab and waits for it to load, returning the final address and title. A bare `localhost:4001/path` means `http://`; only `http` and `https` pages open. With no tab open, one opens in the background — the user's view doesn't switch.
+
+**Reach for it first**, with an address from `list_runtime`.
+
+### `browser_snapshot`
+
+Reads the page as a compact outline: headings, text, and every link, button, field and option, each interactive one tagged with a reference like `[e12]`. A reference keeps pointing at the same element across snapshots until the page reloads. Long text is cut short and a large page is truncated, with a note saying so.
+
+### `browser_click`
+
+Clicks the element `ref` names, with the pointer and mouse events a real click produces — links follow, checkboxes toggle, submit buttons submit. Take a new snapshot to see what changed.
+
+### `browser_type`
+
+Replaces the value of the text field, text area, editable element or select `ref` names with `text`, firing the input and change events frameworks listen for. For a select, `text` is an option's label or value. `submit: true` presses Enter afterwards, submitting the form.
+
+### `browser_screenshot`
+
+A picture of the visible part of the page, returned as an image. macOS only.
+
+### `browser_console`
+
+The page's console messages and uncaught errors since it loaded — the newest 200.
+
+**Why this exists:** the agent can check its own UI change the way you would — load it, click through it, read the error — instead of handing you a diff and hoping.
+
+<Aside type="caution" title="What a simulated click can't do">
+  Pages see the agent's events as synthetic. File pickers, pop-up windows, new-tab links, captchas and payment widgets that require a real gesture don't respond, and frames from another site can't be read.
+</Aside>
+
+---
+
 ## Orchestrator only — delegation
 
 These 11 tools appear **only** in an orchestrator session. They're what lets one agent act as a lead rather than a worker.

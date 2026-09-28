@@ -79,8 +79,12 @@ impl MemoryStore {
     }
     /// All existing project overlay DB paths (both `WARP_PROJECTS_DIR` and the
     /// home heuristic), for merging non-scoped reads.
-    pub(super) fn project_dbs() -> Vec<PathBuf> {
+    pub(super) fn project_dbs(&self) -> Vec<PathBuf> {
         let mut out = Vec::new();
+        if let Some(root) = &self.projects_root {
+            collect_project_dbs(root, &mut out);
+            return out;
+        }
         if let Ok(base) = std::env::var("WARP_PROJECTS_DIR") {
             collect_project_dbs(&PathBuf::from(base), &mut out);
         }

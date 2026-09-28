@@ -209,7 +209,10 @@ impl Daemon {
                     .resolve(&task_id, &request_id, &outcome)
                 {
                     Ok(()) => {
-                        if let Some(handle) = self.sessions.get(&task_id) {
+                        let daemon_ask = self
+                            .pending_permissions
+                            .answer_daemon_ask(&request_id, &outcome);
+                        if let Some(handle) = self.sessions.get(&task_id).filter(|_| !daemon_ask) {
                             handle.answer(request_id.clone(), outcome.clone());
                         }
                         self.emit_session(
@@ -304,6 +307,15 @@ impl Daemon {
                     _ => {}
                 }
             }
+            Command::AskUser {
+                task_id,
+                title,
+                reply,
+            } => self.ask_user(task_id, title, reply),
+            Command::WithdrawAsk {
+                task_id,
+                request_id,
+            } => self.withdraw_ask(task_id, request_id),
 
             other => self.handle_accounts_command(other).await,
         }

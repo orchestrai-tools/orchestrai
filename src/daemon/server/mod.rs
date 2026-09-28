@@ -30,6 +30,7 @@ use super::wire as wireconv;
 
 use method_policy::{method_is_mutation, method_runs_concurrently};
 
+mod client_hub;
 mod dispatch;
 mod endpoint;
 mod method_policy;
@@ -40,6 +41,7 @@ mod stdio;
 mod tests;
 mod util;
 
+pub(crate) use client_hub::{ClientHub, ClientRequestError};
 use dispatch::dispatch;
 use endpoint::{remove_endpoint, write_endpoint};
 use origin::OriginPolicy;
@@ -139,6 +141,8 @@ struct ServerLifecycle {
     mutations: RwLock<()>,
     shutdown: Notify,
     origins: OriginPolicy,
+    clients: ClientHub,
+    browser_grants: crate::daemon::browser::Grants,
 }
 
 impl ServerLifecycle {
@@ -149,6 +153,8 @@ impl ServerLifecycle {
             mutations: RwLock::new(()),
             shutdown: Notify::new(),
             origins: OriginPolicy::new(false),
+            clients: ClientHub::default(),
+            browser_grants: Default::default(),
         }
     }
 }
@@ -301,6 +307,7 @@ async fn handle_conn(
             }
         })
     });
+    let hub_connection = lifecycle.clients.connection();
     // Caps the work one client can have in flight at once.
     let request_slots = Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS));
 
@@ -342,7 +349,7 @@ async fn handle_conn(
                     continue;
                 }
 
-                let req: wire::Request = match serde_json::from_str(&text) {
+                let mut req: wire::Request = match serde_json::from_str(&text) {
                     Ok(r) => r,
                     Err(error) => {
                         // A frame that carries a request id but fails to parse
@@ -366,6 +373,11 @@ async fn handle_conn(
                     }
                 };
                 let id = req.id;
+
+                if let Some(reply) = hub_connection.intercept(id, &mut req.method, &event_tx) {
+                    send!(reply);
+                    continue;
+                }
 
                 if matches!(req.method, wire::Method::StateSubscribe { .. }) {
                     let snapshot = handle.snapshot().await;

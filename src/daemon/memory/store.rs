@@ -150,7 +150,7 @@ impl MemoryStore {
         }
     }
     #[allow(clippy::too_many_arguments)]
-    fn store_on_conn(
+    pub(super) fn store_on_conn(
         conn: &Connection,
         embed: &Mutex<EmbedEngine>,
         project_id: Option<String>,

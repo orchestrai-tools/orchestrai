@@ -43,6 +43,19 @@ Turn on embeddings and it becomes **hybrid search**: keyword ranking and semanti
 
 Embeddings run locally too — a small model on your machine, no service call, no key.
 
+## The Memory screen
+
+Open **Memory** in the sidebar to see what your agents have saved. It spans every project, because memory does: global and project memories live in one list.
+
+- **Browse and search.** The list scrolls through everything, newest edit first. Type in the search box for a ranked full-text search (punctuation such as `#82` is matched literally). Narrow either view by scope (All, Global, Project), kind, or tag.
+- **Read and edit.** Select a memory to see its full text, kind, scope and tags, and when it was created, last edited and last used. Edit the text and press **Save**. **Delete** asks first, and removes the memory's links with it.
+- **Links.** Each memory lists the memories it is linked to, with the relation (`related`, `supports`, `contradicts`, `supersedes`). Click a linked memory to jump to it. To add a link, choose a relation, find the other memory by a word from its text, and press **Add link**. The open memory is the source of the link.
+- **Written by.** A memory saved by an agent names the task that saved it, and the name opens that task. Memories saved before this was recorded, or by hand, show nothing here.
+
+<Aside type="note" title="Your edits are the same edits agents make">
+  There is one store. What you change here is what the next agent session reads.
+</Aside>
+
 ## Dreaming
 
 A memory store that only grows becomes a memory store you can't trust. Old facts contradict new ones. The same lesson gets written down three times. Something true in March is wrong by August.
@@ -52,10 +65,26 @@ A memory store that only grows becomes a memory store you can't trust. Old facts
 The critical design decision:
 
 <Aside type="caution" title="A dream never edits your memory">
-  Every finding is written to a compaction log as a **proposal** with its reasoning. Nothing is merged, superseded, or deleted until someone approves it. An automated pass that quietly rewrites what your agents believe is not a feature — it's a very slow way to corrupt a knowledge base.
+  Every finding is written to a compaction log as a **proposal** with its reasoning. The pass itself never merges, supersedes or deletes anything; a change happens only when you approve a proposal. An automated pass that quietly rewrites what your agents believe is not a feature — it's a very slow way to corrupt a knowledge base.
 </Aside>
 
 When the pass isn't sure — or the call is genuinely yours to make — it says so and waits for you instead of guessing.
+
+### Reviewing proposals
+
+Proposals wait on the **Proposals** tab of the Memory screen, which shows how many are pending. Each card gives the kind of finding, the reason, the memories it points at (click one to open it), and a line saying exactly what approving will do.
+
+| Kind | Approve does |
+| --- | --- |
+| **Duplicate** | Keeps the oldest of the listed memories, marked **Kept** on the card, and deletes the others. |
+| **Stale**, **Delete** | Deletes the listed memories. |
+| **Merge**, **Contradiction**, **Superseded** | Nothing. These need a judgement the proposal does not carry, such as the merged wording, so the button reads **Mark done** and only records that you dealt with it. Open the memories and edit or delete them yourself. |
+
+Approving a proposal that deletes asks for confirmation first. **Reject** never changes a memory. Resolved proposals are hidden unless you ask to see them.
+
+<Aside type="note" title="Agents record decisions; only you delete">
+  An agent that verifies a proposal and approves it through the memory tools only records that decision. It never deletes a memory. Those proposals stay on the tab marked **Approved by an agent, not applied**, with an **Apply** button that asks for confirmation and then makes the deletions.
+</Aside>
 
 ### When it runs
 
@@ -65,7 +94,7 @@ When the pass isn't sure — or the call is genuinely yours to make — it says 
 | **Idle** | After a configurable quiet period — the machine tidies up while you're not using it. |
 | **Cron** | On a schedule, e.g. nightly. |
 
-Dreaming is off until you enable it, runs on the harness and model you choose, and is scoped to the project you select rather than sweeping everything at once. Settings shows per-scope counts and how many proposals are waiting on you.
+Dreaming is off until you enable it, runs on the harness and model you choose, and is scoped to the project you select rather than sweeping everything at once. Settings shows per-scope counts; the Memory screen shows how many proposals are waiting on you.
 
 ## How agents use it
 

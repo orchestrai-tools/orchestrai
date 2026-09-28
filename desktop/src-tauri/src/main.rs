@@ -7,6 +7,7 @@ use tauri::Emitter;
 use tauri::Manager;
 
 mod browser;
+mod browser_agent;
 mod browser_capture;
 mod context_menu;
 mod daemon;
@@ -147,7 +148,9 @@ fn main() {
             browser::browser_close_project,
             browser::browser_pick,
             browser::browser_pick_stop,
-            browser::browser_capture_element
+            browser::browser_capture_element,
+            browser_agent::browser_agent_call,
+            browser_agent::browser_agent_screenshot
         ])
         .plugin(tauri_plugin_dialog::init())
         .build(tauri::generate_context!())

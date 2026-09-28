@@ -13,6 +13,7 @@ import type { View } from "@/store/ui";
 import {
   loadAutomations,
   loadInboxView,
+  loadMemory,
   loadMissionControl,
   loadProjects,
   loadTaskDetail,
@@ -21,6 +22,7 @@ import {
 
 const Automations = lazy(loadAutomations);
 const InboxView = lazy(loadInboxView);
+const Memory = lazy(loadMemory);
 const MissionControl = lazy(loadMissionControl);
 const NewTaskDialog = lazy(() => import("../views/NewTaskDialog"));
 const Projects = lazy(loadProjects);
@@ -151,6 +153,8 @@ export function AppContent({
               />
             ) : view === "automations" ? (
               <Automations snapshot={snapshot} onOpenTask={onOpenTask} />
+            ) : view === "memory" ? (
+              <Memory snapshot={snapshot} onOpenTask={onOpenTask} />
             ) : (
               <LiveMissionControl onOpenTask={onOpenTask} onNewTask={onNewTask} />
             )}

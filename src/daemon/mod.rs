@@ -14,6 +14,7 @@ pub mod agents;
 pub mod attachment;
 pub mod automations;
 pub mod backlog;
+pub mod browser;
 pub mod claude_auth;
 pub mod credential_capture;
 pub mod diff;

@@ -1,6 +1,6 @@
 ---
 title: The browser
-description: Open the app you're building next to the agent building it — signed in once, scoped per project, and able to hand the agent any element you point at.
+description: Open the app you're building next to the agent building it — signed in once, scoped per project, able to hand the agent any element you point at, and one the agent can drive itself.
 sidebar:
   order: 5
   label: Browser
@@ -44,6 +44,8 @@ Each project keeps its own tabs. Open your docs site, a staging dashboard, and t
 
 Tabs come back after a restart, into the login that was already there. **Remove a project and its tabs go with it** — the pages it had open are dropped and their views closed. Your logins are not touched; those are the app's, not the project's.
 
+Pages keep their state while you move around. Switch to another tab, another task or another part of the app and come back, and each page is exactly as you left it — same scroll position, same half-filled form, no reload — with its title and back history intact.
+
 ## Point at an element, don't describe it
 
 The hardest thing to put in a prompt is a thing you're looking at. The picker turns it into context.
@@ -65,11 +67,56 @@ The agent receives the element's text, its role, its CSS selector, and the page 
 
 Picking ends on its own after one element, and any navigation cancels it. Click the button again to pick another.
 
+## Let the agent drive it
+
+Pointing is for when you know what's wrong. When the agent should find out for itself — sign up with a test account, click through the checkout it just built, read the error the page throws — it can use the browser directly, in the same tab you see.
+
+Ask for it in plain words: *"open the signup page, register a test user and tell me what breaks"*. The agent has six tools for it:
+
+| Tool | What it does |
+| --- | --- |
+| `browser_navigate` | Opens an address in the project's tab and waits for it to load |
+| `browser_snapshot` | Reads the page as a compact outline — headings, text, and every link, button and field with a short reference |
+| `browser_click` | Clicks one of those elements |
+| `browser_type` | Fills a field or picks an option, and can press Enter to submit |
+| `browser_screenshot` | Takes a picture of what the page shows |
+| `browser_console` | Reads the page's recent console messages and errors |
+
+The agent works in the project's active tab. If the Browser pane is on screen you watch it happen; if it isn't, nothing jumps in front of you — a page the agent opens loads in the background and is waiting in the tab the next time you open **Browser**.
+
+### Your own services open freely; everything else asks
+
+The browser is signed in as you, so an agent acting in it acts as you. Warpforge draws the line at your project:
+
+- **The project's own services** — every `localhost` port [Warpforge assigned](/concepts/ports/) to its services and port-forwards — are allowed without asking.
+- **Any other site** — staging, GitHub, your email — needs your yes first. The request appears in the task's chat like any other permission prompt, naming the site. **Allow** lets that one action through; **Allow always** lets the agent use that site for the rest of the task; **Deny** stops it and tells the agent not to retry.
+
+The check happens right before each action, on the address the page is actually at, so if a link or redirect takes the page to another site, the agent has to ask before it reads or touches that one. A prompt nobody answers is withdrawn after five minutes and the action doesn't run.
+
+<Aside type="caution" title="Pages are data, not instructions">
+  Everything the agent reads from a page reaches it marked as untrusted data, the same way picked elements do, so a page can't slip instructions to your agent.
+</Aside>
+
+### What it can't do
+
+The agent's clicks and keystrokes are simulated inside the page rather than made with a mouse and keyboard, and a page can tell the difference. Most apps don't care, but a few things are reserved for a real person:
+
+- File pickers, pop-up windows and new-tab links don't open. For a link that opens a new window, the agent is told to open its address directly instead.
+- Captchas, payment forms and anything else that insists on a real user gesture ignore it.
+- Content inside frames from another site can't be read or clicked.
+- One tab, one agent at a time: two agents driving the same project's browser at once will step on each other.
+
+Page screenshots are macOS only, and a tab that isn't on screen may not render one — open the Browser pane and ask again.
+
 ## When a page doesn't load
 
 A dev server that isn't up yet, a port that moved, a service that crashed on boot — the tab says **This site can't be reached** with the address it tried and a **Try again** button, rather than showing you a blank rectangle and letting you wonder.
 
 If that happens on a service link, the usual cause is an app that ignores the `PORT` it was given and binds its own default instead. [How ports work](/concepts/ports/) covers the fix.
+
+## Dialogs, menus and notifications
+
+The page is a native view sitting on top of the app, so the app makes room for its own UI instead of letting the page cover it. A dialog — settings, the push dialog, quick open — hides the page while it's open, and the page comes back exactly where it was when the dialog closes. A menu or notification that overlaps the page makes the page shrink out of its way rather than disappear, so you keep seeing the rest of it.
 
 ## Shortcuts and chrome
 
@@ -83,11 +130,12 @@ If that happens on a service link, the usual cause is an app that ignores the `P
 | **Tabs** | Favicons and page titles; the strip scrolls when they overflow |
 
 <Aside type="note" title="Scope and limits">
-  Browser needs the desktop app — it doesn't run in a web build. Element screenshots are macOS today. The agent can read a page you point at, but it cannot drive one: clicking and typing stay yours.
+  Browser needs the desktop app — it doesn't run in a web build, and the agent's browser tools only work while the app is open. Element and page screenshots are macOS today.
 </Aside>
 
 ## See also
 
 - [Working in a task](/guides/working-in-a-task/) — the other ways to get context into the chat
+- [MCP tools](/reference/mcp-tools/) — the full reference for the agent's browser tools
 - [Projects and their runtime](/guides/projects-and-runtime/) — starting the services this tab opens
 - [How ports work](/concepts/ports/) — why a service is on the port it's on

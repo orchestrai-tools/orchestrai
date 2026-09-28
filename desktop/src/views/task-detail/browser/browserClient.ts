@@ -45,15 +45,30 @@ async function call(command: string, args: Record<string, unknown>): Promise<voi
   await invoke(command, args);
 }
 
+/** The error a tab command gives when the tab has no native view yet. */
+export const NO_TAB = "no such browser tab";
+
+async function ask<T>(command: string, args: Record<string, unknown>): Promise<T> {
+  if (!IS_TAURI) throw new Error("the browser needs the desktop app");
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T>(command, args);
+}
+
 /** A tab's webview is created shown; a hide sent while it is still being
  *  created would find no view, so visibility waits for the open to land. */
 const opening = new Map<string, Promise<unknown>>();
 
 export const browser = {
   /** With `reuse`, a tab whose webview already exists keeps its page instead
-   *  of loading `url` again. */
-  open(tabId: string, url: string, bounds: BrowserBounds, reuse = false): Promise<void> {
-    const done = call("browser_open", { tabId, url, ...bounds, reuse });
+   *  of loading `url` again; with `hidden`, a new webview starts out of sight. */
+  open(
+    tabId: string,
+    url: string,
+    bounds: BrowserBounds,
+    reuse = false,
+    hidden = false,
+  ): Promise<void> {
+    const done = call("browser_open", { tabId, url, ...bounds, reuse, hidden });
     const settled = done.catch(() => {});
     opening.set(tabId, settled);
     return done;
@@ -99,6 +114,14 @@ export const browser = {
     rect: { x: number; y: number; width: number; height: number },
   ): Promise<void> {
     return call("browser_capture_element", { tabId, captureId, ...rect });
+  },
+  /** Run an agent's page call (outline, click, type, console) in the tab. */
+  agentCall(tabId: string, request: unknown, allowedOrigins: string[]): Promise<unknown> {
+    return ask("browser_agent_call", { tabId, call: request, allowedOrigins });
+  },
+  /** Screenshot the tab for an agent. */
+  agentScreenshot(tabId: string, allowedOrigins: string[]): Promise<unknown> {
+    return ask("browser_agent_screenshot", { tabId, allowedOrigins });
   },
 };
 

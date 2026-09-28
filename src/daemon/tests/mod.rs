@@ -88,6 +88,7 @@ async fn wait_for_parent(
 }
 
 mod agent_health;
+mod browser;
 mod lifecycle;
 mod quota_gate;
 mod runtime_context;

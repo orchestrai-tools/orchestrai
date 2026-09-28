@@ -17,6 +17,9 @@ pub(crate) struct PendingPermissions {
     /// can be told what already happened instead of silently rewriting it.
     /// Cleared with the task.
     resolved: HashMap<String, HashMap<String, String>>,
+    /// Requests the daemon raised itself (`user_ask.rs`), by request id: the
+    /// answer goes to this waiter instead of to an agent.
+    pub(crate) daemon_asks: HashMap<String, tokio::sync::oneshot::Sender<String>>,
 }
 
 /// Why a permission answer was refused. Answers are first-writer-wins.
@@ -89,10 +92,15 @@ impl PendingPermissions {
     /// @returns the ids of the requests that were still pending
     pub(crate) fn cleanup_task(&mut self, task_id: &str) -> Vec<String> {
         self.resolved.remove(task_id);
-        self.by_task
+        let pending: Vec<String> = self
+            .by_task
             .remove(task_id)
             .map(|requests| requests.into_keys().collect())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        for request_id in &pending {
+            self.daemon_asks.remove(request_id);
+        }
+        pending
     }
 
     pub(crate) fn has_pending(&self, task_id: &str) -> bool {
