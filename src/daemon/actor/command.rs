@@ -988,6 +988,11 @@ pub enum Command {
         reply: oneshot::Sender<Vec<wire::AgentAccountLimits>>,
         refresh: bool,
     },
+    /// Quota gate for a new run of `agent` on its active account.
+    DispatchRefusal {
+        agent: String,
+        reply: oneshot::Sender<Option<String>>,
+    },
     ListAgentSpend {
         reply: oneshot::Sender<Vec<wire::AgentSpend>>,
     },

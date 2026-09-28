@@ -267,7 +267,6 @@ impl Daemon {
         let run = self.create_run(&a, now, wire::AutomationRunTrigger::Manual);
         // An explicit click means run: no precheck, no grace check, and the
         // next scheduled occurrence does not move.
-        self.dispatch_run(&a, &run.id);
-        Ok(run)
+        Ok(self.dispatch_run(&a, &run.id).unwrap_or(run))
     }
 }

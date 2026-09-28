@@ -258,3 +258,82 @@ async fn run_now_creates_a_task_and_completes_the_run() {
 
     daemon.shutdown().await;
 }
+
+async fn exhaust(daemon: &DaemonHandle, agent: &str) {
+    daemon
+        .send(Command::AgentLimitsUpdated {
+            accounts: vec![crate::daemon::limits::gate::exhausted_row(agent)],
+        })
+        .await;
+}
+
+fn mock_agent() -> String {
+    format!(
+        "node {}",
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/mock-acp-agent-noedit.mjs"
+        )
+    )
+}
+
+/// A scheduled occurrence whose agent's account is out of quota is recorded
+/// as skipped with the reason, and no task is started.
+#[tokio::test]
+async fn scheduled_run_on_an_exhausted_account_is_skipped() {
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let daemon = Daemon::spawn(test_projects(), store);
+    let mut events = daemon.subscribe();
+    exhaust(&daemon, &mock_agent()).await;
+
+    let now = chrono::Utc::now().timestamp();
+    let mut automation = base_automation("a-quota", None);
+    automation.agent = mock_agent();
+    automation.next_run_at = Some(now - 30);
+    create(&daemon, automation).await;
+
+    tick(&daemon).await;
+    let run = wait_run(
+        &mut events,
+        "a-quota",
+        wire::AutomationRunStatus::SkippedQuota,
+    )
+    .await;
+    let error = run.error.as_deref().unwrap();
+    assert!(error.contains("out of quota"), "{error}");
+    assert!(error.contains("\"Work\""), "{error}");
+    assert!(run.task_id.is_none());
+    assert!(daemon.tasks().await.is_empty(), "no task is dispatched");
+
+    daemon.shutdown().await;
+}
+
+/// runNow answers with the skipped run itself, and the overlap guard is
+/// released so the next attempt is judged afresh.
+#[tokio::test]
+async fn run_now_on_an_exhausted_account_returns_the_skipped_run() {
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let daemon = Daemon::spawn(test_projects(), store);
+    exhaust(&daemon, &mock_agent()).await;
+
+    let mut automation = base_automation("a-quota-now", None);
+    automation.agent = mock_agent();
+    automation.next_run_at = Some(i64::MAX / 2);
+    create(&daemon, automation).await;
+
+    for _ in 0..2 {
+        let (tx, rx) = oneshot::channel();
+        daemon
+            .send(Command::AutomationRunNow {
+                id: "a-quota-now".into(),
+                reply: tx,
+            })
+            .await;
+        let run = rx.await.unwrap().expect("a refused run is still a run");
+        assert_eq!(run.status, wire::AutomationRunStatus::SkippedQuota);
+        assert!(run.error.as_deref().unwrap().contains("out of quota"));
+    }
+    assert!(daemon.tasks().await.is_empty(), "no task is dispatched");
+
+    daemon.shutdown().await;
+}

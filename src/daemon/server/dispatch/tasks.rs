@@ -51,6 +51,15 @@ pub(super) async fn task_create(
             })?;
         return Ok(json!({ "taskId": id }));
     }
+    // Only the orchestrator's spawn_agent tags a task `subagent`.
+    if tags.iter().any(|tag| tag == "subagent") {
+        if let Some(message) = handle.dispatch_refusal(&agent).await {
+            return Err(wire::RpcError {
+                code: wire::ErrorCode::AgentUnavailable,
+                message,
+            });
+        }
+    }
     // Sent as one command rather than through `handle.create_task` /
     // `queue_task`: those are the board's own entry points and carry
     // no origin, and `start` is the only thing that differed between

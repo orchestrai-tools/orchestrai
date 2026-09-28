@@ -41,6 +41,7 @@ mod acp_update;
 mod agent_health;
 mod command;
 mod config_observer;
+mod dispatch_gate;
 mod event;
 pub(crate) mod lifecycle;
 mod origin_sweep;

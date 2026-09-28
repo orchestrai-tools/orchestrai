@@ -44,6 +44,7 @@ fn parse_status(s: Option<String>) -> Option<wire::AutomationRunStatus> {
         Some("skipped_precheck") => Some(S::SkippedPrecheck),
         Some("skipped_missed") => Some(S::SkippedMissed),
         Some("skipped_running") => Some(S::SkippedRunning),
+        Some("skipped_quota") => Some(S::SkippedQuota),
         _ => None,
     }
 }

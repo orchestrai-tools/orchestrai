@@ -55,6 +55,12 @@ export const RUN_STATUS_META: Record<AutomationRunStatus, RunStatusMeta> = {
     hint: "The previous run of this automation had not finished.",
     label: "Skipped · overlap",
   },
+  skipped_quota: {
+    badge: "outline",
+    dot: "bg-muted-foreground/40",
+    hint: "The agent's account was out of quota, so no work was started.",
+    label: "Skipped · quota",
+  },
 };
 
 export function runStatusMeta(

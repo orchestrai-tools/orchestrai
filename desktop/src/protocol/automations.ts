@@ -17,7 +17,8 @@ export type AutomationRunStatus =
   | "failed"
   | "skipped_precheck"
   | "skipped_missed"
-  | "skipped_running";
+  | "skipped_running"
+  | "skipped_quota";
 
 export type AutomationRunTrigger = "scheduled" | "manual";
 

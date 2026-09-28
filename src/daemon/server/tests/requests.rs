@@ -151,3 +151,36 @@ async fn orchestrator_list_agents_scopes_parent_and_project() {
     assert_ne!(agents[0]["id"], unrelated);
     handle.shutdown().await;
 }
+
+/// spawn_agent's `task.create` is refused while the agent's account is out of
+/// quota: the orchestrator gets the reason, and no task is created.
+#[tokio::test]
+async fn subagent_create_on_an_exhausted_account_is_refused() {
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let handle = Daemon::spawn(Vec::new(), store);
+    handle
+        .send(crate::daemon::Command::AgentLimitsUpdated {
+            accounts: vec![crate::daemon::limits::gate::exhausted_row("mock-agent")],
+        })
+        .await;
+
+    let lifecycle = Arc::new(ServerLifecycle::new(wire::DaemonOwner::External));
+    let method: wire::Method = serde_json::from_value(json!({
+        "method": "task.create",
+        "params": {
+            "project": "demo",
+            "prompt": "fix it",
+            "agent": "mock-agent",
+            "tags": ["orchestrator", "subagent"],
+            "parent_task_id": "t_orchestrator",
+        }
+    }))
+    .unwrap();
+    let error = dispatch(&handle, method, &lifecycle)
+        .await
+        .expect_err("an exhausted sub-agent is refused");
+    assert_eq!(error.code, wire::ErrorCode::AgentUnavailable);
+    assert!(error.message.contains("out of quota"), "{}", error.message);
+    assert!(handle.tasks().await.is_empty(), "no task is created");
+    handle.shutdown().await;
+}

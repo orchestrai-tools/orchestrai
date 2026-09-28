@@ -4,6 +4,7 @@ pub mod claude_usage;
 pub mod codex;
 pub mod codex_auth;
 pub mod codex_usage;
+pub mod gate;
 pub mod opencode;
 pub mod poll;
 pub mod shared;

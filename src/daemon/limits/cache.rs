@@ -94,6 +94,10 @@ fn codex_account_email(account: &StoredAccount) -> Option<String> {
 
 /// Write the snapshot. Failures are not worth interrupting a poll over.
 pub fn save(limits: &[AgentAccountLimits], accounts: &[StoredAccount]) {
+    // Test daemons must never overwrite the user's real snapshot.
+    if cfg!(test) {
+        return;
+    }
     let entries: Vec<CachedLimits> = limits
         .iter()
         .map(|l| CachedLimits {
@@ -109,6 +113,9 @@ pub fn save(limits: &[AgentAccountLimits], accounts: &[StoredAccount]) {
 /// Last known snapshot, minus anything we cannot re-confirm belongs to the
 /// account it is filed under.
 pub fn load(accounts: &[StoredAccount]) -> Vec<AgentAccountLimits> {
+    if cfg!(test) {
+        return Vec::new();
+    }
     load_from(&cache_path(), accounts)
 }
 

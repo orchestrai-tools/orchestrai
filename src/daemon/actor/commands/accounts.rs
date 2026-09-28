@@ -29,6 +29,11 @@ impl Daemon {
                     let _ = reply.send(self.agent_limits.clone());
                 }
             }
+            Command::DispatchRefusal { agent, reply } => {
+                let refusal =
+                    self.dispatch_refusal(&agent, crate::daemon::accounts::SpawnAccount::Active);
+                let _ = reply.send(refusal);
+            }
             Command::AgentLimitsUpdated { accounts } => {
                 let merged =
                     crate::daemon::limits::poll::merge_snapshots(&self.agent_limits, accounts);

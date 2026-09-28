@@ -22,6 +22,10 @@ impl Daemon {
         let parent_title = parent.title.clone();
         let worktree = parent.worktree.clone();
         let project = run.project.clone();
+        if let Some(reason) = self.workflow_stage_refusal(&run, stage) {
+            self.workflow_park_on_quota(parent_id, run, stage, &reason);
+            return;
+        }
 
         if stage == StageKind::Review {
             run.round += 1;

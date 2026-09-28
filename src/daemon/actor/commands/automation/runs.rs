@@ -231,17 +231,30 @@ impl Daemon {
     /// The dispatch goes through the command channel and its outcome lands back
     /// as [`Command::AutomationRunLinked`] — the actor must never await its own
     /// handlers here, that would recurse through the whole command chain.
-    pub(super) fn dispatch_run(&mut self, a: &wire::Automation, run_id: &str) {
+    /// Returns the closed run when the quota gate refused it.
+    pub(super) fn dispatch_run(
+        &mut self,
+        a: &wire::Automation,
+        run_id: &str,
+    ) -> Option<wire::AutomationRun> {
         let Some(run) = self.load_run(run_id) else {
             self.automation_active.remove(&a.id);
             self.automation_run_owner.remove(run_id);
-            return;
+            return None;
         };
         let reused = a.reuse_session
             && a.last_task_id
                 .as_deref()
                 .is_some_and(|task_id| self.tasks.contains_key(task_id));
         let task_id = a.last_task_id.clone().unwrap_or_default();
+        let account = if reused {
+            self.spawn_account(&task_id)
+        } else {
+            crate::daemon::accounts::SpawnAccount::Active
+        };
+        if let Some(reason) = self.dispatch_refusal(&a.agent, account) {
+            return Some(self.skip_run_for_quota(a, run, reason));
+        }
         let prompt = marked_prompt(a, run.run_number);
         let a = Box::new(a.clone());
         let run_id = run_id.to_string();
@@ -307,6 +320,7 @@ impl Daemon {
                 })
                 .await;
         });
+        None
     }
 
     /// The run's task was deleted: nothing will ever end its turn, so fail the

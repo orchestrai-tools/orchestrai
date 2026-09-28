@@ -19,7 +19,7 @@ use crate::daemon::actor::ConfigObserver;
 use crate::daemon::actor::PendingPermissions;
 use crate::daemon::actor::{Command, Daemon, DaemonHandle, Event};
 use crate::daemon::store::Store;
-use crate::policies::builtins::{BlastRadiusPolicy, SpawnBoundsPolicy};
+use crate::policies::builtins::BlastRadiusPolicy;
 use crate::policies::registry::PolicyRegistry;
 
 impl Daemon {
@@ -361,15 +361,18 @@ impl Daemon {
             }
         });
 
-        // Initial limits refresh (off-actor) — accounts are known at spawn.
-        let init_accounts = daemon.accounts.clone();
-        let init_tx = handle.cmd_tx.clone();
-        tokio::spawn(async move {
-            let fetched = crate::daemon::limits::poll::fetch_all(init_accounts).await;
-            let _ = init_tx
-                .send(Command::AgentLimitsUpdated { accounts: fetched })
-                .await;
-        });
+        // Initial limits refresh (off-actor); test daemons skip the network.
+        #[cfg(not(test))]
+        {
+            let init_accounts = daemon.accounts.clone();
+            let init_tx = handle.cmd_tx.clone();
+            tokio::spawn(async move {
+                let fetched = crate::daemon::limits::poll::fetch_all(init_accounts).await;
+                let _ = init_tx
+                    .send(Command::AgentLimitsUpdated { accounts: fetched })
+                    .await;
+            });
+        }
 
         tokio::spawn(daemon.run(cmd_rx, agent_rx, service_rx, pf_rx, acp_rx, policy_rx));
 
@@ -451,9 +454,6 @@ fn git_worktree_list(repo: &std::path::Path) -> Option<String> {
 pub(crate) fn default_policies() -> PolicyRegistry {
     let mut reg = PolicyRegistry::new();
     reg.push(Box::new(BlastRadiusPolicy::default()));
-    reg.push(Box::new(SpawnBoundsPolicy::new(6)));
-    // CostBudget disabled by default (max=∞). Enable via config when needed.
-    // WorktreeGuard enabled per-task in start_session, not globally.
     reg
 }
 

@@ -80,6 +80,8 @@ pub enum AutomationRunStatus {
     /// The previous run of this same automation had not finished. Reported
     /// honestly rather than folded into `SkippedMissed`.
     SkippedRunning,
+    /// The account the run would start on was known to be out of quota.
+    SkippedQuota,
 }
 
 impl AutomationRunStatus {
@@ -98,6 +100,7 @@ impl AutomationRunStatus {
             Self::SkippedPrecheck => "skipped_precheck",
             Self::SkippedMissed => "skipped_missed",
             Self::SkippedRunning => "skipped_running",
+            Self::SkippedQuota => "skipped_quota",
         }
     }
 }

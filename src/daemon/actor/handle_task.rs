@@ -103,6 +103,20 @@ impl DaemonHandle {
         rx.await.unwrap_or_default()
     }
 
+    /// Why a new run of `agent` must not start right now, if it must.
+    ///
+    /// @param agent the agent id or display name about to run
+    /// @returns the quota refusal reason, or `None` to allow the run
+    pub async fn dispatch_refusal(&self, agent: &str) -> Option<String> {
+        let (tx, rx) = oneshot::channel();
+        self.send(Command::DispatchRefusal {
+            agent: agent.to_string(),
+            reply: tx,
+        })
+        .await;
+        rx.await.ok().flatten()
+    }
+
     pub async fn list_agent_spend(&self) -> Vec<wire::AgentSpend> {
         let (tx, rx) = oneshot::channel();
         self.send(Command::ListAgentSpend { reply: tx }).await;

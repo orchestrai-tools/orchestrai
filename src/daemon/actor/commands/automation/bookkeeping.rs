@@ -98,6 +98,24 @@ impl Daemon {
         self.record_last_run(a, &run);
     }
 
+    /// Close a pending run whose account is out of quota: it never started,
+    /// so it is a skip, and the overlap guard is released.
+    pub(super) fn skip_run_for_quota(
+        &mut self,
+        a: &wire::Automation,
+        mut run: wire::AutomationRun,
+        reason: String,
+    ) -> wire::AutomationRun {
+        run.status = wire::AutomationRunStatus::SkippedQuota;
+        run.finished_at = Some(now_secs());
+        run.error = Some(reason);
+        self.persist_run(&run);
+        self.record_last_run(a, &run);
+        self.automation_active.remove(&a.id);
+        self.automation_run_owner.remove(&run.id);
+        run
+    }
+
     pub(super) fn advance_next_run(&mut self, a: &mut wire::Automation, now: i64) {
         let next = sched::next_occurrence(&a.trigger, &a.timezone, now);
         a.next_run_at = next;
