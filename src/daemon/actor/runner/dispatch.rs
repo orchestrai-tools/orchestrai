@@ -31,6 +31,28 @@ pub(super) struct Choice {
     pub workflow: String,
     pub agent: String,
     pub model: Option<String>,
+    /// `worktree` or `checkout`.
+    pub location: wire::RunLocation,
+}
+
+/// What one dispatch pass did.
+#[derive(Default)]
+struct Pass {
+    started: bool,
+    /// Whether any entry changed.
+    touched: bool,
+    /// The checkout's refusal, when it alone kept every queued entry back.
+    hold: Option<String>,
+}
+
+impl Pass {
+    fn started() -> Self {
+        Self {
+            started: true,
+            touched: true,
+            hold: None,
+        }
+    }
 }
 
 impl Daemon {
@@ -52,6 +74,18 @@ impl Daemon {
                 }
                 wire::RunnerEntryState::Delivered => slots.open_prs += 1,
             }
+        }
+        let preparing = self.runner.leases.get(project).is_some_and(|lease| {
+            lease.state == wire::CheckoutLeaseState::Preparing
+                && self
+                    .runner
+                    .entries
+                    .get(&lease.item_id)
+                    .is_some_and(|e| e.state == wire::RunnerEntryState::Queued)
+        });
+        if preparing {
+            slots.in_flight += 1;
+            slots.dispatched_today += 1;
         }
         slots
     }
@@ -114,7 +148,6 @@ impl Daemon {
             let settings = self.runner_settings(project);
             let has_queued =
                 !logic::dispatch_order(self.runner.entries.values(), project).is_empty();
-            let leased = self.runner.leases.contains_key(project);
             let mut hold =
                 logic::slot_refusal(&settings, self.runner_slots(project)).filter(|_| has_queued);
             if hold.is_none() && has_queued && settings.min_free_gb > 0 {
@@ -126,17 +159,14 @@ impl Daemon {
                     ));
                 }
             }
-            let checkout = settings.run_location == wire::RunLocation::Checkout;
-            if hold.is_none() && has_queued && checkout && !leased {
-                hold = self.runner_checkout_refusal(project);
-            }
-            changed |= self.runner_set_hold(project, hold.clone());
-            if hold.is_some() || !has_queued || leased {
+            if hold.is_some() || !has_queued {
+                changed |= self.runner_set_hold(project, hold);
                 break;
             }
-            let (started, touched) = self.runner_start_next(project, &settings).await;
-            changed |= touched;
-            if !started {
+            let pass = self.runner_start_next(project, &settings).await;
+            changed |= pass.touched;
+            if !pass.started {
+                changed |= self.runner_set_hold(project, pass.hold);
                 break;
             }
         }
@@ -145,34 +175,61 @@ impl Daemon {
         }
     }
 
-    /// Start the first queued entry whose item and agents allow it. Returns
-    /// whether one started and whether any entry changed. In the project
-    /// checkout, "started" means the checkout is being prepared for it.
-    async fn runner_start_next(
-        &mut self,
-        project: &str,
-        settings: &wire::RunnerSettings,
-    ) -> (bool, bool) {
+    /// Start the first queued entry whose item, agents and run location
+    /// allow it. A checkout entry the checkout gates refuse keeps the reason
+    /// on its row and is skipped, so worktree entries behind it still start.
+    async fn runner_start_next(&mut self, project: &str, settings: &wire::RunnerSettings) -> Pass {
         let order: Vec<String> = logic::dispatch_order(self.runner.entries.values(), project)
             .into_iter()
             .map(|e| e.item_id.clone())
             .collect();
         let path = self.project_path(project).unwrap_or_default();
-        let mut touched = false;
+        let preparing = self
+            .runner
+            .leases
+            .get(project)
+            .is_some_and(|l| l.state == wire::CheckoutLeaseState::Preparing);
+        let mut pass = Pass::default();
+        let mut only_checkout_refused = true;
+        let mut checkout_gate: Option<Option<String>> = None;
         for item_id in order {
-            match self.runner_pick(project, &item_id, settings, &path) {
-                Ok(choice) if settings.run_location == wire::RunLocation::Checkout => {
+            let choice = match self.runner_pick(project, &item_id, settings, &path) {
+                Ok(choice) => choice,
+                Err(changed) => {
+                    pass.touched |= changed;
+                    only_checkout_refused = false;
+                    continue;
+                }
+            };
+            if choice.location == wire::RunLocation::Worktree {
+                // Preparing the checkout fetches origin in the same repository
+                // as a new worktree does; concurrent fetches race on the
+                // remote-tracking ref. The switch dispatches again when done.
+                if preparing {
+                    pass.hold = None;
+                    return pass;
+                }
+                self.runner_start(choice, None).await;
+                return Pass::started();
+            }
+            let refusal = checkout_gate
+                .get_or_insert_with(|| self.runner_checkout_refusal(project))
+                .clone();
+            match refusal {
+                None => {
                     self.runner_checkout_begin(&choice.entry);
-                    return (true, true);
+                    return Pass::started();
                 }
-                Ok(choice) => {
-                    self.runner_start(choice, None).await;
-                    return (true, true);
+                Some(reason) => {
+                    pass.touched |= self.runner_set_waiting(&item_id, Some(reason.clone()));
+                    pass.hold.get_or_insert(reason);
                 }
-                Err(changed) => touched |= changed,
             }
         }
-        (false, touched)
+        if !only_checkout_refused {
+            pass.hold = None;
+        }
+        pass
     }
 
     /// What queued `item_id` would run with, or whether judging it changed
@@ -225,12 +282,14 @@ impl Daemon {
         if let Some(reason) = self.runner_agent_refusal(&spec, &agent, settings.headroom_pct) {
             return Err(self.runner_set_waiting(item_id, Some(reason)));
         }
+        let location = logic::resolve_location(settings.run_location, entry.run_location, &spec);
         Ok(Choice {
             entry,
             item,
             workflow,
             agent,
             model,
+            location,
         })
     }
 
@@ -248,7 +307,12 @@ impl Daemon {
             workflow,
             agent,
             model,
+            location: _,
         } = choice;
+        let location = match checkout {
+            Some(_) => wire::RunLocation::Checkout,
+            None => wire::RunLocation::Worktree,
+        };
         let now = now_secs();
         let project = entry.project.clone();
         entry.number = item.number;
@@ -277,6 +341,7 @@ impl Daemon {
             detail: None,
             pr_url: None,
             pr_number: None,
+            run_location: Some(location),
         };
         self.runner.dispatches.push((project.clone(), now));
         let (preset_id, base) = checkout.unzip();
@@ -309,6 +374,7 @@ impl Daemon {
                 entry.state = wire::RunnerEntryState::Running;
                 entry.task_id = Some(task_id.clone());
                 entry.run_id = Some(run.id.clone());
+                entry.resolved_location = Some(location);
                 entry.waiting_reason = None;
                 self.runner_put_entry(entry);
                 self.runner_put_run(run, false);

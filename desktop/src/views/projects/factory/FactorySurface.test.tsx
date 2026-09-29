@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -140,23 +140,48 @@ describe("FactorySurface", () => {
     expect(stop).toHaveBeenCalledWith("warpforge");
   });
 
-  it("saves the run location and pins one run at a time in the checkout", async () => {
+  it("saves auto as the run location and keeps the concurrency editable", async () => {
     vi.spyOn(daemon, "workflowList").mockResolvedValue([]);
     const update = vi.spyOn(daemon, "runnerUpdateSettings").mockResolvedValue(status);
     renderSurface();
     await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
-    await userEvent.click(screen.getByRole("radio", { name: /Project checkout/ }));
-    expect(
-      screen.getByText("One item at a time; your checkout is used while it runs."),
-    ).toBeTruthy();
-    expect(
-      (screen.getByRole("spinbutton", { name: "Runs at once" }) as HTMLInputElement).value,
-    ).toBe("1");
+    await userEvent.click(screen.getByRole("radio", { name: /^Auto/ }));
+    expect(screen.getByText(/One item at a time in the checkout/)).toBeTruthy();
+    const runsAtOnce = screen.getByRole("spinbutton", { name: "Runs at once" });
+    expect(runsAtOnce).not.toBeDisabled();
+    fireEvent.change(runsAtOnce, { target: { value: "2" } });
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(update).toHaveBeenCalledWith(
       "warpforge",
-      expect.objectContaining({ runLocation: "checkout" }),
+      expect.objectContaining({ maxConcurrent: 2, runLocation: "auto" }),
     );
+  });
+
+  it("changes where a queued item runs and shows where a running one runs", async () => {
+    const mixed = normalizeRunnerStatus("warpforge", {
+      entries: [
+        entry({ itemId: "b-2", number: 2, runLocation: "checkout", title: "Queued" }),
+        entry({
+          itemId: "b-3",
+          number: 3,
+          resolvedLocation: "worktree",
+          state: "running",
+          taskId: "t-3",
+          title: "Running",
+        }),
+      ],
+      settings: { project: "warpforge", running: true },
+    });
+    vi.spyOn(daemon, "runnerStatus").mockResolvedValue(mixed);
+    const move = vi.spyOn(daemon, "runnerSetEntryLocation").mockResolvedValue(mixed);
+    renderSurface();
+    const select = await screen.findByRole("combobox", { name: "Run location for #2" });
+    expect((select as HTMLSelectElement).value).toBe("checkout");
+    expect(screen.getByRole("option", { name: "Default (Worktree)" })).toBeTruthy();
+    expect(screen.getByText("Worktree", { selector: "span" })).toBeTruthy();
+
+    await userEvent.selectOptions(select, "default");
+    expect(move).toHaveBeenCalledWith("warpforge", "b-2", "default");
   });
 
   it("keeps the newest runs first when one is updated or added", () => {

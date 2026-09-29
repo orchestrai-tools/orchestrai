@@ -31,10 +31,20 @@ pub(super) async fn dispatch(
                 item_ids.push(item["id"].clone());
             }
             let origin = Some(parent_task).filter(|t| !t.is_empty());
+            let location = match args.get("run_location").and_then(Value::as_str) {
+                None => "default",
+                Some(value @ ("default" | "worktree" | "checkout")) => value,
+                Some(other) => {
+                    return Err(anyhow!(
+                        "run_location must be default, worktree or checkout, not '{other}'"
+                    ))
+                }
+            };
             let status = client
                 .request(
                     "runner.enqueue",
-                    json!({ "project": proj, "item_ids": item_ids, "origin_task": origin }),
+                    json!({ "project": proj, "item_ids": item_ids, "origin_task": origin,
+                            "run_location": location }),
                 )
                 .await?;
             Ok(format!("Queued.\n{}", describe(&status)))
@@ -83,8 +93,13 @@ fn describe(status: &Value) -> String {
         lines.push("The queue is empty.".to_string());
     }
     for entry in entries {
+        let location = entry["resolvedLocation"]
+            .as_str()
+            .or_else(|| entry["runLocation"].as_str().filter(|l| *l != "default"))
+            .map(|l| format!(" · {l}"))
+            .unwrap_or_default();
         let mut line = format!(
-            "#{} [{}] {}",
+            "#{} [{}{location}] {}",
             entry["number"],
             entry["state"].as_str().unwrap_or("?"),
             entry["title"].as_str().unwrap_or_default()

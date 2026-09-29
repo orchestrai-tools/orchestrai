@@ -39,6 +39,20 @@ pub enum RunLocation {
     /// The project checkout itself, one item at a time, so the running dev
     /// services serve the change and a verify stage can test it.
     Checkout,
+    /// The project checkout when the item's workflow has a verify stage, a
+    /// worktree otherwise. A project setting only; never a resolved location.
+    Auto,
+}
+
+/// Where one queued item runs, overriding the project's [`RunLocation`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntryRunLocation {
+    /// Follow the project setting.
+    #[default]
+    Default,
+    Worktree,
+    Checkout,
 }
 
 /// How one project's runner works. Stored per project; a project that never
@@ -97,15 +111,6 @@ impl RunnerSettings {
             min_free_gb: DEFAULT_RUNNER_MIN_FREE_GB,
             run_location: RunLocation::Worktree,
             updated_at: 0,
-        }
-    }
-
-    /// Items that may run at once: always one in the project checkout.
-    /// @returns the concurrency the runner applies
-    pub fn effective_max_concurrent(&self) -> u32 {
-        match self.run_location {
-            RunLocation::Worktree => self.max_concurrent,
-            RunLocation::Checkout => 1,
         }
     }
 }
@@ -172,6 +177,11 @@ pub struct RunnerEntry {
     pub agent: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
+    #[serde(default)]
+    pub run_location: EntryRunLocation,
+    /// Where the running attempt runs, set at dispatch: never `auto`.
+    #[serde(default)]
+    pub resolved_location: Option<RunLocation>,
     /// The pipeline task, once dispatched.
     #[serde(default)]
     pub task_id: Option<String>,
@@ -264,6 +274,10 @@ pub struct ItemRun {
     pub pr_url: Option<String>,
     #[serde(default)]
     pub pr_number: Option<u64>,
+    /// Where the attempt ran: `worktree` or `checkout`; `None` for rows
+    /// written before it was recorded.
+    #[serde(default)]
+    pub run_location: Option<RunLocation>,
 }
 
 /// Where the Factory's hold on the project checkout is.

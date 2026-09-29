@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -347,7 +347,7 @@ describe("BacklogView", () => {
   });
 
   it("runs one item or a selection in the Factory", async () => {
-    const onRunInFactory = vi.fn<(items: WorkItem[]) => void>();
+    const onRunInFactory = vi.fn<(items: WorkItem[], onQueued?: () => void) => void>();
     renderBacklog({ onRunInFactory });
     await vi.waitFor(() => expect(rowTitles()).toHaveLength(PAGE_SIZE));
     const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -359,10 +359,12 @@ describe("BacklogView", () => {
     await user.click(screen.getByRole("checkbox", { name: "Select Issue 67" }));
     expect(screen.getByText("2 selected")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Run selected in Factory" }));
-    expect(onRunInFactory).toHaveBeenLastCalledWith([
-      expect.objectContaining({ id: "b-69" }),
-      expect.objectContaining({ id: "b-67" }),
-    ]);
+    expect(onRunInFactory).toHaveBeenLastCalledWith(
+      [expect.objectContaining({ id: "b-69" }), expect.objectContaining({ id: "b-67" })],
+      expect.any(Function),
+    );
+    expect(screen.getByText("2 selected")).toBeTruthy();
+    act(() => onRunInFactory.mock.lastCall![1]!());
     expect(screen.queryByText("2 selected")).toBeNull();
   });
 

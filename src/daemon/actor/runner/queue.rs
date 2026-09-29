@@ -15,6 +15,7 @@ pub(super) struct Overrides {
     pub workflow: Option<String>,
     pub agent: Option<String>,
     pub model: Option<String>,
+    pub run_location: wire::EntryRunLocation,
 }
 
 fn non_empty(value: Option<String>) -> Option<String> {
@@ -87,6 +88,8 @@ impl Daemon {
                 workflow: non_empty(overrides.workflow.clone()),
                 agent: non_empty(overrides.agent.clone()),
                 model: non_empty(overrides.model.clone()),
+                run_location: overrides.run_location,
+                resolved_location: None,
                 task_id: None,
                 run_id: None,
                 pr_url: None,
@@ -121,6 +124,36 @@ impl Daemon {
         }
         self.runner_drop_entry(item_id);
         self.runner_emit(project);
+        Ok(())
+    }
+
+    pub(super) fn runner_set_location(
+        &mut self,
+        project: &str,
+        item_id: &str,
+        run_location: wire::EntryRunLocation,
+    ) -> Result<(), String> {
+        let mut entry = self
+            .runner
+            .entries
+            .get(item_id)
+            .filter(|e| e.project == project)
+            .cloned()
+            .ok_or_else(|| "that item is not in the Factory queue".to_string())?;
+        let preparing = self
+            .runner
+            .leases
+            .get(project)
+            .is_some_and(|l| l.item_id == item_id);
+        if entry.state != wire::RunnerEntryState::Queued || preparing {
+            return Err("that item has already started; its run location is fixed".to_string());
+        }
+        if entry.run_location != run_location {
+            entry.run_location = run_location;
+            entry.waiting_reason = None;
+            self.runner_put_entry(entry);
+            self.runner_emit(project);
+        }
         Ok(())
     }
 

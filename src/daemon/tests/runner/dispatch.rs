@@ -155,6 +155,7 @@ async fn a_runner_task_cannot_queue_and_done_items_are_refused() {
         workflow: None,
         agent: None,
         model: None,
+        run_location: Default::default(),
         origin_task: Some(task_id),
         reply,
     })
@@ -180,6 +181,7 @@ async fn a_runner_task_cannot_queue_and_done_items_are_refused() {
         workflow: None,
         agent: None,
         model: None,
+        run_location: Default::default(),
         origin_task: None,
         reply,
     })

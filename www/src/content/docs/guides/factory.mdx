@@ -21,7 +21,9 @@ Open a project's **Backlog**, then:
 - **One item:** hover a row and press the Factory button, or open the item and press **Run in Factory**.
 - **Several:** tick the checkboxes on the left of the rows and press **Run selected in Factory**.
 
-Queued items appear on the project's **Factory** tab. They start in backlog priority order; within one priority, use the arrows to change the order, or remove an item that has not started yet.
+Either way, the Factory asks where the items run: **Project default** (your [Run location](#run-location) setting — the choice names what it means for the current workflow), **Worktree** or **Project checkout**. One choice applies to every selected item; if you cancel, your selection stays. If the workflow verifies the running app and the items would run in a worktree, the dialog warns you; see [Verify needs the checkout](#verify-needs-the-checkout).
+
+Queued items appear on the project's **Factory** tab. They start in backlog priority order; within one priority, use the arrows to change the order, change where an item runs with the location menu on its row, or remove an item that has not started yet. A running item shows where it runs.
 
 The Factory is **paused** until you start it. Press **Start** on the Factory tab, or **Start** in the notice that appears when you queue something.
 
@@ -46,10 +48,10 @@ Press **Settings** on the Factory tab.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| **Run location** | *Worktree* | Where items run: a fresh worktree each, or your project checkout. See [Run location](#run-location). |
+| **Run location** | *Worktree* | Where items run unless you choose otherwise when you queue them: a fresh worktree each, your project checkout, or *Auto*. See [Run location](#run-location). |
 | **Workflow** | *review-loop* | The pipeline every item runs through. Any workflow in the project works, including your own. |
 | **Lead agent** and **Model** | first enabled agent | Every stage the workflow does not pin to its own agent runs on this one. |
-| **Runs at once** | 1 | How many items run at the same time. Always 1 in the project checkout. |
+| **Runs at once** | 1 | How many items run at the same time. Only one of them runs in the project checkout. |
 | **Open draft PRs** | 3 | New items wait while this many Factory pull requests are open. |
 | **Items per day** | 10 | Items started in any 24 hours. |
 | **Quota headroom** | 80% | A new item waits while any quota window of an agent it needs is above this. |
@@ -59,17 +61,35 @@ Press **Settings** on the Factory tab.
 
 ## Run location
 
+Every item runs in one of two places. The **Run location** setting is the default; you can choose differently for each item when you queue it, and change it on the item's row until it starts.
+
 | | **Worktree** (default) | **Project checkout** |
 | --- | --- | --- |
 | Where an item runs | A fresh worktree of its own | Your project checkout, switched to a new task branch |
-| Items at once | Up to **Runs at once** | One |
+| Items at once | Up to **Runs at once** | One, with worktree items running beside it |
 | Verification of the running app | Not possible — your dev services serve the checkout, not the worktree | Works — the running services serve the item's branch |
 | Your checkout while it runs | Untouched | In use by the Factory |
 | Disk | A full checkout per item | Nothing extra |
 
+The setting has a third value, **Auto**: an item whose workflow has a `verify` stage runs in the project checkout, and every other item gets a worktree.
+
+### A queue with both
+
+Worktree and checkout items share one queue and one **Runs at once** limit, and start in queue order:
+
+- **Only one item runs in the project checkout at a time.** The next checkout item waits on its row until the checkout is given back.
+- **Worktree items never wait for the checkout.** When a checkout item cannot start — your checkout has uncommitted changes, another task is running in it, the backlog is stored in YAML, or another item is using it — its row says why and the Factory starts the next item that can run. The Factory tab shows a reason for the whole queue only when nothing at all can start.
+- A worktree item waits a moment while the checkout is being switched, then starts.
+
+### Verify needs the checkout
+
+Your dev services serve the project checkout, so a `verify` stage can only test an item that runs there. In a worktree, a workflow whose verify stage is required stops at that stage and waits for you in **Needs you**. When you queue such an item into a worktree, the dialog says *This workflow verifies in the browser, which needs Project checkout*. *Auto* puts these items in the checkout for you; if you choose **Worktree** yourself, the Factory keeps your choice.
+
+### Running in the project checkout
+
 Choose **Project checkout** when your workflow has a `verify` stage, or when a worktree per item costs too much disk. For each item the Factory:
 
-1. **Checks the checkout first.** It does not start while the checkout has uncommitted changes or untracked files, is in the middle of a merge or rebase, or another task is running in it. The Factory tab says why it waits, and it tries again every minute and whenever you press **Start**.
+1. **Checks the checkout first.** It does not start while the checkout has uncommitted changes or untracked files, is in the middle of a merge or rebase, or another task is running in it. The item's row says why it waits, and the Factory tries again every minute, whenever you press **Start**, and when you queue an item or change where one runs.
 2. **Switches to a task branch.** It remembers the branch you were on, fetches origin and creates the task's branch from origin's default branch. Your dev services keep running and pick up the change the way they always do (hot reload). The Factory does not restart them; a verify agent can restart one with its runtime tools when the app needs it.
 3. **Delivers and switches back.** The draft pull request is made from the checkout exactly as in a worktree, and then the checkout goes back to the branch you were on. A task branch with no commits of its own is deleted; one with commits stays.
 
@@ -77,13 +97,13 @@ Choose **Project checkout** when your workflow has a `verify` stage, or when a w
   Leave the checkout alone while an item runs there: an edit you make ends up in its pull request.
 </Aside>
 
-### What the Factory never does to your checkout
+#### What the Factory never does to your checkout
 
 - It never stashes, resets, cleans or discards anything. It switches branches only when the working tree is clean.
-- If a run ends with changes left uncommitted — a failed or stopped run, for example — the Factory leaves the checkout on the task branch with the changes in place, pauses, and says so on the Factory tab and in **Needs you**: *The Factory left the checkout on warpforge/task/… because it has uncommitted changes — commit, stash or discard them, then start the Factory again.* Once the checkout is clean, press **Start**, and it switches back. If you already switched branches yourself, it leaves your choice alone.
+- If a run ends with changes left uncommitted — a failed or stopped run, for example — the Factory leaves the checkout on the task branch with the changes in place, pauses — worktree items included — and says so on the Factory tab and in **Needs you**: *The Factory left the checkout on warpforge/task/… because it has uncommitted changes — commit, stash or discard them, then start the Factory again.* Once the checkout is clean, press **Start**, and it switches back. If you already switched branches yourself, it leaves your choice alone.
 - It remembers where to return the checkout across a restart of the app, and picks up where it left off.
 
-A YAML backlog lives inside the checkout the Factory switches, so project checkout mode needs the backlog stored in the app.
+A YAML backlog lives inside the checkout the Factory switches, so items run in the project checkout only when the backlog is stored in the app. Worktree items are not affected.
 
 ## Limits and costs
 

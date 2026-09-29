@@ -6,8 +6,15 @@ use super::*;
 
 /// A project whose workflow is committed on origin's `main` and whose
 /// checkout sits on the user's own branch `feature/mine`, one commit ahead.
-async fn checkout_repo(workflow: &str) -> Repo {
+pub(super) async fn checkout_repo(workflow: &str) -> Repo {
     let repo = factory_repo(workflow).await;
+    publish_and_branch(&repo).await;
+    repo
+}
+
+/// Commit and push everything in the checkout to origin's `main`, then put
+/// the checkout on `feature/mine`, one commit ahead.
+pub(super) async fn publish_and_branch(repo: &Repo) {
     let work = repo.work.as_path();
     git(work, &["add", "."]).await;
     git(work, &["commit", "-q", "-m", "workflow"]).await;
@@ -16,10 +23,9 @@ async fn checkout_repo(workflow: &str) -> Repo {
     std::fs::write(work.join("mine.txt"), "mine\n").unwrap();
     git(work, &["add", "."]).await;
     git(work, &["commit", "-q", "-m", "mine"]).await;
-    repo
 }
 
-fn branch(work: &Path) -> String {
+pub(super) fn branch(work: &Path) -> String {
     let out = std::process::Command::new("git")
         .arg("-C")
         .arg(work)
@@ -37,7 +43,7 @@ fn in_checkout(agent: &str) -> wire::RunnerSettingsPatch {
     }
 }
 
-async fn task(daemon: &DaemonHandle, id: &str) -> Task {
+pub(super) async fn task(daemon: &DaemonHandle, id: &str) -> Task {
     daemon
         .tasks()
         .await
@@ -66,8 +72,7 @@ async fn a_checkout_run_delivers_and_returns_to_the_original_branch() {
     let opened = fake_opener(&daemon).await;
     let item = create_item(&daemon, "checkout change", "high").await;
     enqueue(&daemon, &[&item]).await;
-    let started = settings(&daemon, in_checkout(&writing_agent())).await;
-    assert_eq!(started.settings.effective_max_concurrent(), 1);
+    settings(&daemon, in_checkout(&writing_agent())).await;
 
     let delivered = wait_run(&mut events, "delivered", |run| {
         run.item_id == item.id && run.outcome == wire::ItemRunOutcome::Delivered

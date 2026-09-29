@@ -38,6 +38,7 @@ pub(super) async fn runner(
             workflow,
             agent,
             model,
+            run_location,
             origin_task,
         } => {
             ask(handle, |reply| RunnerCommand::Enqueue {
@@ -46,7 +47,21 @@ pub(super) async fn runner(
                 workflow,
                 agent,
                 model,
+                run_location,
                 origin_task,
+                reply,
+            })
+            .await
+        }
+        wire::Method::RunnerSetEntryLocation {
+            project,
+            item_id,
+            run_location,
+        } => {
+            ask(handle, |reply| RunnerCommand::SetLocation {
+                project,
+                item_id,
+                run_location,
                 reply,
             })
             .await

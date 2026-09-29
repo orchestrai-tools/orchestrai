@@ -47,7 +47,7 @@ pub(super) async fn dispatch(
         AppQuit {} => system::app_quit(handle, lifecycle).await,
         StateSubscribe { .. } => system::state_subscribe().await,
         AutomationList { .. } | AutomationShow { .. } | AutomationCreate { .. } | AutomationUpdate { .. } | AutomationDelete { .. } | AutomationRunNow { .. } | AutomationRuns { .. } => automations::automations(handle, method).await,
-        RunnerStatus { .. } | RunnerEnqueue { .. } | RunnerDequeue { .. } | RunnerReorder { .. } | RunnerUpdateSettings { .. } | RunnerStop { .. } | RunnerRuns { .. } => runner::runner(handle, method).await,
+        RunnerStatus { .. } | RunnerEnqueue { .. } | RunnerSetEntryLocation { .. } | RunnerDequeue { .. } | RunnerReorder { .. } | RunnerUpdateSettings { .. } | RunnerStop { .. } | RunnerRuns { .. } => runner::runner(handle, method).await,
         RuntimeStopAll {} => runtime::runtime_stop_all(handle).await,
         LspStart { task_id, language, project, } => lsp::lsp_start(handle, task_id, language, project).await,
         LspSend { server_id, payload } => lsp::lsp_send(handle, server_id, payload).await,

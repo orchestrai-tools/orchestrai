@@ -54,6 +54,8 @@ pub(super) fn init(conn: &Connection) -> Result<()> {
         );
         "#,
     )?;
+    // Migration: where each attempt ran (ADR 0023, per-item run location).
+    let _ = conn.execute("ALTER TABLE item_runs ADD COLUMN run_location TEXT", []);
     Ok(())
 }
 
@@ -69,9 +71,19 @@ fn parse_outcome(s: &str) -> wire::ItemRunOutcome {
         .unwrap_or(wire::ItemRunOutcome::Failed)
 }
 
+fn location_str(location: wire::RunLocation) -> Option<String> {
+    serde_json::to_value(location)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+}
+
+fn parse_location(s: Option<String>) -> Option<wire::RunLocation> {
+    serde_json::from_value(serde_json::Value::String(s?)).ok()
+}
+
 const RUN_COLUMNS: &str = "id, project, item_id, item_number, item_title, task_id, workflow, \
      agent, model, enqueued_at, dispatched_at, finished_at, pr_opened_at, merged_at, closed_at, \
-     rounds, fix_rounds, cost_usd, outcome, detail, pr_url, pr_number";
+     rounds, fix_rounds, cost_usd, outcome, detail, pr_url, pr_number, run_location";
 
 fn run_from_row(row: &Row<'_>) -> rusqlite::Result<wire::ItemRun> {
     Ok(wire::ItemRun {
@@ -97,6 +109,7 @@ fn run_from_row(row: &Row<'_>) -> rusqlite::Result<wire::ItemRun> {
         detail: row.get(19)?,
         pr_url: row.get(20)?,
         pr_number: row.get::<_, Option<i64>>(21)?.map(|n| n as u64),
+        run_location: parse_location(row.get(22)?),
     })
 }
 
@@ -191,7 +204,7 @@ impl Store {
             &format!(
                 "INSERT OR REPLACE INTO item_runs ({RUN_COLUMNS}) VALUES \
                  (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                 ?18, ?19, ?20, ?21, ?22)"
+                 ?18, ?19, ?20, ?21, ?22, ?23)"
             ),
             rusqlite::params![
                 run.id,
@@ -216,6 +229,7 @@ impl Store {
                 run.detail,
                 run.pr_url,
                 run.pr_number.map(|n| n as i64),
+                run.run_location.and_then(location_str),
             ],
         )?;
         Ok(())
@@ -286,6 +300,7 @@ mod tests {
             detail: None,
             pr_url: Some("https://github.com/o/r/pull/3".into()),
             pr_number: Some(3),
+            run_location: Some(wire::RunLocation::Checkout),
         }
     }
 
@@ -311,6 +326,8 @@ mod tests {
             workflow: None,
             agent: None,
             model: None,
+            run_location: wire::EntryRunLocation::Worktree,
+            resolved_location: Some(wire::RunLocation::Worktree),
             task_id: Some("t_1".into()),
             run_id: Some("r1".into()),
             pr_url: None,

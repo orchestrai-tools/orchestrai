@@ -50,6 +50,7 @@ impl Daemon {
         entry.run_id = None;
         entry.pr_url = None;
         entry.pr_number = None;
+        entry.resolved_location = None;
         entry.waiting_reason = Some(STOPPED_BY_YOU.to_string());
         self.runner_put_entry(entry);
         self.runner_write_item(&project, item_id, "todo", None);

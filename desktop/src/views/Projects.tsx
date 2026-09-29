@@ -13,7 +13,6 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import type { SurfaceTab } from "@/components/workspace";
 import { useInboxPulls } from "@/hooks/useInboxUnseen";
-import { useQueueInFactory } from "@/hooks/useRunner";
 import { boardTasks } from "@/lib/taskOrigin";
 import { disposeTerminalWorkspace } from "@/lib/terminalWorkspace";
 import { DEFAULT_PROJECT_SURFACE, type ProjectSurface, useUi } from "@/store/ui";
@@ -25,6 +24,7 @@ import { WorkItemDrawer } from "../components/backlog/WorkItemDrawer";
 import { TerminalWorkspaceView } from "../components/runtime/TerminalWorkspace";
 import { daemon } from "../daemon";
 import type { ServiceInfo, Snapshot } from "../protocol";
+import { FactoryRunDialog } from "./projects/factory/FactoryRunDialog";
 import { FactorySurface } from "./projects/factory/FactorySurface";
 import { PortRangeConflictCard, PortRangeSourceChip } from "./projects/PortRangeStatus";
 import { ProjectFilesSurface } from "./projects/ProjectFilesSurface";
@@ -164,10 +164,13 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
     [onNewTask],
   );
 
-  const queueInFactory = useQueueInFactory(projectName);
+  const [factoryRun, setFactoryRun] = useState<{
+    items: WorkItem[];
+    onQueued?: () => void;
+  } | null>(null);
   const runItemsInFactory = useCallback(
-    (items: WorkItem[]) => void queueInFactory(items.map((item) => item.id)),
-    [queueInFactory],
+    (items: WorkItem[], onQueued?: () => void) => setFactoryRun({ items, onQueued }),
+    [],
   );
 
   const openTaskFromItem = useCallback(
@@ -338,6 +341,13 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
         liveCounts={removeLiveCounts}
         onCancel={() => setRemoveProject(null)}
         onConfirm={confirmProjectRemoval}
+      />
+
+      <FactoryRunDialog
+        project={project.name}
+        items={factoryRun?.items ?? null}
+        onClose={() => setFactoryRun(null)}
+        onQueued={factoryRun?.onQueued}
       />
 
       <NewWorkItemDrawer open={backlogOpen} onOpenChange={setBacklogOpen} project={project.name} />

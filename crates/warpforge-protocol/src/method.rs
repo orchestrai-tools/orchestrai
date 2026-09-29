@@ -5,9 +5,9 @@
 
 use crate::{
     default_true, AdvisorPick, AgentConfig, AutomationPatch, AutomationTrigger, BacklogStorageMode,
-    BootstrapAnswers, HunkResolution, OrchestratorConfigDto, PermissionOutcome, PromptAttachment,
-    RunnerSettingsPatch, TextGenKind, WorkItemPriority, WorkflowDecision, WorktreeBase,
-    DEFAULT_MISSED_RUN_GRACE_MINUTES,
+    BootstrapAnswers, EntryRunLocation, HunkResolution, OrchestratorConfigDto, PermissionOutcome,
+    PromptAttachment, RunnerSettingsPatch, TextGenKind, WorkItemPriority, WorkflowDecision,
+    WorktreeBase, DEFAULT_MISSED_RUN_GRACE_MINUTES,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -1433,7 +1433,16 @@ pub enum Method {
         #[serde(default)]
         model: Option<String>,
         #[serde(default)]
+        run_location: EntryRunLocation,
+        #[serde(default)]
         origin_task: Option<String>,
+    },
+    /// Change where a queued item will run. Returns [`crate::RunnerStatus`].
+    #[serde(rename = "runner.setEntryLocation")]
+    RunnerSetEntryLocation {
+        project: String,
+        item_id: String,
+        run_location: EntryRunLocation,
     },
     /// Remove an item that has not started yet.
     #[serde(rename = "runner.dequeue")]

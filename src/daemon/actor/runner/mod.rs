@@ -110,6 +110,7 @@ impl Daemon {
                 workflow,
                 agent,
                 model,
+                run_location,
                 origin_task,
                 reply,
             } => {
@@ -117,9 +118,23 @@ impl Daemon {
                     workflow,
                     agent,
                     model,
+                    run_location,
                 };
                 let result =
                     self.runner_enqueue(&project, &item_ids, overrides, origin_task.as_deref());
+                if result.is_ok() {
+                    self.runner.checkout_blocks.remove(&project);
+                    self.runner_dispatch(&project).await;
+                }
+                let _ = reply.send(result.map(|()| self.runner_status(&project)));
+            }
+            RunnerCommand::SetLocation {
+                project,
+                item_id,
+                run_location,
+                reply,
+            } => {
+                let result = self.runner_set_location(&project, &item_id, run_location);
                 if result.is_ok() {
                     self.runner.checkout_blocks.remove(&project);
                     self.runner_dispatch(&project).await;
@@ -250,7 +265,11 @@ impl Daemon {
             entries: queued.into_iter().chain(active).cloned().collect(),
             dispatched_today: self.runner_dispatched_today(project, now_secs()),
             hold: self
-                .runner_lease_hold(project)
+                .runner
+                .leases
+                .get(project)
+                .filter(|l| l.state == wire::CheckoutLeaseState::Held)
+                .and_then(|_| self.runner_lease_hold(project))
                 .or_else(|| self.runner.holds.get(project).cloned()),
             checkout: self.runner.leases.get(project).cloned(),
         }

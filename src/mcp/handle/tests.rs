@@ -338,7 +338,8 @@ async fn runner_enqueue_resolves_numbers_and_names_the_asking_task() {
         })],
     );
     let mut client = DaemonClient::new(Box::new(daemon.clone()));
-    let params = json!({ "name": "runner_enqueue", "arguments": { "numbers": [5, 3] } });
+    let params = json!({ "name": "runner_enqueue",
+                         "arguments": { "numbers": [5, 3], "run_location": "checkout" } });
     let text = handle_tool_call(&mut client, "t_chat", "demo", false, Some(&params))
         .await
         .unwrap();
@@ -346,6 +347,7 @@ async fn runner_enqueue_resolves_numbers_and_names_the_asking_task() {
     let sent = last_params(&daemon);
     assert_eq!(sent["item_ids"], json!(["b_5", "b_3"]));
     assert_eq!(sent["origin_task"], "t_chat");
+    assert_eq!(sent["run_location"], "checkout");
     assert!(text.contains("Factory: paused"), "{text}");
     assert!(text.contains("Waiting: The Factory is paused"), "{text}");
     assert!(

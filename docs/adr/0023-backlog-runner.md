@@ -378,6 +378,14 @@ queue. That needs #83's content-carrying proposal kind.
     without a switch.
 18. **A tracker sync never overwrites the status of an item with an active
     entry.** Sync resumes for that item once its entry ends.
+19. **At most one checkout-located run per project.** The lease is the only
+    thing that serialises checkout entries; `max_concurrent` counts every
+    location, and a lease being prepared holds a slot.
+20. **Checkout gates never hold worktree entries.** A dirty tree, a task
+    running in the checkout, a YAML backlog or a lease in use marks only the
+    checkout entry's `waiting_reason`; dispatch moves on to the next entry.
+    A lease being prepared delays worktree starts until its switch ends; only
+    a `Held` lease, which pauses the runner, stops them.
 
 ## Risks
 
@@ -444,10 +452,10 @@ Built to the file plan above. Where it differs, or where Phase 1 draws a line:
 ## Amendment — Run location, Stop, delivery in the summary (2026-09-29)
 
 **Run location** is a per-project setting: `worktree` (default, as above) or
-`checkout`. Worktree tasks cannot use a verify stage (ADR 0024: services run
+`checkout` (per item since the *Run location per item* amendment). Worktree tasks cannot use a verify stage (ADR 0024: services run
 from the project checkout), so the Factory could not browser-test anything.
-`checkout` runs one item at a time in the project checkout itself:
-`effective_max_concurrent` is 1 whatever `max_concurrent` says.
+`checkout` runs one item at a time in the project checkout itself (the lease
+serialises checkout entries; worktree entries may run beside one).
 
 - **Before an item starts** (`actor/runner/checkout/`), on the loop: no lease
   is held, the backlog is not YAML (a YAML backlog is part of the checkout
@@ -496,6 +504,44 @@ wrap-up reports, `runner_report_delivery` replaces the note in
 `WorkflowRunInfo.report` with the outcome (draft PR number and URL, no
 changes, or the failure) and posts it to the timeline. Manual pipelines keep
 their text.
+
+## Amendment — Run location per item (2026-09-29)
+
+The project setting is now a default, and an item can override it. The owner
+wants some items in a worktree and others, the ones that verify in the
+browser, in the checkout.
+
+- **Settings** gain `auto`: the checkout when the item's workflow has a verify
+  stage, a worktree otherwise. `worktree` stays the default.
+- **Entries** carry `run_location: default | worktree | checkout`, persisted
+  in the entry JSON, set at enqueue (`runner.enqueue`, the desktop's Run in
+  Factory dialog, MCP `runner_enqueue`) and editable while the entry is
+  queued and no lease is preparing for it (`runner.setEntryLocation`).
+  `runner::resolve_location` resolves it at dispatch from the entry, the
+  setting and the loaded workflow. The entry records `resolved_location`
+  while it runs, and `item_runs.run_location` keeps it for metrics.
+- **Scheduling.** `effective_max_concurrent` is gone: `max_concurrent` bounds
+  every in-flight entry whatever its location. Dispatch walks the queue in
+  order; a worktree entry starts, a checkout entry starts only when
+  `runner_checkout_refusal` (lease in use, YAML backlog, a non-Factory task
+  running in the checkout, the last inspection's refusal) allows it and is
+  otherwise skipped with the reason on its row. The project `hold` shows a
+  checkout refusal only when it alone kept every queued entry back; slot,
+  daily, open-PR and disk gates still hold the whole queue.
+- **No worktree starts while a lease is `Preparing`.** Preparing fetches
+  origin in the same repository a new worktree fetches in, and concurrent
+  fetches race on `refs/remotes/origin/<default>`; a failed worktree creation
+  costs an attempt, a failed preparation is retried. The switch dispatches
+  again when it finishes.
+- **Verify in a worktree** still parks (ADR 0024). The desktop warns at
+  enqueue when the resolved location is a worktree and the workflow's verify
+  stage is required (`WorkflowMeta.verify_required`); `auto` avoids it, an
+  explicit `worktree` is kept.
+- A `Held` lease still pauses the whole runner: it is a checkout a person has
+  to clean up, and Start is the retry.
+
+*Rejected:* a per-location concurrency pair (`max_worktree`, `max_checkout`).
+The checkout limit is always one, and the lease already enforces it.
 
 ## Phased plan
 

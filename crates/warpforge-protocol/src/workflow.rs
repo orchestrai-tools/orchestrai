@@ -109,6 +109,9 @@ pub struct WorkflowMeta {
     /// Review ⇄ fix round limit. 0 for invalid files.
     #[serde(default)]
     pub max_rounds: u32,
+    /// Whether the verify stage must pass; `None` without a verify stage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verify_required: Option<bool>,
 }
 
 /// Where a workflow definition comes from.

@@ -8,11 +8,24 @@ import { Button } from "@/components/ui/button";
 import { daemon } from "@/daemon";
 import { runnerStatusKey, useRunner } from "@/hooks/useRunner";
 import { cn } from "@/lib/utils";
-import type { AgentConfig, TaskInfo } from "@/protocol";
+import type { AgentConfig, RunLocation, TaskInfo } from "@/protocol";
 
 import { FactoryQueue } from "./FactoryQueue";
 import { FactoryRuns } from "./FactoryRuns";
 import { FactorySettings } from "./FactorySettings";
+
+const WHERE: Record<RunLocation, string> = {
+  auto: "checkout when the workflow verifies",
+  checkout: "project checkout",
+  worktree: "worktrees",
+};
+
+const ABOUT: Record<RunLocation, string> = {
+  auto: "Items whose workflow verifies the running app run in your project checkout; the rest each get a fresh worktree.",
+  checkout:
+    "Items run in your project checkout, on a new task branch, so the running app serves the change. Afterwards the checkout goes back to the branch it was on.",
+  worktree: "Each item runs through the workflow in a fresh worktree.",
+};
 
 interface FactorySurfaceProps {
   project: string;
@@ -48,7 +61,6 @@ export function FactorySurface({ project, agents, tasks, onOpenTask }: FactorySu
   }
   if (!data) return null;
   const { settings } = data;
-  const inCheckout = settings.runLocation === "checkout";
   const held = data.checkout?.state === "held" ? data.checkout : null;
   const running = data.entries.filter((entry) => entry.state === "running").length;
 
@@ -92,7 +104,7 @@ export function FactorySurface({ project, agents, tasks, onOpenTask }: FactorySu
               </span>
               <span className="tnum text-[11px] text-muted-foreground">
                 {data.dispatchedToday}/{settings.maxPerDay} started today · workflow{" "}
-                {settings.workflow} · {inCheckout ? "project checkout" : "worktrees"}
+                {settings.workflow} · {WHERE[settings.runLocation]}
               </span>
             </div>
             {data.hold && !held && (
@@ -135,14 +147,18 @@ export function FactorySurface({ project, agents, tasks, onOpenTask }: FactorySu
           </div>
         )}
         <p className="text-[12px] leading-relaxed text-muted-foreground">
-          {inCheckout
-            ? "Items run one at a time in your project checkout, on a new task branch, so the running app serves the change. Afterwards the checkout goes back to the branch it was on."
-            : "Each item runs through the workflow in a fresh worktree."}{" "}
-          When its review passes, the Factory commits the change, pushes it and opens a draft pull
-          request for you to review. Merging the pull request marks the item done. Pausing lets
-          running items finish; Stop ends them and puts them back in the queue.
+          {ABOUT[settings.runLocation]} You can pick another location for each item when you queue
+          it, or later on its row. Only one item runs in the project checkout at a time; worktree
+          items run beside it. When its review passes, the Factory commits the change, pushes it and
+          opens a draft pull request for you to review. Merging the pull request marks the item
+          done. Pausing lets running items finish; Stop ends them and puts them back in the queue.
         </p>
-        <FactoryQueue project={project} entries={data.entries} onOpenTask={onOpenTask} />
+        <FactoryQueue
+          project={project}
+          entries={data.entries}
+          projectLocation={settings.runLocation}
+          onOpenTask={onOpenTask}
+        />
         <FactoryRuns runs={runs.data ?? []} liveTaskIds={liveTaskIds} onOpenTask={onOpenTask} />
       </div>
       <ConfirmDialog

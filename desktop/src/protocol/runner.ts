@@ -1,10 +1,14 @@
 // ── Backlog runner ("Factory", ADR 0023) ──────────────────────────────────────
 
 /**
- * Where items run: a fresh worktree each (parallel), or the project checkout
- * one at a time, so the running dev services serve the change.
+ * Where items run: a fresh worktree each (parallel), the project checkout one
+ * at a time so the running dev services serve the change, or `auto`: the
+ * checkout for a workflow with a verify stage, a worktree otherwise.
  */
-export type RunLocation = "worktree" | "checkout";
+export type RunLocation = "worktree" | "checkout" | "auto";
+
+/** One item's own run location; `default` follows the project setting. */
+export type EntryRunLocation = "default" | "worktree" | "checkout";
 
 export interface RunnerSettings {
   project: string;
@@ -42,6 +46,9 @@ export interface RunnerEntry {
   workflow?: string | null;
   agent?: string | null;
   model?: string | null;
+  runLocation?: EntryRunLocation;
+  /** Where the running attempt runs, set when it starts; never `auto`. */
+  resolvedLocation?: Exclude<RunLocation, "auto"> | null;
   taskId?: string | null;
   runId?: string | null;
   prUrl?: string | null;
@@ -89,6 +96,8 @@ export interface ItemRun {
   detail?: string | null;
   prUrl?: string | null;
   prNumber?: number | null;
+  /** Where the attempt ran; absent on rows recorded before it was. */
+  runLocation?: Exclude<RunLocation, "auto"> | null;
 }
 
 export type CheckoutLeaseState = "preparing" | "running" | "returning" | "held";

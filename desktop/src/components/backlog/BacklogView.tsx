@@ -28,8 +28,11 @@ interface BacklogViewProps {
   onOpenItem?: (item: WorkItem) => void;
   /** Adds a work item by hand. */
   onCreate?: () => void;
-  /** Queues items in the project's Factory; enables row selection. */
-  onRunInFactory?: (items: WorkItem[]) => void;
+  /**
+   * Queues items in the project's Factory; enables row selection. `onQueued`
+   * runs once they are queued, and not when the person cancels.
+   */
+  onRunInFactory?: (items: WorkItem[], onQueued?: () => void) => void;
 }
 
 export function BacklogView({
@@ -201,8 +204,7 @@ export function BacklogView({
             size="sm"
             className="h-7 px-2.5 text-[12px]"
             onClick={() => {
-              onRunInFactory([...selection.values()]);
-              setSelection(new Map());
+              onRunInFactory([...selection.values()], () => setSelection(new Map()));
             }}
           >
             Run selected in Factory

@@ -13,6 +13,7 @@ use crate::daemon::diff::testsupport::git;
 mod checkout;
 mod delivery;
 mod dispatch;
+mod location;
 mod recovery;
 
 const FACTORY_FIXTURE: &str = concat!(
@@ -116,12 +117,21 @@ async fn status(daemon: &DaemonHandle) -> wire::RunnerStatus {
 }
 
 async fn enqueue(daemon: &DaemonHandle, items: &[&wire::BacklogItem]) -> wire::RunnerStatus {
+    enqueue_at(daemon, items, wire::EntryRunLocation::Default).await
+}
+
+async fn enqueue_at(
+    daemon: &DaemonHandle,
+    items: &[&wire::BacklogItem],
+    run_location: wire::EntryRunLocation,
+) -> wire::RunnerStatus {
     ask(daemon, |reply| RunnerCommand::Enqueue {
         project: "demo".into(),
         item_ids: items.iter().map(|i| i.id.clone()).collect(),
         workflow: None,
         agent: None,
         model: None,
+        run_location,
         origin_task: None,
         reply,
     })

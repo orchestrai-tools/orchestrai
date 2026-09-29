@@ -8,7 +8,8 @@ pub(crate) const DAY_SECS: i64 = 24 * 3600;
 /// What a project's runner is already doing.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Slots {
-    /// Dispatched entries whose pull request is not open yet.
+    /// Dispatched entries whose pull request is not open yet, and one whose
+    /// project checkout is being prepared.
     pub in_flight: u32,
     /// Entries whose draft pull request waits for review.
     pub open_prs: u32,
@@ -25,7 +26,7 @@ pub(crate) fn slot_refusal(settings: &wire::RunnerSettings, slots: Slots) -> Opt
     if !settings.running {
         return Some("The Factory is paused".to_string());
     }
-    let max_concurrent = settings.effective_max_concurrent();
+    let max_concurrent = settings.max_concurrent;
     if slots.in_flight >= max_concurrent {
         return Some(format!(
             "{} of {max_concurrent} run slot(s) in use",

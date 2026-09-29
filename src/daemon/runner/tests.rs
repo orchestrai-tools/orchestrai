@@ -15,6 +15,8 @@ fn entry(id: &str, priority: &str, position: u64, enqueued_at: i64) -> wire::Run
         workflow: None,
         agent: None,
         model: None,
+        run_location: wire::EntryRunLocation::Default,
+        resolved_location: None,
         task_id: None,
         run_id: None,
         pr_url: None,
@@ -216,4 +218,37 @@ fn the_pull_request_links_and_closes_a_github_issue() {
     assert!(body.starts_with("Backlog item #12"), "{body}");
     assert!(!body.contains("Closes"));
     assert!(body.contains("$1.23"));
+}
+
+#[test]
+fn auto_takes_the_checkout_only_for_a_workflow_that_verifies() {
+    use wire::{EntryRunLocation as Entry, RunLocation as At};
+    let (plain, _) = crate::workflow_config::parse_workflow("t", "name: t\n");
+    let (verified, _) =
+        crate::workflow_config::parse_workflow("t", "name: t\nverify:\n  required: false\n");
+    let (plain, verified) = (plain.unwrap(), verified.unwrap());
+    assert_eq!(
+        resolve_location(At::Auto, Entry::Default, &plain),
+        At::Worktree
+    );
+    assert_eq!(
+        resolve_location(At::Auto, Entry::Default, &verified),
+        At::Checkout
+    );
+    assert_eq!(
+        resolve_location(At::Worktree, Entry::Default, &verified),
+        At::Worktree
+    );
+    assert_eq!(
+        resolve_location(At::Checkout, Entry::Default, &plain),
+        At::Checkout
+    );
+    assert_eq!(
+        resolve_location(At::Auto, Entry::Worktree, &verified),
+        At::Worktree
+    );
+    assert_eq!(
+        resolve_location(At::Worktree, Entry::Checkout, &plain),
+        At::Checkout
+    );
 }

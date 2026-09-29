@@ -70,9 +70,12 @@ impl Daemon {
         false
     }
 
-    /// Why a checkout-mode run cannot start in `project` now, judged on the
-    /// loop; the git checks run when the run is prepared.
+    /// Why a checkout-located entry cannot start in `project` now, judged on
+    /// the loop; the git checks run when the run is prepared.
     pub(super) fn runner_checkout_refusal(&self, project: &str) -> Option<String> {
+        if let Some(hold) = self.runner_lease_hold(project) {
+            return Some(hold);
+        }
         let yaml = self
             .with_store(|store| store.backlog_storage_mode().ok())
             .flatten()
@@ -232,6 +235,7 @@ impl Daemon {
         } else {
             self.runner_give_back(lease, Some(base));
         }
+        self.runner_dispatch(project).await;
         self.runner_emit(project);
     }
 

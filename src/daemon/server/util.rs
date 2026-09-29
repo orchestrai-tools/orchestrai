@@ -59,6 +59,7 @@ pub(super) fn workflow_meta(w: crate::workflow_config::LoadedWorkflow) -> wire::
             warnings: w.warnings,
             stages: spec.stage_summary(),
             max_rounds: spec.review.max_rounds,
+            verify_required: spec.verify.as_ref().map(|v| v.required),
         },
         Err(error) => wire::WorkflowMeta {
             name: w.id.clone(),
@@ -70,6 +71,7 @@ pub(super) fn workflow_meta(w: crate::workflow_config::LoadedWorkflow) -> wire::
             warnings: w.warnings,
             stages: vec![],
             max_rounds: 0,
+            verify_required: None,
         },
     }
 }

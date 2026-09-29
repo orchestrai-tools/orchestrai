@@ -4,12 +4,14 @@
 
 mod brief;
 mod gate;
+mod location;
 mod order;
 #[cfg(test)]
 mod tests;
 
 pub(crate) use brief::{brief, commit_message, pr_body, pr_title, PrFacts};
 pub(crate) use gate::{headroom_refusal, pipeline_agents, slot_refusal, Slots, DAY_SECS};
+pub(crate) use location::resolve_location;
 pub(crate) use order::{dispatch_order, next_position};
 
 /// Tag on every pipeline task the runner starts.

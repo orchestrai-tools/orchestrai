@@ -35,7 +35,13 @@ const LIMITS: {
   min: number;
   max: number;
 }[] = [
-  { hint: "Items running at once.", key: "maxConcurrent", label: "Runs at once", max: 8, min: 1 },
+  {
+    hint: "Items running at once; only one of them in the project checkout.",
+    key: "maxConcurrent",
+    label: "Runs at once",
+    max: 8,
+    min: 1,
+  },
   {
     hint: "New items wait while this many draft PRs are open.",
     key: "maxOpenPrs",
@@ -77,6 +83,11 @@ const LOCATIONS: { value: RunLocation; label: string; hint: string }[] = [
     label: "Project checkout",
     value: "checkout",
   },
+  {
+    hint: "The project checkout when the workflow has a verify stage, a worktree otherwise.",
+    label: "Auto",
+    value: "auto",
+  },
 ];
 
 /**
@@ -104,7 +115,7 @@ export function FactorySettings({ open, settings, agents, onClose }: FactorySett
   });
   const enabledAgents = agents.filter((agent) => agent.enabled);
   const modelOption = draft.agent ? modelOptionOf(agents, draft.agent) : null;
-  const inCheckout = draft.runLocation === "checkout";
+  const usesCheckout = draft.runLocation !== "worktree";
 
   const save = async () => {
     setSaving(true);
@@ -161,11 +172,14 @@ export function FactorySettings({ open, settings, agents, onClose }: FactorySett
                 </span>
               </label>
             ))}
-            {inCheckout && (
+            {usesCheckout && (
               <p className="text-[11px] text-warn">
-                One item at a time; your checkout is used while it runs.
+                One item at a time in the checkout; your checkout is used while it runs.
               </p>
             )}
+            <p className="text-[11px] text-muted-foreground/70">
+              The default for new items; each item can pick its own when you queue it.
+            </p>
           </fieldset>
           <label className="flex flex-col gap-1 sm:col-span-2">
             <span className="text-[11px] font-medium text-muted-foreground">Workflow</span>
@@ -227,20 +241,13 @@ export function FactorySettings({ open, settings, agents, onClose }: FactorySett
                 aria-label={limit.label}
                 min={limit.min}
                 max={limit.max}
-                value={
-                  inCheckout && limit.key === "maxConcurrent" ? 1 : (draft[limit.key] as number)
-                }
-                disabled={inCheckout && limit.key === "maxConcurrent"}
+                value={draft[limit.key] as number}
                 onChange={(event) =>
                   setDraft({ ...draft, [limit.key]: Number(event.target.value) || limit.min })
                 }
                 className={FIELD}
               />
-              <span className="text-[11px] text-muted-foreground/70">
-                {inCheckout && limit.key === "maxConcurrent"
-                  ? "Always one in the project checkout."
-                  : limit.hint}
-              </span>
+              <span className="text-[11px] text-muted-foreground/70">{limit.hint}</span>
             </label>
           ))}
         </div>

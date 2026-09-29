@@ -1,4 +1,4 @@
-import type { ItemRun, RunnerSettingsPatch, RunnerStatus } from "../protocol";
+import type { EntryRunLocation, ItemRun, RunnerSettingsPatch, RunnerStatus } from "../protocol";
 import type { CoreClient } from "./client";
 import type { Constructor } from "./types";
 
@@ -44,8 +44,30 @@ export function RunnerMethods<TBase extends Constructor<CoreClient>>(Base: TBase
     }
 
     /** Queue backlog items; ones already queued keep their place. */
-    async runnerEnqueue(project: string, itemIds: string[]): Promise<RunnerStatus> {
-      const result = await this.request("runner.enqueue", { item_ids: itemIds, project });
+    async runnerEnqueue(
+      project: string,
+      itemIds: string[],
+      runLocation: EntryRunLocation = "default",
+    ): Promise<RunnerStatus> {
+      const result = await this.request("runner.enqueue", {
+        item_ids: itemIds,
+        project,
+        run_location: runLocation,
+      });
+      return normalizeRunnerStatus(project, result);
+    }
+
+    /** Change where a queued item will run. */
+    async runnerSetEntryLocation(
+      project: string,
+      itemId: string,
+      runLocation: EntryRunLocation,
+    ): Promise<RunnerStatus> {
+      const result = await this.request("runner.setEntryLocation", {
+        item_id: itemId,
+        project,
+        run_location: runLocation,
+      });
       return normalizeRunnerStatus(project, result);
     }
 

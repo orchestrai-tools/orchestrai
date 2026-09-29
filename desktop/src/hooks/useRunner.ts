@@ -3,7 +3,7 @@ import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
 import { daemon } from "@/daemon";
-import type { DaemonEvent, ItemRun, RunnerStatus } from "@/protocol";
+import type { DaemonEvent, EntryRunLocation, ItemRun, RunnerStatus } from "@/protocol";
 
 export const RUNNER_RUNS_LIMIT = 25;
 export const runnerStatusKey = (project: string) => ["runner", project, "status"] as const;
@@ -62,14 +62,15 @@ export function useRunner(project: string) {
 /**
  * Queue backlog items in the Factory and say what happens next.
  * @param project The project the items belong to.
- * @returns A function that queues the given item ids.
+ * @returns A function that queues the given item ids where they should run
+ *   and resolves to whether they were queued.
  */
 export function useQueueInFactory(project: string) {
   const queryClient = useQueryClient();
   return useCallback(
-    async (itemIds: string[]) => {
+    async (itemIds: string[], runLocation: EntryRunLocation = "default"): Promise<boolean> => {
       try {
-        const status = await daemon.runnerEnqueue(project, itemIds);
+        const status = await daemon.runnerEnqueue(project, itemIds, runLocation);
         queryClient.setQueryData(runnerStatusKey(project), status);
         await queryClient.invalidateQueries({ queryKey: ["backlog", project] });
         const count = itemIds.length === 1 ? "Item" : `${itemIds.length} items`;
@@ -95,10 +96,12 @@ export function useQueueInFactory(project: string) {
             },
           });
         }
+        return true;
       } catch (error) {
         toast.error("Could not queue in the Factory", {
           description: error instanceof Error ? error.message : String(error),
         });
+        return false;
       }
     },
     [project, queryClient],

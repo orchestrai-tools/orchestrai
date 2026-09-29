@@ -18,7 +18,15 @@ pub enum RunnerCommand {
         workflow: Option<String>,
         agent: Option<String>,
         model: Option<String>,
+        run_location: wire::EntryRunLocation,
         origin_task: Option<String>,
+        reply: Reply<wire::RunnerStatus>,
+    },
+    /// Change where a queued item will run.
+    SetLocation {
+        project: String,
+        item_id: String,
+        run_location: wire::EntryRunLocation,
         reply: Reply<wire::RunnerStatus>,
     },
     Dequeue {

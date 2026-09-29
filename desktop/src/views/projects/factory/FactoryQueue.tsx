@@ -7,13 +7,16 @@ import { Button } from "@/components/ui/button";
 import { daemon } from "@/daemon";
 import { runnerStatusKey } from "@/hooks/useRunner";
 import { openExternalLink } from "@/lib/externalLinks";
-import type { RunnerEntry } from "@/protocol";
+import type { EntryRunLocation, RunLocation, RunnerEntry } from "@/protocol";
 
 import { ENTRY_STATE_LABEL } from "./labels";
+import { LOCATION_LABEL } from "./location";
 
 interface FactoryQueueProps {
   project: string;
   entries: RunnerEntry[];
+  /** The project's run location, for the "project default" choice. */
+  projectLocation: RunLocation;
   onOpenTask: (taskId: string) => void;
 }
 
@@ -23,9 +26,10 @@ interface FactoryQueueProps {
  *
  * @param props.project The project the queue belongs to.
  * @param props.entries Entries as the daemon orders them.
+ * @param props.projectLocation The project's run location setting.
  * @param props.onOpenTask Opens an item's pipeline task.
  */
-export function FactoryQueue({ project, entries, onOpenTask }: FactoryQueueProps) {
+export function FactoryQueue({ project, entries, projectLocation, onOpenTask }: FactoryQueueProps) {
   const queryClient = useQueryClient();
   const queued = entries.filter((entry) => entry.state === "queued");
   const active = entries.filter((entry) => entry.state !== "queued");
@@ -53,6 +57,11 @@ export function FactoryQueue({ project, entries, onOpenTask }: FactoryQueueProps
           <li key={entry.itemId} className="flex h-10 items-center gap-3 px-3 text-[13px]">
             <span className="tnum w-10 shrink-0 text-muted-foreground">#{entry.number}</span>
             <span className="min-w-0 flex-1 truncate">{entry.title}</span>
+            {entry.resolvedLocation && (
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {LOCATION_LABEL[entry.resolvedLocation]}
+              </span>
+            )}
             <Badge variant={entry.state === "delivered" ? "ok" : "outline"}>
               {ENTRY_STATE_LABEL[entry.state]}
             </Badge>
@@ -104,6 +113,26 @@ export function FactoryQueue({ project, entries, onOpenTask }: FactoryQueueProps
                   {entry.priority}
                 </span>
               )}
+              <select
+                aria-label={`Run location for #${entry.number}`}
+                value={entry.runLocation ?? "default"}
+                onChange={(event) =>
+                  void act(
+                    () =>
+                      daemon.runnerSetEntryLocation(
+                        project,
+                        entry.itemId,
+                        event.target.value as EntryRunLocation,
+                      ),
+                    "Could not change where the item runs",
+                  )
+                }
+                className="bg-deep-surface h-7 shrink-0 rounded-md border px-1 text-[12px] outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="default">{`Default (${LOCATION_LABEL[projectLocation]})`}</option>
+                <option value="worktree">{LOCATION_LABEL.worktree}</option>
+                <option value="checkout">{LOCATION_LABEL.checkout}</option>
+              </select>
               <Button
                 size="icon"
                 variant="ghost"

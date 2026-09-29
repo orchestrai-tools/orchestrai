@@ -50,6 +50,8 @@ export interface WorkflowMeta {
   /** Stage names for the picker tooltip, e.g. ["plan","implement","review\u00d72","fix"]. */
   stages?: string[];
   maxRounds?: number;
+  /** Whether the verify stage must pass; absent without a verify stage. */
+  verifyRequired?: boolean | null;
 }
 
 export type WorkflowSource = "project" | "builtin";

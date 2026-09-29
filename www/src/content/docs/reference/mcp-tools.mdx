@@ -124,13 +124,13 @@ Available in **every** session. The [Factory](/guides/factory/) runs queued item
 ### `runner_enqueue` · `runner_status`
 
 ```
-runner_enqueue(number | numbers, project?)
+runner_enqueue(number | numbers, project?, run_location?)
 runner_status(project?, runs?)
 ```
 
-`runner_enqueue` queues one item (`number`, as in #87) or several (`numbers`, queued in that order); an item already queued keeps its place, and a done or cancelled item is refused. Queuing starts nothing while the Factory is paused. It returns the queue as `runner_status` prints it.
+`runner_enqueue` queues one item (`number`, as in #87) or several (`numbers`, queued in that order); an item already queued keeps its place, and a done or cancelled item is refused. `run_location` says where the items run: `worktree`, `checkout` (the project checkout, so a verify stage can test the running app; one checkout item runs at a time), or `default` (the project's setting, the default). Queuing starts nothing while the Factory is paused. It returns the queue as `runner_status` prints it.
 
-`runner_status` prints whether the Factory is running, what holds the queue (a limit, quota, the disk floor), each entry as `#87 [queued] Fix the login redirect` with its pull request or the reason it waits, and — with `runs: true` — the ten latest runs with outcome, review rounds, cost and pull request.
+`runner_status` prints whether the Factory is running, what holds the queue (a limit, quota, the disk floor), each entry as `#87 [queued] Fix the login redirect` — with `· checkout` or `· worktree` in the brackets when the item has its own location or has started — and its pull request or the reason it waits, and — with `runs: true` — the ten latest runs with outcome, review rounds, cost and pull request.
 
 **When:** you ask a chat to line up the next few items for the Factory, or to report how the queue is doing. The Factory, not the agent, decides when each item starts.
 
