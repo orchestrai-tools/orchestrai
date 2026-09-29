@@ -126,6 +126,7 @@ async fn a_held_port_resolves_for_dependents_and_is_kept_at_start() {
             run_id: 90,
             waiting_on: vec!["db".into()],
             stopping: Arc::new(AtomicBool::new(false)),
+            port_watch: None,
         },
     );
     let env = HashMap::from([(

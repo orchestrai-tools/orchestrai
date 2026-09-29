@@ -84,6 +84,7 @@ impl ServiceManager {
                     if exited {
                         svc.alive = false;
                         svc.port_warning = None;
+                        svc.port_watch = None;
                     }
                     let old = svc.status.clone();
                     svc.status = status;

@@ -13,6 +13,8 @@ mod portforward;
 mod ports;
 mod registry;
 mod service;
+#[cfg(unix)]
+mod signal;
 mod tui;
 mod workflow_config;
 mod worktree_config;

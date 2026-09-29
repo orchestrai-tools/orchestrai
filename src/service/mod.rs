@@ -12,7 +12,7 @@ mod spawn;
 mod stop;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub use deps::{dependency_gate, DepState, Gate, PortClaim};
 pub use port_watch::PortWarning;
@@ -90,6 +90,8 @@ pub struct ManagedService {
     /// Set true when we're deliberately stopping, so the exit waiter can tell
     /// an intentional stop from a crash and report the right status.
     stopping: Arc<AtomicBool>,
+    /// The allocated-port watcher of the live run; dropping it ends the watcher.
+    port_watch: Option<port_watch::WatchGuard>,
 }
 
 pub enum ServiceEvent {

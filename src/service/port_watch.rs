@@ -1,10 +1,12 @@
 //! Detects a service that ignores its allocated port: the process is up but
 //! nothing answers on `$PORT`, usually because the tool picked its own port.
 
+use std::future::Future;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tokio::net::TcpStream;
+use tokio::task::AbortHandle;
 use tokio::time::{sleep, timeout};
 
 use super::ready::RunHandle;
@@ -87,7 +89,7 @@ pub(super) fn assess<'a>(
     })
 }
 
-async fn port_answers(port: u16) -> bool {
+pub(super) async fn port_answers(port: u16) -> bool {
     for host in ["127.0.0.1", "::1"] {
         if matches!(
             timeout(CONNECT_TIMEOUT, TcpStream::connect((host, port))).await,
@@ -99,13 +101,55 @@ async fn port_answers(port: u16) -> bool {
     false
 }
 
-/// Probe `port` after a grace period and then every few seconds, reporting each
-/// result until the port answers or the run ends.
-pub(super) fn spawn_port_watch(run: RunHandle, port: u16, from_seq: u64) {
-    tokio::spawn(async move {
-        sleep(GRACE).await;
+/// When the first probe runs and how long to wait between later ones.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct WatchTiming {
+    pub grace: Duration,
+    pub interval: Duration,
+}
+
+impl WatchTiming {
+    pub(super) const DEFAULT: Self = Self {
+        grace: GRACE,
+        interval: INTERVAL,
+    };
+}
+
+/// Owns a running watcher and aborts it when dropped, so stopping, replacing
+/// or dropping the service entry ends the watcher, grace period included.
+pub(super) struct WatchGuard(AbortHandle);
+
+impl Drop for WatchGuard {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Probe `port` after a grace period and then every `timing.interval`,
+/// reporting each result until the port answers, the run ends, or the
+/// returned guard is dropped.
+///
+/// @param run the run being watched; its flags end the loop
+/// @param port the allocated port to probe
+/// @param from_seq the first log line of this run
+/// @param timing grace period and probe interval
+/// @param probe whether `port` accepts a connection
+/// @returns the guard that owns the watcher task
+pub(super) fn spawn_port_watch<P, F>(
+    run: RunHandle,
+    port: u16,
+    from_seq: u64,
+    timing: WatchTiming,
+    mut probe: P,
+) -> WatchGuard
+where
+    P: FnMut(u16) -> F + Send + 'static,
+    F: Future<Output = bool> + Send,
+{
+    let task = tokio::spawn(async move {
+        sleep(timing.grace).await;
         while !run.stopping.load(Ordering::SeqCst) && !run.exited.load(Ordering::SeqCst) {
-            let answered = port_answers(port).await;
+            let answered = probe(port).await;
             let _ = run.tx.send(ServiceEvent::PortProbe {
                 key: run.key.clone(),
                 run_id: run.run_id,
@@ -115,7 +159,8 @@ pub(super) fn spawn_port_watch(run: RunHandle, port: u16, from_seq: u64) {
             if answered {
                 return;
             }
-            sleep(INTERVAL).await;
+            sleep(timing.interval).await;
         }
     });
+    WatchGuard(task.abort_handle())
 }

@@ -22,6 +22,7 @@ fn starting(mgr: &mut ServiceManager) {
             run_id: 1,
             waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
+            port_watch: None,
         },
     );
 }
@@ -131,4 +132,28 @@ fn no_ready_report_outlives_the_exit() {
         logs(&mgr),
         vec!["[service failed: exit code=1]".to_string()]
     );
+}
+
+/// procps `kill -9 -<pgid>` without `--` sent SIGKILL to the caller's own
+/// group, so on Linux this stop took the test binary down with the service.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_group_kill_reaches_the_service_group_and_not_ours() {
+    bounded(async {
+        let mut child = tokio::process::Command::new("sh")
+            .args(["-c", "sleep 30 & wait"])
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let pgid = child.id().unwrap();
+        assert!(pgid > 9, "a multi-digit group is the case procps got wrong");
+
+        super::super::stop::kill_group(Some(pgid)).await;
+        let status = child.wait().await.unwrap();
+        assert_eq!(
+            std::os::unix::process::ExitStatusExt::signal(&status),
+            Some(libc::SIGKILL)
+        );
+    })
+    .await
 }

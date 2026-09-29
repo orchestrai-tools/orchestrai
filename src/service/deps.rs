@@ -155,6 +155,7 @@ impl ServiceManager {
             run_id,
             waiting_on: deps,
             stopping: Arc::new(AtomicBool::new(false)),
+            port_watch: None,
         };
         managed.push_log(line);
         self.services.insert(key.clone(), managed);

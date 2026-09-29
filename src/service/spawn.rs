@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-use super::port_watch::spawn_port_watch;
+use super::port_watch::{port_answers, spawn_port_watch, WatchTiming};
 use super::ready::{spawn_readiness, Probe, Readiness, RunHandle};
 use super::{ManagedService, PortClaim, ServiceEvent, ServiceManager, ServiceStatus};
 use crate::ports;
@@ -217,6 +217,7 @@ impl ServiceManager {
             run_id,
             waiting_on: Vec::new(),
             stopping: Arc::clone(&stopping),
+            port_watch: None,
         };
 
         self.services.insert(key.clone(), managed);
@@ -240,7 +241,16 @@ impl ServiceManager {
         );
         spawn_readiness(run.clone(), readiness, probe);
         if allocated_port > 0 {
-            spawn_port_watch(run.clone(), allocated_port, next_seq);
+            let watch = spawn_port_watch(
+                run.clone(),
+                allocated_port,
+                next_seq,
+                WatchTiming::DEFAULT,
+                port_answers,
+            );
+            if let Some(svc) = self.services.get_mut(&key) {
+                svc.port_watch = Some(watch);
+            }
         }
 
         // Stream stdout
@@ -358,6 +368,7 @@ impl ServiceManager {
             run_id,
             waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
+            port_watch: None,
         };
         managed.push_log(format!("[service failed] {message}"));
         self.services.insert(key.to_string(), managed);

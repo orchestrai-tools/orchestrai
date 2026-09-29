@@ -95,12 +95,7 @@ fn timeout_message(limit: Duration) -> String {
 
 #[cfg(unix)]
 async fn kill_process_group(pgid: u32) {
-    let _ = tokio::process::Command::new("kill")
-        .args(["-KILL", "--", &format!("-{pgid}")])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await;
+    crate::signal::signal_group(pgid, libc::SIGKILL);
 }
 
 /// Await a pipe reader, giving up shortly after the child is gone so a

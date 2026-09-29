@@ -18,12 +18,7 @@ use crate::ports;
 pub(super) async fn kill_group(pgid: Option<u32>) {
     #[cfg(unix)]
     if let Some(id) = pgid {
-        // `kill -9 -<pgid>` sends SIGKILL to every process in the group
-        tokio::process::Command::new("kill")
-            .args(["-9", &format!("-{id}")])
-            .output()
-            .await
-            .ok();
+        crate::signal::signal_group(id, libc::SIGKILL);
     }
     #[cfg(not(unix))]
     let _ = pgid;
@@ -41,11 +36,11 @@ pub async fn kill_listeners_on_ports(ports: &[u16]) {
             return;
         }
         for &port in ports {
-            kill_listeners_in_range(port, port, "TERM").await;
+            kill_listeners_in_range(port, port, libc::SIGTERM).await;
         }
         sleep(Duration::from_millis(600)).await;
         for &port in ports {
-            kill_listeners_in_range(port, port, "KILL").await;
+            kill_listeners_in_range(port, port, libc::SIGKILL).await;
         }
     }
 
@@ -54,7 +49,7 @@ pub async fn kill_listeners_on_ports(ports: &[u16]) {
 }
 
 #[cfg(unix)]
-async fn kill_listeners_in_range(start: u16, end: u16, signal: &str) {
+async fn kill_listeners_in_range(start: u16, end: u16, signal: libc::c_int) {
     let spec = format!("-iTCP:{start}-{end}");
     let Ok(output) = Command::new("lsof")
         .args(["-nP", "-t", &spec, "-sTCP:LISTEN"])
@@ -69,14 +64,9 @@ async fn kill_listeners_in_range(start: u16, end: u16, signal: &str) {
     }
 
     for line in String::from_utf8_lossy(&output.stdout).lines() {
-        let pid = line.trim();
-        if pid.is_empty() || pid == std::process::id().to_string() {
-            continue;
+        if let Ok(pid) = line.trim().parse() {
+            crate::signal::signal_process(pid, signal);
         }
-        let _ = Command::new("kill")
-            .args([format!("-{signal}"), pid.to_string()])
-            .output()
-            .await;
     }
 }
 
@@ -86,6 +76,7 @@ impl ServiceManager {
             svc.stopping.store(true, Ordering::SeqCst);
             svc.alive = false;
             svc.port_warning = None;
+            svc.port_watch = None;
             let pgid = svc.pgid.take();
             kill_group(pgid).await;
             svc.status = ServiceStatus::Stopped;

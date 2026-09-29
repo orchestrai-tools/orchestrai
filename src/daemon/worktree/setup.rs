@@ -147,10 +147,7 @@ async fn run_setup(command: &str, cwd: &Path, log: &Path, timeout: Duration) -> 
         Err(_) => {
             #[cfg(unix)]
             if let Some(pgid) = child.id() {
-                let _ = tokio::process::Command::new("kill")
-                    .args(["-KILL", "--", &format!("-{pgid}")])
-                    .status()
-                    .await;
+                crate::signal::signal_group(pgid, libc::SIGKILL);
             }
             let _ = child.start_kill();
             let _ = child.wait().await;

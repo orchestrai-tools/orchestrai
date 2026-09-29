@@ -9,8 +9,23 @@ mod readiness;
 use super::ready::{spawn_readiness, Probe, RunHandle};
 use super::*;
 use crate::ports;
+use std::future::Future;
 use std::time::Duration;
 use tokio::time::timeout;
+
+/// Upper bound for a test body that drives real processes or a daemon actor.
+const TEST_BUDGET: Duration = Duration::from_secs(60);
+
+/// Run a test body, failing it instead of hanging the suite when an await
+/// inside never returns.
+///
+/// @param body the test body
+/// @returns what the body returned
+pub(crate) async fn bounded<T>(body: impl Future<Output = T>) -> T {
+    timeout(TEST_BUDGET, body).await.unwrap_or_else(|_| {
+        panic!("test did not finish within {TEST_BUDGET:?}: an await never returned")
+    })
+}
 
 /// A service whose process exits non-zero must be detected and reported as
 /// Failed — previously the exit monitor was a no-op and it stayed "running".
@@ -233,6 +248,7 @@ fn stale_run_events_do_not_overwrite_current_service() {
             run_id: 2,
             waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
+            port_watch: None,
         },
     );
 
@@ -290,6 +306,7 @@ fn log_window_cursor_and_lifecycle_markers() {
             run_id: 1,
             waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
+            port_watch: None,
         },
     );
 

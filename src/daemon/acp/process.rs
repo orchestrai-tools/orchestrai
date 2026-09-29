@@ -1,10 +1,8 @@
-use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use tokio::io::AsyncReadExt;
-use tokio::process::Command;
 use tokio::sync::mpsc;
 use warpforge_protocol as wire;
 
@@ -238,12 +236,7 @@ pub(super) async fn capture_pre_initialize_stderr(
 pub(super) async fn kill_process_group(pgid: Option<u32>) {
     #[cfg(unix)]
     if let Some(pgid) = pgid {
-        let _ = Command::new("kill")
-            .args(["-KILL", "--", &format!("-{pgid}")])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
+        crate::signal::signal_group(pgid, libc::SIGKILL);
     }
     #[cfg(not(unix))]
     let _ = pgid;

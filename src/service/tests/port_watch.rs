@@ -1,4 +1,8 @@
-use super::super::port_watch::{announced_port, assess, PortWarning};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use super::super::port_watch::{
+    announced_port, assess, spawn_port_watch, PortWarning, WatchTiming,
+};
 use super::*;
 
 fn warning(expected: u16, announced: Option<u16>) -> Option<PortWarning> {
@@ -180,61 +184,179 @@ fn an_exited_run_drops_its_warning() {
 
 #[tokio::test]
 async fn an_unresolved_port_reference_in_the_command_fails_the_start() {
-    let (tx, _rx) = mpsc::unbounded_channel();
-    let mut mgr = ServiceManager::new(tx);
-    mgr.start(
-        "p",
-        ".",
-        (4000, 4099),
-        ports::PortPin::Auto,
-        "web",
-        "echo --port ${api.port}",
-        0,
-        None,
-        &Readiness::default(),
-        None,
-    )
-    .await
-    .unwrap();
+    bounded(async {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut mgr = ServiceManager::new(tx);
+        mgr.start(
+            "p",
+            ".",
+            (4000, 4099),
+            ports::PortPin::Auto,
+            "web",
+            "echo --port ${api.port}",
+            0,
+            None,
+            &Readiness::default(),
+            None,
+        )
+        .await
+        .unwrap();
 
-    let svc = mgr.get("p", "web").unwrap();
-    assert_eq!(svc.status, ServiceStatus::Failed);
-    assert!(logs_of(&mgr)
-        .iter()
-        .any(|l| l.contains("command references ${api.port}")));
+        let svc = mgr.get("p", "web").unwrap();
+        assert_eq!(svc.status, ServiceStatus::Failed);
+        assert!(logs_of(&mgr)
+            .iter()
+            .any(|l| l.contains("command references ${api.port}")));
+    })
+    .await
 }
 
 /// Needs to bind a port from the range, which a sandbox may forbid.
 #[tokio::test]
 async fn a_command_receives_the_interpolated_port() {
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut mgr = ServiceManager::new(tx);
-    mgr.start(
-        "p",
-        ".",
-        (4000, 4099),
-        ports::PortPin::Auto,
-        "web",
-        "echo port=${web.port}",
-        3000,
-        None,
-        &Readiness::default(),
-        None,
-    )
-    .await
-    .unwrap();
-    let port = mgr.get("p", "web").unwrap().allocated_port;
-    assert!(port > 0);
+    bounded(async {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut mgr = ServiceManager::new(tx);
+        mgr.start(
+            "p",
+            ".",
+            (4000, 4099),
+            ports::PortPin::Auto,
+            "web",
+            "echo port=${web.port}",
+            3000,
+            None,
+            &Readiness::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        let port = mgr.get("p", "web").unwrap().allocated_port;
+        assert!(port > 0);
 
-    let wanted = format!("port={port}");
-    while let Ok(Some(ev)) = timeout(Duration::from_secs(5), rx.recv()).await {
-        if let ServiceEvent::Log { line, .. } = &ev {
-            if *line == wanted {
-                return;
+        let wanted = format!("port={port}");
+        while let Ok(Some(ev)) = timeout(Duration::from_secs(5), rx.recv()).await {
+            if let ServiceEvent::Log { line, .. } = &ev {
+                if *line == wanted {
+                    return;
+                }
             }
         }
-    }
-    panic!("expected the command to print {wanted}");
+        panic!("expected the command to print {wanted}");
+    })
+    .await
+}
+
+const FAST: WatchTiming = WatchTiming {
+    grace: Duration::from_millis(1),
+    interval: Duration::from_millis(5),
+};
+
+/// Watch `p/web` with a probe that never answers; returns its call count.
+fn watch(
+    mgr: &mut ServiceManager,
+    tx: mpsc::UnboundedSender<ServiceEvent>,
+    timing: WatchTiming,
+) -> Arc<AtomicUsize> {
+    let probes = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&probes);
+    let svc = mgr.services.get_mut("p/web").unwrap();
+    let run = RunHandle::new(tx, "p/web".into(), svc.run_id, Arc::clone(&svc.stopping));
+    let probe = move |_| {
+        counter.fetch_add(1, Ordering::SeqCst);
+        std::future::ready(false)
+    };
+    svc.port_watch = Some(spawn_port_watch(run, svc.allocated_port, 0, timing, probe));
+    probes
+}
+
+async fn probing_stopped(probes: &AtomicUsize) -> bool {
+    let before = probes.load(Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    probes.load(Ordering::SeqCst) == before
+}
+
+#[tokio::test]
+async fn stop_returns_promptly_and_ends_an_active_probe_loop() {
+    bounded(async {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut mgr = ServiceManager::new(tx.clone());
+        readiness_seed(&mut mgr);
+        running(&mut mgr, 0);
+        let probes = watch(&mut mgr, tx, FAST);
+
+        for _ in 0..3 {
+            let event = rx.recv().await.unwrap();
+            mgr.apply_event(event);
+        }
+        assert_eq!(
+            mgr.get("p", "web").unwrap().port_warning,
+            warning(4400, Some(4321))
+        );
+        assert_eq!(logs_of(&mgr).len(), 2, "the entry stays readable");
+
+        timeout(Duration::from_secs(1), mgr.stop("p", "web"))
+            .await
+            .expect("stop must not wait on the watcher")
+            .unwrap();
+        assert!(
+            probing_stopped(&probes).await,
+            "probing continued after stop"
+        );
+        assert_eq!(mgr.get("p", "web").unwrap().port_warning, None);
+    })
+    .await
+}
+
+#[tokio::test]
+async fn an_exited_run_ends_its_watcher_without_a_stop() {
+    bounded(async {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut mgr = ServiceManager::new(tx.clone());
+        readiness_seed(&mut mgr);
+        running(&mut mgr, 0);
+        let probes = watch(&mut mgr, tx, FAST);
+        let event = rx.recv().await.unwrap();
+        mgr.apply_event(event);
+
+        mgr.apply_event(ServiceEvent::StatusChange {
+            key: "p/web".into(),
+            run_id: 7,
+            status: ServiceStatus::Failed,
+            exit_code: Some(1),
+        });
+        assert!(
+            probing_stopped(&probes).await,
+            "probing continued after exit"
+        );
+    })
+    .await
+}
+
+#[tokio::test]
+async fn shutdown_does_not_wait_out_a_watcher_grace_period() {
+    bounded(async {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut mgr = ServiceManager::new(tx.clone());
+        readiness_seed(&mut mgr);
+        running(&mut mgr, 0);
+        let idle = WatchTiming {
+            grace: Duration::from_secs(3600),
+            interval: Duration::from_secs(3600),
+        };
+        let probes = watch(&mut mgr, tx, idle);
+
+        timeout(Duration::from_secs(1), mgr.stop_all())
+            .await
+            .expect("shutdown must not wait on the watcher")
+            .unwrap();
+        drop(mgr);
+        // The watcher holds the last sender, so the channel closes only once it is gone.
+        let closed = timeout(Duration::from_secs(1), rx.recv()).await;
+        assert!(matches!(closed, Ok(None)), "the watcher outlived shutdown");
+        assert_eq!(probes.load(Ordering::SeqCst), 0);
+    })
+    .await
 }
 
 fn logs_of(mgr: &ServiceManager) -> Vec<String> {
@@ -260,6 +382,7 @@ fn readiness_seed(mgr: &mut ServiceManager) {
             run_id: 7,
             waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
+            port_watch: None,
         },
     );
 }

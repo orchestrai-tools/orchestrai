@@ -25,6 +25,7 @@ fn starting(mgr: &mut ServiceManager, key: &str, run_id: u64) {
             run_id,
             waiting_on: Vec::new(),
             stopping: Arc::new(AtomicBool::new(false)),
+            port_watch: None,
         },
     );
 }

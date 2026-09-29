@@ -116,12 +116,7 @@ pub async fn probe_models(
     // Always kill the child regardless of outcome.
     #[cfg(unix)]
     if let Some(pgid) = pgid {
-        let _ = Command::new("kill")
-            .args(["-KILL", "--", &format!("-{pgid}")])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
+        crate::signal::signal_group(pgid, libc::SIGKILL);
     }
     let _ = child.start_kill();
     let _ = child.wait().await;
