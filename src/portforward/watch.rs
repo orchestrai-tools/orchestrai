@@ -8,7 +8,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{mpsc, Notify};
 
-use super::stale::kill_stale_port_forward;
+use super::stale::{foreign_holder, kill_stale_port_forward};
 use super::PfEvent;
 
 #[allow(clippy::too_many_arguments)]
@@ -44,6 +44,15 @@ pub(super) async fn watch_portforward(
                 continue;
             }
 
+            if let Some(reason) = foreign_holder(local_port).await {
+                let _ = event_tx.send(PfEvent::Failed {
+                    project: project.clone(),
+                    name: name.clone(),
+                    local_port,
+                    reason,
+                });
+                return;
+            }
             let _ = event_tx.send(PfEvent::Log {
                 project: project.clone(),
                 name: name.clone(),

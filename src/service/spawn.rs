@@ -244,7 +244,6 @@ impl ServiceManager {
             let watch = spawn_port_watch(
                 run.clone(),
                 allocated_port,
-                next_seq,
                 WatchTiming::DEFAULT,
                 port_answers,
             );
@@ -266,6 +265,7 @@ impl ServiceManager {
                     {
                         run.report_running();
                     }
+                    run.announce(&line);
                     let _ = run.tx.send(ServiceEvent::Log {
                         key: run.key.clone(),
                         run_id: run.run_id,
@@ -289,6 +289,7 @@ impl ServiceManager {
                     {
                         run.report_running();
                     }
+                    run.announce(&line);
                     let _ = run.tx.send(ServiceEvent::Log {
                         key: run.key.clone(),
                         run_id: run.run_id,

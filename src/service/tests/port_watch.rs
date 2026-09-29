@@ -5,10 +5,10 @@ use super::super::port_watch::{
 };
 use super::*;
 
-fn warning(expected: u16, announced: Option<u16>) -> Option<PortWarning> {
+fn warning(expected: u16, listening: &[u16]) -> Option<PortWarning> {
     Some(PortWarning {
         expected,
-        announced,
+        listening: listening.to_vec(),
     })
 }
 
@@ -42,85 +42,48 @@ fn announced_port_ignores_ansi_codes() {
 
 #[test]
 fn an_answering_port_clears_the_warning() {
-    let previous = warning(4400, Some(4321));
+    assert_eq!(assess(4400, true, true, &[4321]), None);
+}
+
+#[test]
+fn a_silent_port_of_a_running_service_warns_with_the_listening_ports() {
     assert_eq!(
-        assess(4400, true, true, previous.as_ref(), [].into_iter()),
-        None
+        assess(4400, false, true, &[4321, 8787]),
+        warning(4400, &[4321, 8787])
     );
 }
 
 #[test]
-fn a_silent_port_of_a_running_service_warns_with_the_announced_port() {
-    let lines = ["booting", "Local: http://localhost:4321/", "idle"];
+fn the_expected_port_is_not_reported_as_listening() {
     assert_eq!(
-        assess(4400, false, true, None, lines.into_iter()),
-        warning(4400, Some(4321))
+        assess(4400, false, true, &[4400, 4321]),
+        warning(4400, &[4321])
     );
 }
 
 #[test]
-fn the_newest_announcement_other_than_the_expected_port_wins() {
-    let lines = [
-        "http://localhost:3000",
-        "http://localhost:4321",
-        "http://localhost:4400",
-    ];
-    assert_eq!(
-        assess(4400, false, true, None, lines.into_iter()),
-        warning(4400, Some(4321))
-    );
+fn a_starting_service_stays_quiet_until_another_port_answers() {
+    assert_eq!(assess(4400, false, false, &[]), None);
+    assert_eq!(assess(4400, false, false, &[4321]), warning(4400, &[4321]));
 }
 
 #[test]
-fn a_starting_service_with_nothing_announced_stays_quiet() {
-    assert_eq!(
-        assess(4400, false, false, None, ["compiling"].into_iter()),
-        None
-    );
-    assert_eq!(
-        assess(
-            4400,
-            false,
-            false,
-            None,
-            ["http://localhost:4321"].into_iter()
-        ),
-        warning(4400, Some(4321))
-    );
+fn a_running_service_with_no_answering_port_warns_without_one() {
+    assert_eq!(assess(4400, false, true, &[]), warning(4400, &[]));
 }
 
-#[test]
-fn a_running_service_without_an_announcement_warns_without_a_port() {
-    assert_eq!(
-        assess(4400, false, true, None, ["ready"].into_iter()),
-        warning(4400, None)
-    );
-}
-
-#[test]
-fn an_earlier_announcement_survives_a_trimmed_log() {
-    let previous = warning(4400, Some(4321));
-    assert_eq!(
-        assess(4400, false, true, previous.as_ref(), ["noise"].into_iter()),
-        warning(4400, Some(4321))
-    );
-}
-
-fn running(mgr: &mut ServiceManager, from_seq: u64) {
+fn running(mgr: &mut ServiceManager) {
     let svc = mgr.services.get_mut("p/web").unwrap();
     svc.status = ServiceStatus::Running;
     svc.allocated_port = 4400;
-    svc.push_log("old run: http://localhost:3000".into());
-    svc.push_log("Local: http://localhost:4321/".into());
-    assert!(svc.next_seq > from_seq);
 }
 
-fn probe(run_id: u64, answered: bool, from_seq: u64) -> ServiceEvent {
+fn probe(run_id: u64, answered: bool, listening: &[u16]) -> ServiceEvent {
     ServiceEvent::PortProbe {
         key: "p/web".into(),
         run_id,
         answered,
-        from_seq,
+        listening: listening.to_vec(),
     }
 }
 
@@ -129,38 +92,22 @@ fn probe_results_set_and_clear_the_warning_for_the_current_run() {
     let (tx, _rx) = mpsc::unbounded_channel();
     let mut mgr = ServiceManager::new(tx);
     readiness_seed(&mut mgr);
-    running(&mut mgr, 1);
+    running(&mut mgr);
 
-    mgr.apply_event(probe(7, false, 1));
+    mgr.apply_event(probe(7, false, &[4321]));
     assert_eq!(
         mgr.get("p", "web").unwrap().port_warning,
-        warning(4400, Some(4321))
+        warning(4400, &[4321])
     );
 
-    mgr.apply_event(probe(8, true, 1));
+    mgr.apply_event(probe(8, true, &[]));
     assert_eq!(
         mgr.get("p", "web").unwrap().port_warning,
-        warning(4400, Some(4321))
+        warning(4400, &[4321])
     );
 
-    mgr.apply_event(probe(7, true, 1));
+    mgr.apply_event(probe(7, true, &[]));
     assert_eq!(mgr.get("p", "web").unwrap().port_warning, None);
-}
-
-#[test]
-fn lines_from_an_earlier_run_are_not_announcements() {
-    let (tx, _rx) = mpsc::unbounded_channel();
-    let mut mgr = ServiceManager::new(tx);
-    readiness_seed(&mut mgr);
-    running(&mut mgr, 1);
-
-    mgr.apply_event(probe(7, false, 1));
-    let warning = mgr.get("p", "web").unwrap().port_warning.clone();
-    assert_eq!(warning.and_then(|w| w.announced), Some(4321));
-    mgr.get_mut("p", "web").unwrap().port_warning = None;
-    mgr.apply_event(probe(7, false, 2));
-    let warning = mgr.get("p", "web").unwrap().port_warning.clone();
-    assert_eq!(warning.unwrap().announced, None);
 }
 
 #[test]
@@ -168,8 +115,8 @@ fn an_exited_run_drops_its_warning() {
     let (tx, _rx) = mpsc::unbounded_channel();
     let mut mgr = ServiceManager::new(tx);
     readiness_seed(&mut mgr);
-    running(&mut mgr, 1);
-    mgr.apply_event(probe(7, false, 1));
+    running(&mut mgr);
+    mgr.apply_event(probe(7, false, &[]));
 
     mgr.apply_event(ServiceEvent::StatusChange {
         key: "p/web".into(),
@@ -178,7 +125,7 @@ fn an_exited_run_drops_its_warning() {
         exit_code: Some(1),
     });
     assert_eq!(mgr.get("p", "web").unwrap().port_warning, None);
-    mgr.apply_event(probe(7, false, 1));
+    mgr.apply_event(probe(7, false, &[]));
     assert_eq!(mgr.get("p", "web").unwrap().port_warning, None);
 }
 
@@ -252,7 +199,7 @@ const FAST: WatchTiming = WatchTiming {
     interval: Duration::from_millis(5),
 };
 
-/// Watch `p/web` with a probe that never answers; returns its call count.
+/// Watch `p/web` with a probe where only announced port 4321 answers; returns its call count.
 fn watch(
     mgr: &mut ServiceManager,
     tx: mpsc::UnboundedSender<ServiceEvent>,
@@ -262,12 +209,87 @@ fn watch(
     let counter = Arc::clone(&probes);
     let svc = mgr.services.get_mut("p/web").unwrap();
     let run = RunHandle::new(tx, "p/web".into(), svc.run_id, Arc::clone(&svc.stopping));
-    let probe = move |_| {
+    run.announce("Local: http://localhost:4321/");
+    let probe = move |port| {
         counter.fetch_add(1, Ordering::SeqCst);
-        std::future::ready(false)
+        std::future::ready(port == 4321)
     };
-    svc.port_watch = Some(spawn_port_watch(run, svc.allocated_port, 0, timing, probe));
+    svc.port_watch = Some(spawn_port_watch(run, svc.allocated_port, timing, probe));
     probes
+}
+
+fn probing_run(mgr: &ServiceManager, tx: mpsc::UnboundedSender<ServiceEvent>) -> RunHandle {
+    let svc = mgr.get("p", "web").unwrap();
+    RunHandle::new(tx, "p/web".into(), svc.run_id, Arc::clone(&svc.stopping))
+}
+
+async fn first_probe(
+    announced: &[&str],
+    answering: &'static [u16],
+    calls: Arc<std::sync::Mutex<Vec<u16>>>,
+) -> Vec<u16> {
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut mgr = ServiceManager::new(tx.clone());
+    readiness_seed(&mut mgr);
+    running(&mut mgr);
+    let run = probing_run(&mgr, tx);
+    for line in announced {
+        run.announce(line);
+    }
+    let probe = move |port| {
+        calls.lock().unwrap().push(port);
+        std::future::ready(answering.contains(&port))
+    };
+    let _guard = spawn_port_watch(run, 4400, FAST, probe);
+    match rx.recv().await.unwrap() {
+        ServiceEvent::PortProbe { listening, .. } => listening,
+        _ => panic!("expected a port probe"),
+    }
+}
+
+#[tokio::test]
+async fn only_announced_ports_that_answer_are_reported() {
+    bounded(async {
+        let calls = Arc::default();
+        let lines = ["api on localhost:8787", "Studio at localhost:9501"];
+        let listening = first_probe(&lines, &[8787], Arc::clone(&calls)).await;
+        assert_eq!(listening, vec![8787]);
+        assert!(calls.lock().unwrap().contains(&9501));
+    })
+    .await
+}
+
+#[tokio::test]
+async fn several_answering_ports_are_all_reported() {
+    bounded(async {
+        let lines = ["localhost:9501", "localhost:8787"];
+        let listening = first_probe(&lines, &[8787, 9501], Arc::default()).await;
+        assert_eq!(listening, vec![8787, 9501]);
+    })
+    .await
+}
+
+#[tokio::test]
+async fn no_answering_announced_port_reports_none() {
+    bounded(async {
+        let listening = first_probe(&["localhost:9501"], &[], Arc::default()).await;
+        assert!(listening.is_empty());
+    })
+    .await
+}
+
+#[tokio::test]
+async fn at_most_five_candidates_are_probed_and_an_answer_is_cached() {
+    bounded(async {
+        let calls = Arc::default();
+        let lines: Vec<String> = (9001..9009).map(|p| format!("localhost:{p}")).collect();
+        let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+        first_probe(&refs, &[9008], Arc::clone(&calls)).await;
+        let probed = calls.lock().unwrap().clone();
+        assert_eq!(probed.len(), 6, "{probed:?}");
+        assert!(!probed.contains(&9001));
+    })
+    .await
 }
 
 async fn probing_stopped(probes: &AtomicUsize) -> bool {
@@ -282,7 +304,7 @@ async fn stop_returns_promptly_and_ends_an_active_probe_loop() {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let mut mgr = ServiceManager::new(tx.clone());
         readiness_seed(&mut mgr);
-        running(&mut mgr, 0);
+        running(&mut mgr);
         let probes = watch(&mut mgr, tx, FAST);
 
         for _ in 0..3 {
@@ -291,9 +313,8 @@ async fn stop_returns_promptly_and_ends_an_active_probe_loop() {
         }
         assert_eq!(
             mgr.get("p", "web").unwrap().port_warning,
-            warning(4400, Some(4321))
+            warning(4400, &[4321])
         );
-        assert_eq!(logs_of(&mgr).len(), 2, "the entry stays readable");
 
         timeout(Duration::from_secs(1), mgr.stop("p", "web"))
             .await
@@ -314,7 +335,7 @@ async fn an_exited_run_ends_its_watcher_without_a_stop() {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let mut mgr = ServiceManager::new(tx.clone());
         readiness_seed(&mut mgr);
-        running(&mut mgr, 0);
+        running(&mut mgr);
         let probes = watch(&mut mgr, tx, FAST);
         let event = rx.recv().await.unwrap();
         mgr.apply_event(event);
@@ -339,7 +360,7 @@ async fn shutdown_does_not_wait_out_a_watcher_grace_period() {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let mut mgr = ServiceManager::new(tx.clone());
         readiness_seed(&mut mgr);
-        running(&mut mgr, 0);
+        running(&mut mgr);
         let idle = WatchTiming {
             grace: Duration::from_secs(3600),
             interval: Duration::from_secs(3600),

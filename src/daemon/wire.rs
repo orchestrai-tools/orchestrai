@@ -23,7 +23,7 @@ pub fn service_status(s: &ServiceStatus) -> wire::ServiceStatus {
 pub fn port_warning(w: &Option<PortWarning>) -> Option<wire::PortWarning> {
     w.as_ref().map(|w| wire::PortWarning {
         expected: w.expected,
-        announced: w.announced,
+        listening: w.listening.clone(),
     })
 }
 

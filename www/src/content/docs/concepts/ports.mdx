@@ -10,7 +10,7 @@ sidebar:
 
 Nothing in Warpforge detects which port a service actually bound. The flow runs the other way: Warpforge picks a port — the first free one in the project's range, or exactly the pinned one — passes it to the process as the `PORT` environment variable, then probes that port with a TCP connect and marks the service Running when something answers.
 
-This means the app has to cooperate. If it reads `PORT`, everything works. If it doesn't, Warpforge warns on the service row once the service is up but nothing answers on its port, and names the port the app printed in its logs if it printed one. Agents see the same warning in `list_runtime`.
+This means the app has to cooperate. If it reads `PORT`, everything works. If it doesn't, Warpforge warns on the service row once the service is up but nothing answers on its port, and names the ports the app printed in its logs that actually answer (for example "Listening on 8787 and 9501, not 4000"). If none of them answers, it says nothing answers on the allocated port. Agents see the same warning in `list_runtime`.
 
 ## Pinning a port
 

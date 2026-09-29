@@ -32,27 +32,75 @@ async fn stdout_of(program: &str, args: &[&str]) -> String {
         .unwrap_or_default()
 }
 
+/// The listeners on `port` as (pid, command line).
+async fn listeners(port: u16) -> Vec<(u32, String)> {
+    let spec = format!("-iTCP:{port}");
+    let pids = stdout_of("lsof", &["-nP", "-t", &spec, "-sTCP:LISTEN"]).await;
+    let mut out = Vec::new();
+    for pid in pids.lines().filter_map(|l| l.trim().parse::<u32>().ok()) {
+        let args = stdout_of("ps", &["-o", "args=", "-p", &pid.to_string()]).await;
+        out.push((pid, args.trim().to_string()));
+    }
+    out
+}
+
 /// SIGTERM the stale `kubectl port-forward` listening on `port`, if any.
 ///
 /// @param port the local port a new forward needs
 pub(super) async fn kill_stale_port_forward(port: u16) {
-    let spec = format!("-iTCP:{port}");
-    let listeners = stdout_of("lsof", &["-nP", "-t", &spec, "-sTCP:LISTEN"]).await;
-    for pid in listeners
-        .lines()
-        .filter_map(|l| l.trim().parse::<u32>().ok())
-    {
-        let args = stdout_of("ps", &["-o", "args=", "-p", &pid.to_string()]).await;
-        if is_forward_of(args.trim(), port) {
+    for (pid, args) in listeners(port).await {
+        if is_forward_of(&args, port) {
             #[cfg(unix)]
             crate::signal::signal_process(pid, libc::SIGTERM);
         }
     }
 }
 
+/// Why a forward of `port` cannot start when a listener that is not a
+/// `kubectl port-forward` of that port holds it.
+///
+/// @param port the forward's local port
+/// @param holders the command lines of the port's listeners
+/// @returns the failure reason, or `None` when every holder is a stale forward
+pub(super) fn foreign_holder_reason(port: u16, holders: &[String]) -> Option<String> {
+    holders.iter().any(|args| !is_forward_of(args, port)).then(|| {
+        format!(
+            "port {port} is already served by another process (not a port-forward) — forward not started; stop that process or change localPort"
+        )
+    })
+}
+
+/// [`foreign_holder_reason`] for the live listeners on `port`.
+pub(super) async fn foreign_holder(port: u16) -> Option<String> {
+    let holders: Vec<String> = listeners(port).await.into_iter().map(|(_, a)| a).collect();
+    foreign_holder_reason(port, &holders)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::is_forward_of;
+    use super::{foreign_holder_reason, is_forward_of};
+
+    fn holders(args: &[&str]) -> Vec<String> {
+        args.iter().map(|a| a.to_string()).collect()
+    }
+
+    #[test]
+    fn a_non_kubectl_holder_fails_the_forward_with_a_reason() {
+        let reason = foreign_holder_reason(6379, &holders(&["redis-server *:6379"])).unwrap();
+        assert!(reason.contains("port 6379 is already served by another process"));
+        assert!(reason.contains("change localPort"));
+        let mixed = holders(&["kubectl port-forward pod/r 6379:6379", "redis-server"]);
+        assert!(foreign_holder_reason(6379, &mixed).is_some());
+        let other_port = holders(&["kubectl port-forward pod/r 6380:6379"]);
+        assert!(foreign_holder_reason(6379, &other_port).is_some());
+    }
+
+    #[test]
+    fn a_stale_kubectl_forward_is_left_to_the_reclaim_path() {
+        let stale = holders(&["kubectl port-forward -n dev pod/r 6379:6379"]);
+        assert_eq!(foreign_holder_reason(6379, &stale), None);
+        assert_eq!(foreign_holder_reason(6379, &[]), None);
+    }
 
     #[test]
     fn only_a_kubectl_forward_of_the_port_matches() {

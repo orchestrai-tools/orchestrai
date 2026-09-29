@@ -3,19 +3,21 @@
 
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, timeout, Instant};
 
+use super::port_watch::announced_port;
 use super::{ServiceEvent, ServiceStatus};
 use crate::config::{parse_duration, ServiceConfig};
 
 pub(super) const DEFAULT_PROBE_INTERVAL: Duration = Duration::from_secs(1);
 pub(super) const DEFAULT_READY_TIMEOUT: Duration = Duration::from_secs(300);
 const RECOVERY_INTERVAL: Duration = Duration::from_secs(5);
+const MAX_ANNOUNCED: usize = 32;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// How a service's readiness is decided, resolved from its config.
@@ -151,6 +153,7 @@ pub(super) struct RunHandle {
     /// Set once the process has exited.
     pub exited: Arc<AtomicBool>,
     timed_out: Arc<AtomicBool>,
+    announced: Arc<Mutex<Vec<u16>>>,
     started: std::time::Instant,
 }
 
@@ -169,8 +172,29 @@ impl RunHandle {
             settled: Arc::new(AtomicBool::new(false)),
             exited: Arc::new(AtomicBool::new(false)),
             timed_out: Arc::new(AtomicBool::new(false)),
+            announced: Arc::default(),
             started: std::time::Instant::now(),
         }
+    }
+
+    /// Remember the local port `line` announces, if any, oldest first.
+    pub(super) fn announce(&self, line: &str) {
+        let Some(port) = announced_port(line) else {
+            return;
+        };
+        let mut seen = self.announced.lock().unwrap_or_else(|e| e.into_inner());
+        seen.retain(|p| *p != port);
+        seen.push(port);
+        if seen.len() > MAX_ANNOUNCED {
+            seen.remove(0);
+        }
+    }
+
+    pub(super) fn announced(&self) -> Vec<u16> {
+        self.announced
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     fn abandoned(&self) -> bool {

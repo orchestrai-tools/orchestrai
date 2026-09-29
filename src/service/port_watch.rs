@@ -1,6 +1,7 @@
 //! Detects a service that ignores its allocated port: the process is up but
 //! nothing answers on `$PORT`, usually because the tool picked its own port.
 
+use std::collections::BTreeSet;
 use std::future::Future;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -14,14 +15,15 @@ use super::ServiceEvent;
 
 const GRACE: Duration = Duration::from_secs(10);
 const INTERVAL: Duration = Duration::from_secs(3);
+const MAX_CANDIDATES: usize = 5;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// A service that is up while its allocated port stays silent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortWarning {
     pub expected: u16,
-    /// A different local port the service printed in its logs.
-    pub announced: Option<u16>,
+    /// Other local ports the service printed in its logs that accept a connection.
+    pub listening: Vec<u16>,
 }
 
 fn strip_ansi(line: &str) -> String {
@@ -65,28 +67,53 @@ pub(super) fn announced_port(line: &str) -> Option<u16> {
         .map(|(_, port)| port)
 }
 
-/// Decide the warning for one probe result. `lines` are this run's log lines,
-/// oldest first. A silent port only warns once the service is running or has
-/// announced another port, so a slow first build stays quiet.
-pub(super) fn assess<'a>(
+/// Decide the warning for one probe result. `listening` are the announced
+/// ports that answered. A silent port only warns once the service is running
+/// or another port answers, so a slow first build stays quiet.
+pub(super) fn assess(
     expected: u16,
     answered: bool,
     running: bool,
-    previous: Option<&PortWarning>,
-    lines: impl DoubleEndedIterator<Item = &'a str>,
+    listening: &[u16],
 ) -> Option<PortWarning> {
     if answered {
         return None;
     }
-    let announced = lines
-        .rev()
-        .filter_map(announced_port)
-        .find(|port| *port != expected)
-        .or(previous.and_then(|w| w.announced));
-    (running || announced.is_some()).then_some(PortWarning {
+    let listening: Vec<u16> = listening
+        .iter()
+        .copied()
+        .filter(|port| *port != expected)
+        .collect();
+    (running || !listening.is_empty()).then_some(PortWarning {
         expected,
-        announced,
+        listening,
     })
+}
+
+/// The announced ports, other than `port`, that answer. Only the newest
+/// `MAX_CANDIDATES` are probed and an answer is remembered in `known`.
+async fn answering<P, F>(
+    run: &RunHandle,
+    port: u16,
+    known: &mut BTreeSet<u16>,
+    probe: &mut P,
+) -> Vec<u16>
+where
+    P: FnMut(u16) -> F,
+    F: Future<Output = bool>,
+{
+    let announced = run.announced();
+    let candidates = announced
+        .iter()
+        .rev()
+        .filter(|p| **p != port)
+        .take(MAX_CANDIDATES);
+    for candidate in candidates {
+        if !known.contains(candidate) && probe(*candidate).await {
+            known.insert(*candidate);
+        }
+    }
+    known.iter().copied().collect()
 }
 
 pub(crate) async fn port_answers(port: u16) -> bool {
@@ -125,20 +152,18 @@ impl Drop for WatchGuard {
     }
 }
 
-/// Probe `port` after a grace period and then every `timing.interval`,
-/// reporting each result until the port answers, the run ends, or the
-/// returned guard is dropped.
+/// Probe `port` after a grace period and then every `timing.interval`. While
+/// it stays silent, the ports the run announced are probed too. Each result is
+/// reported until the port answers, the run ends, or the guard is dropped.
 ///
 /// @param run the run being watched; its flags end the loop
 /// @param port the allocated port to probe
-/// @param from_seq the first log line of this run
 /// @param timing grace period and probe interval
 /// @param probe whether `port` accepts a connection
 /// @returns the guard that owns the watcher task
 pub(super) fn spawn_port_watch<P, F>(
     run: RunHandle,
     port: u16,
-    from_seq: u64,
     timing: WatchTiming,
     mut probe: P,
 ) -> WatchGuard
@@ -148,13 +173,19 @@ where
 {
     let task = tokio::spawn(async move {
         sleep(timing.grace).await;
+        let mut known = BTreeSet::new();
         while !run.stopping.load(Ordering::SeqCst) && !run.exited.load(Ordering::SeqCst) {
             let answered = probe(port).await;
+            let listening = if answered {
+                Vec::new()
+            } else {
+                answering(&run, port, &mut known, &mut probe).await
+            };
             let _ = run.tx.send(ServiceEvent::PortProbe {
                 key: run.key.clone(),
                 run_id: run.run_id,
                 answered,
-                from_seq,
+                listening,
             });
             if answered {
                 return;

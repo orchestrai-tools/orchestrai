@@ -668,7 +668,7 @@ describe("RuntimePanel — port warning", () => {
     vi.spyOn(daemon, "fetchServiceLogs").mockReturnValue(new Promise(() => {}));
     const ignoring: ServiceInfo = {
       ...webService,
-      portWarning: { expected: 4400, announced: 4321 },
+      portWarning: { expected: 4400, listening: [4321] },
     };
     render(<RuntimePanel project="warpforge" services={[ignoring]} portforwards={[]} />);
 

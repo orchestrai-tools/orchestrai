@@ -118,7 +118,7 @@ A list of Kubernetes port-forwards to keep alive alongside local services. Requi
 | `remotePort` | number | yes | Remote port on the pod. |
 | `name` | string | no | Human-readable label shown in the UI. |
 
-Port-forwards are watched and retried with backoff when they drop. A service can list a named forward in [`dependsOn`](#readiness); if something local already serves the forward's `localPort`, Warpforge uses that instead of starting the forward.
+Port-forwards are watched and retried with backoff when they drop. A service can list a named forward in [`dependsOn`](#readiness); if something local already serves the forward's `localPort`, Warpforge uses that instead of starting the forward. If you start a forward by hand while its `localPort` is held by anything other than a `kubectl port-forward` of that port, it fails right away with `port <port> is already served by another process (not a port-forward)`; stop that process or change `localPort`. A leftover `kubectl port-forward` of the same port is reclaimed and the forward retried.
 
 ## `worktree`
 

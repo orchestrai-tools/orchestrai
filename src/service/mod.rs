@@ -115,13 +115,13 @@ pub enum ServiceEvent {
         run_id: u64,
         reason: String,
     },
-    /// Result of one probe of the allocated port; `from_seq` is the first log
-    /// line of this run.
+    /// Result of one probe of the allocated port; `listening` are the announced
+    /// ports that answered.
     PortProbe {
         key: String,
         run_id: u64,
         answered: bool,
-        from_seq: u64,
+        listening: Vec<u16>,
     },
     /// A run that timed out became ready after all, `after` its spawn.
     LateReady {

@@ -56,9 +56,9 @@ pub struct ServiceInfo {
 #[serde(rename_all = "camelCase")]
 pub struct PortWarning {
     pub expected: u16,
-    /// A different local port the service printed in its logs.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub announced: Option<u16>,
+    /// Other local ports the service printed in its logs that accept a connection.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub listening: Vec<u16>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

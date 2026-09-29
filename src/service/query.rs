@@ -119,23 +119,17 @@ impl ServiceManager {
                 key,
                 run_id,
                 answered,
-                from_seq,
+                listening,
             } => {
                 if let Some(svc) = self.services.get_mut(&key) {
                     if svc.run_id != run_id || !svc.alive {
                         return;
                     }
-                    let lines = svc
-                        .logs
-                        .iter()
-                        .filter(|l| l.seq >= from_seq)
-                        .map(|l| l.line.as_str());
                     svc.port_warning = assess(
                         svc.allocated_port,
                         answered,
                         svc.status == ServiceStatus::Running,
-                        svc.port_warning.as_ref(),
-                        lines,
+                        &listening,
                     );
                 }
             }

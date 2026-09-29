@@ -29,8 +29,8 @@ export interface ServiceInfo {
 
 export interface PortWarning {
   expected: number;
-  /** A different local port the service printed in its logs. */
-  announced?: number;
+  /** Other local ports the service printed in its logs that accept a connection. */
+  listening?: number[];
 }
 
 export type PortForwardStatus = "starting" | "active" | "restarting" | "failed" | "stopped";
