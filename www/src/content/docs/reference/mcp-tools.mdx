@@ -20,7 +20,7 @@ Which tools an agent sees depends on how the task was started:
 
 | | Regular task | Orchestrator task |
 | --- | --- | --- |
-| Runtime, tasks, memory (20 tools) | ✅ | ✅ |
+| Runtime, backlog, memory (24 tools) | ✅ | ✅ |
 | Automations (7 tools) | ✅ | ✅ |
 | Browser (6 tools, when the task belongs to a project) | ✅ | ✅ |
 | Advisor (1 tool, when the task has an [advisor](/guides/choosing-your-mode/#add-an-advisor-to-a-single-session)) | ✅ | — |
@@ -69,7 +69,7 @@ Control a service or port-forward. All dispatch **asynchronously and return imme
 
 ---
 
-## Backlog — turn discovered work into a local backlog item
+## Backlog — file, read and close local backlog items
 
 ### `create_backlog_task`
 
@@ -84,6 +84,34 @@ create_backlog_task(title, project?, body?, priority?, status?)
 **When:** an agent finds real work that isn't the work it was asked to do — a bug next door, a missing test, a refactor the change made obvious. Instead of scope-creeping the current diff or silently dropping it, it files it.
 
 **Why it doesn't auto-run:** discovered work is exactly the work a human should triage. The deprecated `create_task(prompt, ...)` alias is retained for compatibility and now creates the same local backlog item.
+
+### `list_backlog_tasks` · `get_backlog_task`
+
+Read the backlog instead of guessing what is in it.
+
+```
+list_backlog_tasks(project?, status?, priority?, search?, limit?)
+get_backlog_task(number | id, project?)
+```
+
+`list_backlog_tasks` prints one line per item, most recently changed first: `#87 [todo] [high] Fix the login redirect`, then the total. `limit` defaults to 50 and tops out at 100; `search` matches the title and body. `get_backlog_task` returns one item in full — body, status, priority, and the linked task or tracker URL.
+
+Items are addressed the way you write them: `number` is the `87` in "#87". `id` also works. An unknown number is an error, not a guess.
+
+### `update_backlog_task` · `close_backlog_task`
+
+Keep an item current as the work moves.
+
+```
+update_backlog_task(number | id, project?, title?, body?, status?, priority?)
+close_backlog_task(number | id, project?, status?, note?)
+```
+
+`update_backlog_task` changes only the fields you pass and returns the updated item. `body` replaces the whole body, so read the item first if you mean to add to it. `close_backlog_task` sets the status to `done`, or to `cancelled` when you pass `status: "cancelled"` for work that won't happen, and appends `note` to the body as `Closed: <note>`.
+
+Statuses are `todo`, `in_progress`, `waiting`, `done` and `cancelled`; priorities are `none`, `low`, `medium`, `high` and `urgent`. Anything else is refused with the list of valid values. Edits change the local item only — they are not pushed to a linked GitHub or Linear issue.
+
+**When:** an agent finishes work that a backlog item described, or is asked to triage "#87". Closing the item with a note leaves the trail for whoever reads the backlog next.
 
 ---
 
@@ -325,7 +353,7 @@ decide_workflow(task_id, decision, rounds?, note?, barrier_id?)
 A session works in one project, and most tools stay inside it:
 
 - **Scoped to the session's project.** The runtime tools (`list_runtime`, the log readers, `service_*`, `portforward_*`) and the orchestrator tools that look at your own children (`list_agents`, `stop_agent`, `cleanup_agents`, and the pipeline tools). Their optional `project` may only repeat the session's own project — naming another is **refused**. `spawn_agent` and `spawn_workflow` always start work in the session's project.
-- **Default to the session's project, but can name another.** `create_backlog_task` (`project`), the `memory_*` tools (`project_id`), and `automation_create` (`project`). `automation_list` lists every project's automations unless you pass a `project`, and the other `automation_*` tools address an automation by `id`, whatever project it belongs to.
+- **Default to the session's project, but can name another.** `create_backlog_task` and the other backlog tools (`project`), the `memory_*` tools (`project_id`), and `automation_create` (`project`). `automation_list` lists every project's automations unless you pass a `project`, and the other `automation_*` tools address an automation by `id`, whatever project it belongs to.
 
 A bridge configured outside the daemon, with no project set, resolves the project from the working directory instead — including task worktrees — so one setup covers every registered project.
 

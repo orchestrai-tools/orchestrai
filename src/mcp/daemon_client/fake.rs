@@ -1,7 +1,7 @@
 //! A scripted stand-in for the daemon: restarts, drops, errors and silence on
 //! demand, without a socket.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, Result};
@@ -40,6 +40,9 @@ pub(crate) struct State {
     pub(crate) dials: Vec<String>,
     /// Every request frame sent, in order.
     pub(crate) sent: Vec<Value>,
+    /// Results for the coming calls of a method, front first; `Answer::Reply`'s
+    /// echo once empty.
+    pub(crate) results: HashMap<String, VecDeque<Value>>,
     /// Daemon pids still running; every other pid has exited.
     pub(crate) alive: Vec<u32>,
 }
@@ -123,7 +126,15 @@ impl Connection for FakeConnection {
             state.sent.push(frame.clone());
             state.answers.pop_front()
         };
+        let scripted = {
+            let mut state = self.daemon.state();
+            let method = frame["method"].as_str().unwrap_or_default();
+            state.results.get_mut(method).and_then(VecDeque::pop_front)
+        };
         match answer.unwrap_or(Answer::Reply) {
+            Answer::Reply if scripted.is_some() => self
+                .inbox
+                .push_back(json!({ "id": id, "result": scripted }).to_string()),
             Answer::Reply => {
                 self.inbox
                     .push_back(json!({ "event": "task.updated" }).to_string());

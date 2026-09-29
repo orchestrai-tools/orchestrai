@@ -1,5 +1,7 @@
 use serde_json::{json, Value};
 
+use crate::mcp::handle::{PRIORITIES, STATUSES};
+
 pub(super) fn defs() -> Vec<Value> {
     vec![
         json!({
@@ -51,6 +53,62 @@ pub(super) fn defs() -> Vec<Value> {
                     "workflow": { "type": "string", "description": "Ignored; retained for compatibility." }
                 },
                 "required": ["prompt"]
+            }
+        }),
+        json!({
+            "name": "list_backlog_tasks",
+            "description": "List backlog items, most recently changed first, one per line as `#number [status] [priority] title`, plus the total. Use get_backlog_task for the full text of one item.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "project": { "type": "string", "description": "Project name. Defaults to the current project." },
+                    "status": { "type": "string", "enum": STATUSES, "description": "Only items with this status." },
+                    "priority": { "type": "string", "enum": PRIORITIES, "description": "Only items with this priority." },
+                    "search": { "type": "string", "description": "Only items whose title or body contains this text." },
+                    "limit": { "type": "integer", "description": "Maximum items to list, 1 to 100. Defaults to 50." }
+                }
+            }
+        }),
+        json!({
+            "name": "get_backlog_task",
+            "description": "Read one backlog item in full: title, body, status, priority, and its linked task or external tracker URL. Give the number a user writes as #87, or the item id.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "number": { "type": "integer", "description": "The item number, as in #87. Give number or id." },
+                    "id": { "type": "string", "description": "The item id. Give number or id." },
+                    "project": { "type": "string", "description": "Project name. Defaults to the current project." }
+                }
+            }
+        }),
+        json!({
+            "name": "update_backlog_task",
+            "description": "Change a backlog item. Only the fields you give change; the rest stay as they are. Returns the updated item.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "number": { "type": "integer", "description": "The item number, as in #87. Give number or id." },
+                    "id": { "type": "string", "description": "The item id. Give number or id." },
+                    "project": { "type": "string", "description": "Project name. Defaults to the current project." },
+                    "title": { "type": "string", "description": "New title." },
+                    "body": { "type": "string", "description": "New body. Replaces the whole body." },
+                    "status": { "type": "string", "enum": STATUSES, "description": "New status." },
+                    "priority": { "type": "string", "enum": PRIORITIES, "description": "New priority." }
+                }
+            }
+        }),
+        json!({
+            "name": "close_backlog_task",
+            "description": "Close a backlog item: sets its status to done, or to cancelled when it will not be done. An optional note is appended to the body as `Closed: <note>`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "number": { "type": "integer", "description": "The item number, as in #87. Give number or id." },
+                    "id": { "type": "string", "description": "The item id. Give number or id." },
+                    "project": { "type": "string", "description": "Project name. Defaults to the current project." },
+                    "status": { "type": "string", "enum": ["done", "cancelled"], "description": "done (default) for finished work, cancelled for work that will not be done." },
+                    "note": { "type": "string", "description": "Short closing note appended to the body." }
+                }
             }
         }),
     ]

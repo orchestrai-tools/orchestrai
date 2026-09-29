@@ -5,6 +5,7 @@ use super::automations;
 use super::daemon_client::DaemonClient;
 
 pub(crate) use advisor::ask_advisor;
+pub(crate) use backlog::{PRIORITIES, STATUSES};
 
 mod advisor;
 mod agents;
@@ -69,9 +70,12 @@ pub(crate) async fn handle_tool_call(
         | "service_restart"
         | "portforward_start"
         | "portforward_stop" => runtime::dispatch(name, client, project, &args).await,
-        "create_backlog_task" | "create_task" => {
-            backlog::dispatch(name, client, project, &args).await
-        }
+        "create_backlog_task"
+        | "create_task"
+        | "list_backlog_tasks"
+        | "get_backlog_task"
+        | "update_backlog_task"
+        | "close_backlog_task" => backlog::dispatch(name, client, project, &args).await,
         "memory_store"
         | "memory_search"
         | "memory_list"
