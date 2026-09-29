@@ -80,6 +80,8 @@ If none of that happens within `readyTimeout` (default `5m`, and you can set it 
 
 A service with `dependsOn` starts only after every dependency is ready. Until then it shows as starting, and its log says what it is waiting for. If a dependency fails, times out, or is stopped, the dependent does not start: it is marked failed with a reason naming the dependency. If that dependency becomes ready later, for example a slow first build that finishes after its timeout, the dependent starts then. Starting a single service also starts any dependencies that are not already up. `readyTimeout` counts from when the process starts, so time spent waiting on dependencies does not use it up. A `dependsOn` cycle fails every service in the cycle.
 
+A dependency can also be a named port-forward. Starting the service starts that forward, unless something on your machine already answers on the forward's `localPort` — a local ClickHouse or Postgres, say, or a `kubectl port-forward` you ran yourself. Then Warpforge uses it: the forward stays stopped, the service starts right away, and its log says `[dependency <name>: port <port> is already served locally — using it instead of starting the forward]`. If the port is taken by something that doesn't accept connections, the forward can't start, and the service fails with a reason that names the port, for example `port 8123 is in use by another process`. Starting the forward yourself from Runtime always tries to start it.
+
 <Aside type="note">
   `command` runs whatever you put there — if it's `docker compose up ...`, Docker (and Compose) need to be installed and running; nothing about that is Warpforge-specific.
 </Aside>
@@ -116,7 +118,7 @@ A list of Kubernetes port-forwards to keep alive alongside local services. Requi
 | `remotePort` | number | yes | Remote port on the pod. |
 | `name` | string | no | Human-readable label shown in the UI. |
 
-Port-forwards are watched and retried with backoff when they drop.
+Port-forwards are watched and retried with backoff when they drop. A service can list a named forward in [`dependsOn`](#readiness); if something local already serves the forward's `localPort`, Warpforge uses that instead of starting the forward.
 
 ## `worktree`
 

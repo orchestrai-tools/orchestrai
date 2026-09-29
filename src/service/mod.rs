@@ -15,6 +15,7 @@ mod stop;
 pub(crate) mod tests;
 
 pub use deps::{dependency_gate, DepState, Gate, PortClaim};
+pub(crate) use port_watch::port_answers;
 pub use port_watch::PortWarning;
 pub use ready::Readiness;
 pub use stop::kill_listeners_on_ports;

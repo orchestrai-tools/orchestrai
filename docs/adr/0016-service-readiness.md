@@ -52,6 +52,14 @@ difference.
 Undeclared dependency names are ignored here. Config validation reports them.
 A declared port-forward with no runtime entry is pending, and a waiting
 service starts it.
+A forward started for a dependent first probes its `localPort` over TCP
+(`portforward/local.rs`, off the actor loop, at most 1s per loopback
+address). If something already answers there — a local server, or a
+`kubectl` the user runs — the forward stays `Stopped` with
+`served_locally` set and counts as ready. There is no new wire status: the
+forward really is not running, and its log and the dependent's log say why.
+An explicit start of the forward skips the probe. *Rejected:* reporting it
+`Active`, which claims a tunnel that does not exist.
 
 **A held entry reserves its port.** A placeholder, and a dependent failed by
 the gate, claims its port when it is held, so `${name.port}` resolves for a

@@ -3,8 +3,9 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Notify};
 
 use crate::config::PortForwardConfig;
-use crate::service::{now_ms, LogLine};
+use crate::service::{now_ms, port_answers, LogLine};
 
+mod local;
 mod stale;
 mod watch;
 
@@ -54,6 +55,13 @@ pub enum PfEvent {
         project: String,
         name: String,
         local_port: u16,
+        reason: String,
+    },
+    /// Something local already answers on the port a dependent's forward needs.
+    ServedLocally {
+        project: String,
+        name: String,
+        local_port: u16,
     },
     Log {
         project: String,
@@ -68,6 +76,7 @@ impl PfEvent {
             PfEvent::Active { project, .. }
             | PfEvent::Restarted { project, .. }
             | PfEvent::Failed { project, .. }
+            | PfEvent::ServedLocally { project, .. }
             | PfEvent::Log { project, .. } => project,
         }
     }
@@ -77,6 +86,7 @@ impl PfEvent {
             PfEvent::Active { name, .. }
             | PfEvent::Restarted { name, .. }
             | PfEvent::Failed { name, .. }
+            | PfEvent::ServedLocally { name, .. }
             | PfEvent::Log { name, .. } => name,
         }
     }
@@ -93,6 +103,10 @@ pub struct ManagedPortForward {
     pub remote_port: u16,
     pub status: PfStatus,
     pub last_event: Option<String>,
+    /// Left stopped because a local server already answers on `local_port`.
+    pub served_locally: bool,
+    /// Why the forward gave up, when it is `Failed`.
+    pub failure: Option<String>,
     /// Captured kubectl stdout + stderr + internal diagnostics
     pub logs: Vec<LogLine>,
     /// Sequence number for the next appended log line (see `service::LogLine`).
@@ -149,72 +163,102 @@ impl PortForwardManager {
     }
 
     pub async fn start_all(&mut self, project_name: &str, configs: &[PortForwardConfig]) {
+        self.start(project_name, configs, false);
+    }
+
+    /// Start forwards that services depend on. A forward whose local port
+    /// already answers is left stopped and reported as served locally.
+    pub async fn start_for_dependents(
+        &mut self,
+        project_name: &str,
+        configs: &[PortForwardConfig],
+    ) {
+        self.start(project_name, configs, true);
+    }
+
+    fn start(&mut self, project_name: &str, configs: &[PortForwardConfig], for_dependent: bool) {
         for cfg in configs {
-            let label = cfg
-                .name
-                .clone()
-                .unwrap_or_else(|| format!("{}:{}", cfg.namespace, cfg.pod));
-            let key = format!("{}/{}", project_name, label);
-
-            if let Some(pf) = self.forwards.get(&key) {
-                if matches!(
-                    pf.status,
-                    PfStatus::Active | PfStatus::Starting | PfStatus::Restarting
-                ) {
-                    continue;
-                }
-            }
-
-            let stop = Arc::new(Notify::new());
-            self.forwards.insert(
-                key.clone(),
-                ManagedPortForward {
-                    name: label.clone(),
-                    namespace: cfg.namespace.clone(),
-                    pod_prefix: cfg.pod.clone(),
-                    local_port: cfg.local_port,
-                    remote_port: cfg.remote_port,
-                    status: PfStatus::Starting,
-                    last_event: None,
-                    logs: vec![LogLine {
-                        seq: 0,
-                        at_ms: now_ms(),
-                        line: format!(
-                            "Starting port-forward {}:{} → {}:{} ...",
-                            cfg.namespace, cfg.pod, cfg.local_port, cfg.remote_port
-                        ),
-                    }],
-                    next_seq: 1,
-                    stop: Arc::clone(&stop),
-                },
+            let Some((label, stop)) = self.insert_starting(project_name, cfg) else {
+                continue;
+            };
+            let watch = watch_portforward(
+                project_name.to_string(),
+                label.clone(),
+                cfg.namespace.clone(),
+                cfg.pod.clone(),
+                cfg.local_port,
+                cfg.remote_port,
+                self.event_tx.clone(),
+                Arc::clone(&stop),
             );
             // Tests never run kubectl or lsof: their forwards stay Starting.
-            if cfg!(test) {
-                continue;
-            }
-
-            let project = project_name.to_string();
-            let namespace = cfg.namespace.clone();
-            let pod_prefix = cfg.pod.clone();
-            let local_port = cfg.local_port;
-            let remote_port = cfg.remote_port;
-            let event_tx = self.event_tx.clone();
-            let name_clone = label.clone();
-
-            tokio::spawn(async move {
-                watch_portforward(
-                    project,
-                    name_clone,
-                    namespace,
-                    pod_prefix,
-                    local_port,
-                    remote_port,
-                    event_tx,
+            if for_dependent {
+                tokio::spawn(local::serve_for_dependent(
+                    project_name.to_string(),
+                    label,
+                    cfg.local_port,
+                    self.event_tx.clone(),
                     stop,
-                )
-                .await;
-            });
+                    port_answers(cfg.local_port),
+                    async move {
+                        if !cfg!(test) {
+                            watch.await
+                        }
+                    },
+                ));
+            } else if !cfg!(test) {
+                tokio::spawn(watch);
+            }
         }
+    }
+
+    /// Record `cfg` as `Starting` unless it is already up or starting.
+    fn insert_starting(
+        &mut self,
+        project_name: &str,
+        cfg: &PortForwardConfig,
+    ) -> Option<(String, Arc<Notify>)> {
+        let label = cfg
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("{}:{}", cfg.namespace, cfg.pod));
+        let key = format!("{}/{}", project_name, label);
+
+        if let Some(pf) = self.forwards.get(&key) {
+            if matches!(
+                pf.status,
+                PfStatus::Active | PfStatus::Starting | PfStatus::Restarting
+            ) {
+                return None;
+            }
+        }
+
+        let stop = Arc::new(Notify::new());
+        self.forwards.insert(
+            key,
+            ManagedPortForward {
+                name: label.clone(),
+                namespace: cfg.namespace.clone(),
+                pod_prefix: cfg.pod.clone(),
+                local_port: cfg.local_port,
+                remote_port: cfg.remote_port,
+                status: PfStatus::Starting,
+                last_event: None,
+                served_locally: false,
+                failure: None,
+                logs: vec![LogLine {
+                    seq: 0,
+                    at_ms: now_ms(),
+                    line: format!(
+                        "Starting port-forward {}:{} → {}:{} ...",
+                        cfg.namespace, cfg.pod, cfg.local_port, cfg.remote_port
+                    ),
+                }],
+                next_seq: 1,
+                stop: Arc::clone(&stop),
+            },
+        );
+        Some((label, stop))
     }
 
     pub fn apply_event(&mut self, event: PfEvent) {
@@ -238,12 +282,28 @@ impl PortForwardManager {
                     pf.push_log(format!("⟳ Restarted port-forward :{local_port}"));
                 }
             }
-            PfEvent::Failed { local_port, .. } => {
+            PfEvent::Failed {
+                local_port, reason, ..
+            } => {
                 if let Some(pf) = self.forwards.get_mut(&key) {
                     pf.status = PfStatus::Failed;
                     pf.last_event = Some(format!("✗ failed :{local_port}"));
+                    pf.failure = Some(reason.clone());
                     pf.push_log(format!(
-                        "✗ Port-forward :{local_port} gave up after max retries"
+                        "✗ Port-forward :{local_port} gave up after max retries: {reason}"
+                    ));
+                }
+            }
+            PfEvent::ServedLocally { local_port, .. } => {
+                if let Some(pf) = self
+                    .forwards
+                    .get_mut(&key)
+                    .filter(|pf| pf.status == PfStatus::Starting)
+                {
+                    pf.status = PfStatus::Stopped;
+                    pf.served_locally = true;
+                    pf.push_log(format!(
+                        "Port {local_port} is already served locally — using it instead of starting the forward"
                     ));
                 }
             }

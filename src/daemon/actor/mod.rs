@@ -47,6 +47,7 @@ mod event;
 pub(crate) mod lifecycle;
 mod origin_sweep;
 mod output;
+mod pf_event;
 mod policy;
 mod ports;
 mod pr_assistant;

@@ -57,6 +57,7 @@ pub(super) async fn watch_portforward(
                         project: project.clone(),
                         name: name.clone(),
                         local_port,
+                        reason: busy_port_reason(local_port),
                     });
                     return;
                 }
@@ -92,6 +93,9 @@ pub(super) async fn watch_portforward(
                         project: project.clone(),
                         name: name.clone(),
                         local_port,
+                        reason: format!(
+                            "no pod matching '{pod_prefix}' in namespace '{namespace}'"
+                        ),
                     });
                     return;
                 }
@@ -136,6 +140,7 @@ pub(super) async fn watch_portforward(
                         project: project.clone(),
                         name: name.clone(),
                         local_port,
+                        reason: format!("could not run kubectl: {e}"),
                     });
                     return;
                 }
@@ -241,6 +246,7 @@ pub(super) async fn watch_portforward(
                     project: project.clone(),
                     name: name.clone(),
                     local_port,
+                    reason: format!("kubectl never opened port {local_port}"),
                 });
                 return;
             }
@@ -258,9 +264,14 @@ pub(super) async fn watch_portforward(
     }
 }
 
+/// The failure reason for a local port that another process keeps holding.
+pub(super) fn busy_port_reason(port: u16) -> String {
+    format!("port {port} is in use by another process; stop it or change this forward's localPort")
+}
+
 async fn is_port_active(port: u16) -> bool {
     Command::new("lsof")
-        .args(["-i", &format!(":{port}")])
+        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()

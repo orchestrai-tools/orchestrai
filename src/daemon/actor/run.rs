@@ -358,42 +358,6 @@ impl Daemon {
         }
     }
 
-    pub(crate) async fn handle_pf_event(&mut self, ev: PfEvent) {
-        let key = format!("{}/{}", ev.project(), ev.name());
-        let broadcast = match &ev {
-            PfEvent::Log {
-                project,
-                name,
-                line,
-            } => Event::PortForwardLog {
-                project: project.clone(),
-                name: name.clone(),
-                line: line.clone(),
-            },
-            PfEvent::Active { project, name, .. } | PfEvent::Restarted { project, name, .. } => {
-                Event::PortForwardStatus {
-                    project: project.clone(),
-                    name: name.clone(),
-                    status: PfStatus::Active,
-                }
-            }
-            PfEvent::Failed { project, name, .. } => Event::PortForwardStatus {
-                project: project.clone(),
-                name: name.clone(),
-                status: PfStatus::Failed,
-            },
-        };
-        let status_changed = !matches!(ev, PfEvent::Log { .. });
-        let project = ev.project().to_string();
-        self.portforwards.apply_event(ev);
-        if self.portforwards.forwards.contains_key(&key) {
-            self.emit(broadcast);
-        }
-        if status_changed {
-            self.advance_waiting(&project).await;
-        }
-    }
-
     /// Blockers for an application update: work in flight, plus services and
     /// port-forwards that are mid-transition. A running service is left out —
     /// an update may proceed while one is up (the daemon is replaced, the

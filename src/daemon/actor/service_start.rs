@@ -8,7 +8,6 @@ use std::path::Path;
 use crate::config::{
     load_workspace_config, sorted_services, PortForwardConfig, ServiceConfig, WorkspaceConfig,
 };
-use crate::portforward::PfStatus;
 use crate::service::{dependency_gate, DepState, Gate, PortClaim, Readiness, ServiceStatus};
 
 use crate::daemon::actor::Daemon;
@@ -105,7 +104,9 @@ impl Daemon {
             .cloned()
             .collect();
         if !forwards.is_empty() {
-            self.portforwards.start_all(project, &forwards).await;
+            self.portforwards
+                .start_for_dependents(project, &forwards)
+                .await;
         }
 
         let cycle = in_dependency_cycle(config, name);
@@ -157,7 +158,9 @@ impl Daemon {
             .cloned()
             .collect();
         if !missing.is_empty() {
-            self.portforwards.start_all(project, &missing).await;
+            self.portforwards
+                .start_for_dependents(project, &missing)
+                .await;
         }
     }
 
@@ -207,11 +210,8 @@ impl Daemon {
             };
         }
         let key = format!("{project}/{dep}");
-        match self.portforwards.forwards.get(&key).map(|pf| &pf.status) {
-            Some(PfStatus::Active) => DepState::Ready,
-            Some(PfStatus::Starting | PfStatus::Restarting) => DepState::Pending,
-            Some(PfStatus::Failed) => DepState::Unavailable("failed".to_string()),
-            Some(PfStatus::Stopped) => DepState::Unavailable("is stopped".to_string()),
+        match self.portforwards.forwards.get(&key) {
+            Some(pf) => pf.dependency_state(),
             None if config
                 .portforwards
                 .iter()

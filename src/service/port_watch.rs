@@ -89,7 +89,7 @@ pub(super) fn assess<'a>(
     })
 }
 
-pub(super) async fn port_answers(port: u16) -> bool {
+pub(crate) async fn port_answers(port: u16) -> bool {
     for host in ["127.0.0.1", "::1"] {
         if matches!(
             timeout(CONNECT_TIMEOUT, TcpStream::connect((host, port))).await,

@@ -204,8 +204,8 @@ async fn stopping_a_port_forward_fails_the_services_waiting_on_it() {
         };
         let (_dir, entry) = project(&format!(
             "name: x\nservices:\n  api:\n    command: sleep 30\n    dependsOn: [tunnel-a]\n  worker:\n    command: sleep 30\n    dependsOn: [tunnel-b]\nportforwards:\n{}{}",
-            forward("tunnel-a", 15432),
-            forward("tunnel-b", 15433),
+            forward("tunnel-a", 45432),
+            forward("tunnel-b", 45433),
         ));
         let handle = Daemon::spawn(vec![entry], None);
         start_all(&handle).await;
@@ -239,18 +239,18 @@ async fn a_declared_forward_with_no_runtime_entry_is_started_not_skipped() {
         let config = |port: u16| {
             format!("name: x\nservices:\n  api:\n    command: echo api-spawned; sleep 30\n    dependsOn: [tunnel]\nportforwards:\n  - name: tunnel\n    namespace: dev\n    pod: db\n    localPort: {port}\n    remotePort: 5432\n")
         };
-        let (dir, entry) = project(&config(15440));
+        let (dir, entry) = project(&config(45440));
         let handle = Daemon::spawn(vec![entry], None);
         start_all(&handle).await;
         wait_for_log(&handle, "api", "[service waiting for tunnel]").await;
 
         // A changed forward is removed from the runtime, leaving only its declaration.
-        std::fs::write(dir.path().join(".warpforge/workspace.yaml"), config(15441)).unwrap();
+        std::fs::write(dir.path().join(".warpforge/workspace.yaml"), config(45441)).unwrap();
         let mut restarted = false;
         for _ in 0..100 {
             let snapshot = handle.snapshot().await;
             restarted = snapshot.portforwards.iter().any(|pf| {
-                pf.local_port == 15441 && pf.status == warpforge_protocol::PortForwardStatus::Starting
+                pf.local_port == 45441 && pf.status == warpforge_protocol::PortForwardStatus::Starting
             });
             if restarted {
                 break;
@@ -266,6 +266,36 @@ async fn a_declared_forward_with_no_runtime_entry_is_started_not_skipped() {
             "api keeps waiting on the forward: {api:?}"
         );
         stop_all(&handle).await;
+    })
+    .await
+}
+
+/// Needs a localhost listener; a sandbox that refuses the bind fails this
+/// test at the bind, not at the behaviour under test.
+#[tokio::test]
+async fn a_forward_whose_port_is_already_served_is_used_not_started() {
+    bounded(async {
+        let local = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = local.local_addr().unwrap().port();
+        let (_dir, entry) = project(&format!(
+            "name: x\nservices:\n  api:\n    command: echo api-spawned; sleep 30\n    dependsOn: [tunnel]\nportforwards:\n  - name: tunnel\n    namespace: dev\n    pod: db\n    localPort: {port}\n    remotePort: 8123\n"
+        ));
+        let handle = Daemon::spawn(vec![entry], None);
+        start_all(&handle).await;
+
+        let api = wait_for_log(&handle, "api", "api-spawned").await;
+        assert!(
+            api.contains(&format!("[dependency tunnel: port {port} is already served locally — using it instead of starting the forward]")),
+            "{api:?}"
+        );
+        let snapshot = handle.snapshot().await;
+        let tunnel = snapshot.portforwards.iter().find(|pf| pf.name == "tunnel");
+        assert_eq!(
+            tunnel.map(|pf| pf.status),
+            Some(warpforge_protocol::PortForwardStatus::Stopped)
+        );
+        stop_all(&handle).await;
+        drop(local);
     })
     .await
 }
