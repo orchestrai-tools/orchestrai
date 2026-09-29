@@ -287,7 +287,7 @@ async fn restore_adopts_live_worktrees_and_reports_missing() {
     );
     assert_eq!(
         fresh.get("t_live").unwrap().branch,
-        format!("warpforge/task/t_live")
+        "warpforge/task/t_live".to_string()
     );
     assert_eq!(missing, vec!["t_gone".to_string()]);
     assert!(!fresh.has_worktree("t_gone"));

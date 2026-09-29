@@ -63,7 +63,7 @@ impl Daemon {
             (Some(before), Some(now)) if now >= before => Some(now - before),
             (_, now) => now,
         };
-        let waiters: Vec<_> = state.waiters.drain(..).collect();
+        let waiters = std::mem::take(&mut state.waiters);
         let Some(task) = self.tasks.get_mut(executor) else {
             return;
         };
