@@ -294,13 +294,9 @@ async fn workflow_parent_cancel_stops_the_active_stage_before_acknowledging() {
         .await
         .expect("workflow cancellation acknowledged");
 
-    let process_alive = tokio::process::Command::new("kill")
-        .args(["-0", &pid])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await
-        .is_ok_and(|status| status.success());
+    let process_alive = pid
+        .parse()
+        .is_ok_and(|pid| crate::signal::signal_process(pid, 0));
     assert!(
         !process_alive,
         "task.cancel acknowledged before ACP process {pid} exited"

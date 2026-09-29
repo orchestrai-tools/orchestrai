@@ -12,10 +12,8 @@ use crate::service::tests::bounded;
 const TIMED_OUT: &str = "did not become ready within 300ms";
 
 fn process_running(pid: &str) -> bool {
-    std::process::Command::new("kill")
-        .args(["-0", pid])
-        .status()
-        .is_ok_and(|status| status.success())
+    pid.parse()
+        .is_ok_and(|pid| crate::signal::signal_process(pid, 0))
 }
 
 fn pids(lines: &[String]) -> Vec<String> {

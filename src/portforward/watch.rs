@@ -8,6 +8,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{mpsc, Notify};
 
+use super::stale::kill_stale_port_forward;
 use super::PfEvent;
 
 #[allow(clippy::too_many_arguments)]
@@ -266,13 +267,6 @@ async fn is_port_active(port: u16) -> bool {
         .await
         .map(|s| s.success())
         .unwrap_or(false)
-}
-
-async fn kill_stale_port_forward(port: u16) {
-    let _ = Command::new("pkill")
-        .args(["-f", &format!("kubectl port-forward.*{port}:")])
-        .status()
-        .await;
 }
 
 async fn wait_for_port_released(port: u16, stop: &Arc<Notify>) -> bool {

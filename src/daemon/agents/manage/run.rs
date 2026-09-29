@@ -160,13 +160,9 @@ mod tests {
             .to_string();
         let gone = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
-                let alive = tokio::process::Command::new("kill")
-                    .args(["-0", &pid])
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status()
-                    .await
-                    .is_ok_and(|status| status.success());
+                let alive = pid
+                    .parse()
+                    .is_ok_and(|pid| crate::signal::signal_process(pid, 0));
                 if !alive {
                     break;
                 }

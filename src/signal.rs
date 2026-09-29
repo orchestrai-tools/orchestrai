@@ -63,6 +63,40 @@ mod tests {
         assert!(!signal_process(own_group(), 0));
     }
 
+    fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                rust_files(&path, out);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    /// `kill` parses its arguments differently per platform and `pkill -f`
+    /// matches any command line, the test runner's included.
+    #[test]
+    fn no_source_shells_out_to_a_kill_binary() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        rust_files(&src, &mut files);
+        let needles: Vec<String> = ["kill", "pkill", "killall", "fuser"]
+            .iter()
+            .map(|binary| format!("Command::new(\"{binary}\")"))
+            .collect();
+        for file in files {
+            let text = std::fs::read_to_string(&file).unwrap();
+            for needle in &needles {
+                assert!(
+                    !text.contains(needle.as_str()),
+                    "{} uses {needle}; signal through crate::signal instead",
+                    file.display()
+                );
+            }
+        }
+    }
+
     #[test]
     fn a_child_group_with_a_multi_digit_id_is_killed() {
         let mut child = std::process::Command::new("sleep")

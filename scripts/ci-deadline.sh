@@ -20,7 +20,10 @@ descendants() {
   echo $tree
 }
 
-timeout --signal=TERM --kill-after=30s "$deadline" "$@" >"$log" 2>&1 </dev/null &
+# Its own session: a group or session kill from inside cannot reach this script.
+session=()
+command -v setsid >/dev/null && session=(setsid)
+"${session[@]}" timeout --signal=TERM --kill-after=30s "$deadline" "$@" >"$log" 2>&1 </dev/null &
 runner=$!
 
 snapshot="$log.processes"
@@ -39,6 +42,14 @@ kill "$watchdog" 2>/dev/null
 wait "$watchdog" 2>/dev/null
 
 cat "$log"
+echo "'$*' exited with status $status"
+if [ "$status" -gt 128 ] && [ "$status" -ne 137 ]; then
+  echo "::error::'$*' was ended by SIG$(kill -l $((status - 128)))"
+fi
+if [ "$status" -ne 0 ] && ! grep -q "^test result:" "$log"; then
+  echo "::error::the log has no test summary; the test binary likely died. Kernel log:"
+  { dmesg 2>/dev/null || sudo -n dmesg 2>/dev/null; } | tail -n 30
+fi
 if [ "$status" -eq 124 ]; then
   echo "::error::'$*' exceeded its ${deadline}s deadline"
   cat "$snapshot"

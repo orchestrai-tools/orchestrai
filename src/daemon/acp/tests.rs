@@ -1,9 +1,7 @@
-use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 
 use serde_json::json;
-use tokio::process::Command;
 use tokio::sync::{mpsc, watch};
 use warpforge_protocol as wire;
 
@@ -680,13 +678,9 @@ async fn closed_stdout_is_reported_without_waiting_for_initialize_timeout() {
     handle.cancel();
     tokio::time::timeout(std::time::Duration::from_secs(2), async {
         loop {
-            let alive = Command::new("kill")
-                .args(["-0", &pid])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .await
-                .is_ok_and(|status| status.success());
+            let alive = pid
+                .parse()
+                .is_ok_and(|pid| crate::signal::signal_process(pid, 0));
             if !alive {
                 break;
             }
@@ -732,13 +726,9 @@ async fn dropping_last_handle_kills_child_process_group() {
     drop(handle);
     tokio::time::timeout(std::time::Duration::from_secs(2), async {
         loop {
-            let alive = Command::new("kill")
-                .args(["-0", &pid])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .await
-                .is_ok_and(|status| status.success());
+            let alive = pid
+                .parse()
+                .is_ok_and(|pid| crate::signal::signal_process(pid, 0));
             if !alive {
                 break;
             }

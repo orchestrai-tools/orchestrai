@@ -186,13 +186,9 @@ async fn task_delete_stops_the_active_process_before_removing_history() {
         .await
         .expect("task deletion acknowledged");
 
-    let process_alive = tokio::process::Command::new("kill")
-        .args(["-0", &pid])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await
-        .is_ok_and(|status| status.success());
+    let process_alive = pid
+        .parse()
+        .is_ok_and(|pid| crate::signal::signal_process(pid, 0));
     assert!(
         !process_alive,
         "task.delete acknowledged before ACP process {pid} exited"

@@ -5,6 +5,7 @@ use tokio::sync::{mpsc, Notify};
 use crate::config::PortForwardConfig;
 use crate::service::{now_ms, LogLine};
 
+mod stale;
 mod watch;
 
 use watch::watch_portforward;
@@ -97,7 +98,7 @@ pub struct ManagedPortForward {
     /// Sequence number for the next appended log line (see `service::LogLine`).
     pub next_seq: u64,
     /// Notifying this asks the watcher task to kill its kubectl child and exit
-    /// — scoped teardown, so we never `pkill` port-forwards we didn't start.
+    /// — scoped teardown, so we never kill port-forwards we didn't start.
     stop: Arc<Notify>,
 }
 
@@ -187,7 +188,7 @@ impl PortForwardManager {
                     stop: Arc::clone(&stop),
                 },
             );
-            // Tests never run kubectl, lsof or pkill: their forwards stay Starting.
+            // Tests never run kubectl or lsof: their forwards stay Starting.
             if cfg!(test) {
                 continue;
             }
