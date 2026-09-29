@@ -9,16 +9,23 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, PanelGroup, PanelSeparator } from "@/components/ui/panels";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { VerificationReport, VerifyVerdictBadge } from "@/components/VerificationReport";
 import { PaneHeader } from "@/components/workspace";
 import { useTaskSessionUpdates } from "@/hooks/useTaskSessionUpdates";
 import { sessionActivity } from "@/lib/sessionActivity";
 import type { TaskTree } from "@/lib/taskGroups";
 import { taskLabel } from "@/lib/taskLabel";
 import { cn } from "@/lib/utils";
-import { workflowStageLabel } from "@/lib/workflow";
+import { latestVerification, verificationOf, workflowStageLabel } from "@/lib/workflow";
 import { PANEL_BOUNDS, usePanelSize } from "@/store/panelLayout";
 
-import type { AgentConfig, OrchNodeInfo, TaskInfo } from "../../protocol";
+import type {
+  AgentConfig,
+  OrchNodeInfo,
+  TaskInfo,
+  WorkflowRunInfo,
+  WorkflowVerification,
+} from "../../protocol";
 
 /**
  * One row of the pipeline, from either source it can come from.
@@ -68,13 +75,23 @@ function childSteps(children: readonly TaskTree[]) {
   }));
 }
 
+/** The verification a verify step reported, for its badge and report. */
+function stepVerification(
+  step: PipelineStep | null,
+  run: WorkflowRunInfo | null | undefined,
+): WorkflowVerification | null {
+  return step?.node?.kind === "verify" ? verificationOf(run, step.taskId) : null;
+}
+
 function StepRow({
   step,
   selected,
+  verification,
   onSelect,
 }: {
   step: PipelineStep;
   selected: boolean;
+  verification: WorkflowVerification | null;
   onSelect: (step: PipelineStep) => void;
 }) {
   return (
@@ -95,6 +112,7 @@ function StepRow({
       <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={step.label}>
         {step.label}
       </span>
+      {verification && <VerifyVerdictBadge verdict={verification.verdict} />}
       <AgentBadge agentId={step.agent} size="xs" className="shrink-0 text-muted-foreground" />
     </button>
   );
@@ -194,6 +212,8 @@ export function PipelineSurface({
   );
 
   const selected = steps.find((step) => step.key === selectedKey) ?? null;
+  const selectedVerification = stepVerification(selected, run);
+  const verification = latestVerification(run);
   const completed = graph
     ? graph.nodes.filter((node) => node.status === "complete").length
     : childTasks.filter((child) => child.task.status === "done").length;
@@ -236,6 +256,7 @@ export function PipelineSurface({
                   key={step.key}
                   step={step}
                   selected={step.key === selectedKey}
+                  verification={stepVerification(step, run)}
                   onSelect={() => setSelectedKey(step.key)}
                 />
               ))}
@@ -247,7 +268,16 @@ export function PipelineSurface({
 
       <Panel pin className="min-w-0">
         {selected?.task ? (
-          <StepTranscript task={selected.task} agents={agents} onOpenTask={onOpenTask} />
+          <div className="flex h-full min-h-0 flex-col">
+            {selectedVerification && (
+              <div className="max-h-[45%] shrink-0 overflow-auto border-b border-rule p-3">
+                <VerificationReport parentId={task.id} verification={selectedVerification} />
+              </div>
+            )}
+            <div className="min-h-0 flex-1">
+              <StepTranscript task={selected.task} agents={agents} onOpenTask={onOpenTask} />
+            </div>
+          </div>
         ) : selected ? (
           <EmptyState
             className="h-full"
@@ -281,6 +311,11 @@ export function PipelineSurface({
                   </>
                 )}
               </dl>
+            )}
+            {verification && (
+              <div className="mt-4">
+                <VerificationReport parentId={task.id} verification={verification} />
+              </div>
             )}
             <p className="mt-4 text-[13px] text-muted-foreground">
               Select a stage to watch what its agent is doing.

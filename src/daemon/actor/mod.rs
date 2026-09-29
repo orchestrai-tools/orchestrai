@@ -54,6 +54,7 @@ mod pr_assistant;
 pub(crate) mod project;
 mod prompt;
 mod run;
+pub(crate) mod runner;
 mod service_start;
 mod session;
 mod spawn;
@@ -63,6 +64,7 @@ mod workflow;
 mod workflow_control;
 mod workflow_review;
 mod workflow_stage;
+mod workflow_verify;
 
 pub(crate) use origin_sweep::PR_REVIEW_ORIGIN;
 
@@ -224,6 +226,8 @@ pub struct Daemon {
     automation_run_counters: HashMap<String, u64>,
     /// Pending advisor consultations per executor task (ADR 0022).
     advisors: advisor::Advisors,
+    /// The backlog runner's mirror of its settings, queue and live runs (ADR 0023).
+    runner: runner::RunnerState,
 }
 
 impl Daemon {
@@ -342,6 +346,7 @@ impl Daemon {
                 self.history_sweep();
                 self.sweep_pr_review_tasks();
             }
+            Command::Runner(cmd) => self.handle_runner_command(cmd).await,
             other => self.handle_project_command(other).await,
         }
     }

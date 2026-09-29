@@ -80,7 +80,7 @@ pub(crate) async fn act(
         let origin = match refused_origin(&result, &allowed) {
             None => {
                 log.decision(field(&result, "origin"), "allowed");
-                return Ok(result);
+                return Ok(keep_evidence(handle, task_id, &action, result).await);
             }
             Some(origin) => origin,
         };
@@ -101,6 +101,40 @@ pub(crate) async fn act(
 }
 
 const UNKNOWN: &str = "unknown";
+
+/// A verify stage's screenshot is kept as workflow evidence, and the result
+/// names it so the agent can cite it in its checklist.
+async fn keep_evidence(
+    handle: &DaemonHandle,
+    task_id: &str,
+    action: &wire::BrowserAction,
+    mut result: Value,
+) -> Value {
+    let data = field(&result, "data").to_string();
+    if !matches!(action, wire::BrowserAction::Screenshot) || task_id.is_empty() || data.is_empty() {
+        return result;
+    }
+    let mime = match field(&result, "mimeType") {
+        "" => "image/jpeg".to_string(),
+        mime => mime.to_string(),
+    };
+    let Some((name, path)) = handle.keep_workflow_evidence(task_id, &mime).await else {
+        return result;
+    };
+    let written =
+        tokio::task::spawn_blocking(move || crate::daemon::workflow::evidence::write(&path, &data))
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()));
+    match written {
+        Ok(()) => {
+            if let Some(object) = result.as_object_mut() {
+                object.insert("evidence".into(), Value::String(name));
+            }
+        }
+        Err(error) => eprintln!("[browser] task={task_id} evidence {name} not kept: {error}"),
+    }
+    result
+}
 
 fn field<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or("")

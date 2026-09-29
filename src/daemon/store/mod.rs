@@ -12,6 +12,7 @@ use std::path::PathBuf;
 mod agents;
 mod automations;
 mod backlog;
+mod runner;
 mod schema;
 mod sessions;
 mod snapshot;

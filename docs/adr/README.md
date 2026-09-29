@@ -35,3 +35,4 @@ stale and then misleads.
 | [0020](0020-task-pull-request-status.md) | A worktree task's pull request is a daemon cache, pushed as it changes |
 | [0021](0021-agent-driven-browser.md) | Agents drive the in-app browser through a daemon → client request |
 | [0022](0022-advisor-mode.md) | An advisor is a hidden, read-only child session the executor consults |
+| [0024](0024-workflow-verify-stage.md) | Workflows verify a change in the running app before review |

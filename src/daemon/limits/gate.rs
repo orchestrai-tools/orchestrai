@@ -8,7 +8,7 @@ use crate::daemon::accounts::SpawnAccount;
 
 /// Windows that cap one model family, not the account: a run on another model
 /// still works while one of these is full.
-const MODEL_SCOPED_WINDOWS: &[&str] = &["seven_day_opus", "seven_day_sonnet"];
+pub(crate) const MODEL_SCOPED_WINDOWS: &[&str] = &["seven_day_opus", "seven_day_sonnet"];
 
 /// Why a new run of `agent_id` on `account` must not start, or `None` when it may.
 ///

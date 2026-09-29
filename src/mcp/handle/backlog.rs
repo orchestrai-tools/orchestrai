@@ -95,7 +95,7 @@ fn text<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|s| !s.trim().is_empty())
 }
 
-fn project_of(args: &Value, session: &str) -> Result<String> {
+pub(super) fn project_of(args: &Value, session: &str) -> Result<String> {
     text(args, "project")
         .or_else(|| Some(session.trim()).filter(|p| !p.is_empty()))
         .map(str::to_string)
@@ -147,7 +147,7 @@ async fn list(client: &mut DaemonClient, session: &str, args: &Value) -> Result<
 
 /// Find an item by `number` (or `id`) by walking the project's items in number
 /// order, so it is found however many the project has.
-async fn find(client: &mut DaemonClient, proj: &str, args: &Value) -> Result<Value> {
+pub(super) async fn find(client: &mut DaemonClient, proj: &str, args: &Value) -> Result<Value> {
     let number = match args.get("number") {
         None | Some(Value::Null) => None,
         Some(v) => Some(

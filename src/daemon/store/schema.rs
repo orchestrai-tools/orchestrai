@@ -201,5 +201,5 @@ pub(super) fn init(conn: &Connection) -> Result<()> {
     );
     // Migration: the advisor a task consults, as JSON (ADR 0022).
     let _ = conn.execute("ALTER TABLE tasks ADD COLUMN advisor TEXT", []);
-    Ok(())
+    super::runner::init(conn)
 }

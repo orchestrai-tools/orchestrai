@@ -345,4 +345,31 @@ describe("BacklogView", () => {
     await vi.waitFor(() => expect(rowTitles()).toHaveLength(PAGE_SIZE));
     expect(warpforgeCalls()).toBe(1);
   });
+
+  it("runs one item or a selection in the Factory", async () => {
+    const onRunInFactory = vi.fn<(items: WorkItem[]) => void>();
+    renderBacklog({ onRunInFactory });
+    await vi.waitFor(() => expect(rowTitles()).toHaveLength(PAGE_SIZE));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(screen.getAllByRole("button", { name: "Run in Factory" })[0]!);
+    expect(onRunInFactory).toHaveBeenLastCalledWith([expect.objectContaining({ id: "b-70" })]);
+
+    await user.click(screen.getByRole("checkbox", { name: "Select Issue 69" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Issue 67" }));
+    expect(screen.getByText("2 selected")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Run selected in Factory" }));
+    expect(onRunInFactory).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: "b-69" }),
+      expect.objectContaining({ id: "b-67" }),
+    ]);
+    expect(screen.queryByText("2 selected")).toBeNull();
+  });
+
+  it("offers no selection without a Factory", async () => {
+    renderBacklog();
+    await vi.waitFor(() => expect(rowTitles()).toHaveLength(PAGE_SIZE));
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run in Factory" })).toBeNull();
+  });
 });

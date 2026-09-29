@@ -331,11 +331,18 @@ pub(crate) async fn refresh(
 }
 
 /// Every live task with an isolated checkout, keyed by task id. Archived
-/// tasks sit folded on the sidebar's done shelf and are not worth a `gh` call.
+/// tasks sit folded on the sidebar's done shelf and are not worth a `gh` call,
+/// except a Factory task, whose merge is what closes its backlog item.
 pub(crate) fn targets(tasks: &[Task]) -> HashMap<String, PullTarget> {
     tasks
         .iter()
-        .filter(|task| task.status != crate::daemon::task::TaskStatus::Done)
+        .filter(|task| {
+            task.status != crate::daemon::task::TaskStatus::Done
+                || task
+                    .tags
+                    .iter()
+                    .any(|tag| tag == crate::daemon::runner::RUNNER_TAG)
+        })
         .filter_map(|task| {
             let worktree = task.worktree.clone()?;
             Some((

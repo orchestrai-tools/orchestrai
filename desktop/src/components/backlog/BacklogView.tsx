@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import * as React from "react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { daemon } from "@/daemon";
 import { useUi } from "@/store/ui";
 
@@ -27,6 +28,8 @@ interface BacklogViewProps {
   onOpenItem?: (item: WorkItem) => void;
   /** Adds a work item by hand. */
   onCreate?: () => void;
+  /** Queues items in the project's Factory; enables row selection. */
+  onRunInFactory?: (items: WorkItem[]) => void;
 }
 
 export function BacklogView({
@@ -36,8 +39,19 @@ export function BacklogView({
   liveTaskIds,
   onOpenItem,
   onCreate,
+  onRunInFactory,
 }: BacklogViewProps) {
   const queryClient = useQueryClient();
+  const [selection, setSelection] = React.useState<Map<string, WorkItem>>(() => new Map());
+  const toggleSelect = React.useCallback((item: WorkItem) => {
+    setSelection((current) => {
+      const next = new Map(current);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.set(item.id, item);
+      return next;
+    });
+  }, []);
+  const selectedIds = React.useMemo(() => new Set(selection.keys()), [selection]);
 
   // Sorting and filtering are the daemon's job, so one object holds the whole
   // request and doubles as the query key. It lives in the UI store, per
@@ -162,8 +176,11 @@ export function BacklogView({
       onOpenTask,
       onStartTask,
       liveTaskIds,
+      onRunInFactory: onRunInFactory && ((item) => onRunInFactory([item])),
+      onToggleSelect: onRunInFactory && toggleSelect,
+      selected: selectedIds,
     }),
-    [onOpenItem, onOpenTask, onStartTask, liveTaskIds],
+    [onOpenItem, onOpenTask, onStartTask, liveTaskIds, onRunInFactory, toggleSelect, selectedIds],
   );
 
   return (
@@ -177,6 +194,29 @@ export function BacklogView({
         isSyncing={sync.isFetching || manualSyncing}
         assignees={seenAssignees}
       />
+      {onRunInFactory && selection.size > 0 && (
+        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-rule bg-secondary/40 px-3 text-[12px]">
+          <span className="tnum text-muted-foreground">{selection.size} selected</span>
+          <Button
+            size="sm"
+            className="h-7 px-2.5 text-[12px]"
+            onClick={() => {
+              onRunInFactory([...selection.values()]);
+              setSelection(new Map());
+            }}
+          >
+            Run selected in Factory
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-[12px]"
+            onClick={() => setSelection(new Map())}
+          >
+            Clear
+          </Button>
+        </div>
+      )}
       <div className="min-h-0 flex-1">
         <BacklogList
           items={items}

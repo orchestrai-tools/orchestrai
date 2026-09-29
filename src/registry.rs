@@ -34,7 +34,7 @@ struct ProjectsData {
     projects: Vec<ProjectEntry>,
 }
 
-fn warpforge_dir() -> PathBuf {
+pub(crate) fn warpforge_dir() -> PathBuf {
     // Test seam: lets the suite point the registry at a throwaway directory.
     if let Ok(dir) = std::env::var("WARPFORGE_HOME") {
         return PathBuf::from(dir);

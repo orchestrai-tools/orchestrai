@@ -7,6 +7,13 @@ import type { TaskTree } from "@/lib/taskGroups";
 import type { TaskInfo } from "../../protocol";
 import { PipelineSurface } from "./PipelineSurface";
 
+vi.mock("@/components/VerificationReport", () => ({
+  VerificationReport: ({ verification }: { verification: { summary: string } }) => (
+    <div data-testid="verification">{verification.summary}</div>
+  ),
+  VerifyVerdictBadge: ({ verdict }: { verdict: string }) => <span>{verdict}</span>,
+}));
+
 vi.mock("@/hooks/useTaskSessionUpdates", () => ({
   useTaskSessionUpdates: () => [],
 }));
@@ -99,6 +106,61 @@ describe("PipelineSurface", () => {
 
     await user.click(screen.getByRole("button", { name: /Audit the analytics/ }));
     expect(screen.getByTestId("transcript")).toHaveAttribute("data-task-id", "spawned");
+  });
+
+  it("badges a verify stage with its verdict and shows its report with the transcript", async () => {
+    const user = userEvent.setup();
+    const child = task({ id: "verify-1", title: "verify · thing" });
+    const parent = task({
+      orchestrationGraph: {
+        goal: "Verify loop",
+        id: "root",
+        nodes: [
+          {
+            agent: "claude",
+            id: "verify 1/2",
+            kind: "verify",
+            status: "complete",
+            taskId: "verify-1",
+          },
+        ],
+      },
+      workflowRun: {
+        maxRounds: 3,
+        round: 0,
+        stage: "review",
+        verifications: [
+          {
+            attempt: 1,
+            checklist: [],
+            evidence: [],
+            summary: "the flow works",
+            taskId: "verify-1",
+            verdict: "pass",
+          },
+        ],
+        workflowId: "verify-review-loop",
+        workflowName: "Verify loop",
+      },
+    });
+
+    render(
+      <PipelineSurface
+        task={parent}
+        childTasks={[tree(child)]}
+        agents={[]}
+        onOpenTask={vi.fn<(id: string) => void>()}
+      />,
+    );
+
+    // The overview shows the latest verification before anything is picked.
+    expect(screen.getByTestId("verification")).toHaveTextContent("the flow works");
+    const row = screen.getByRole("button", { name: /verify 1\/2/ });
+    expect(row).toHaveTextContent("pass");
+
+    await user.click(row);
+    expect(screen.getByTestId("verification")).toHaveTextContent("the flow works");
+    expect(screen.getByTestId("transcript")).toHaveAttribute("data-task-id", "verify-1");
   });
 
   it("says so when the task farmed nothing out", () => {

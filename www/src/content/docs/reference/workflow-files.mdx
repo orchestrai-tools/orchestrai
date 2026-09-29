@@ -6,15 +6,16 @@ sidebar:
   label: Workflow files
 ---
 
-Warpforge ships **two** workflows. They are a starting point, not the menu: drop a YAML file in `.warpforge/workflows/` and it appears in the New Task picker alongside them, for everyone who checks out the repository.
+Warpforge ships **three** workflows. They are a starting point, not the menu: drop a YAML file in `.warpforge/workflows/` and it appears in the New Task picker alongside them, for everyone who checks out the repository.
 
 | Built-in | Stages |
 | --- | --- |
 | **Implement + review loop** (`review-loop`) | `implement → review ⇄ fix` |
 | **Plan + implement + review loop** (`plan-review-loop`) | `plan → implement → review ⇄ fix` |
+| **Implement + verify + review loop** (`verify-review-loop`) | `implement → verify → review ⇄ fix` |
 
 <Aside type="note">
-  The pipeline **shape** is fixed — `plan? → implement → review ⇄ fix`. A workflow file configures those stages; it does not declare new ones. That is what lets the daemon drive the run deterministically, survive a restart, and stop at known boundaries. See [ADR 0001](https://github.com/warpforgehq/warpforge/blob/main/docs/adr/0001-workflow-pipelines.md).
+  The pipeline **shape** is fixed — `plan? → implement → verify? → review ⇄ fix`. A workflow file configures those stages; it does not declare new ones. That is what lets the daemon drive the run deterministically, survive a restart, and stop at known boundaries. See [ADR 0001](https://github.com/warpforgehq/warpforge/blob/main/docs/adr/0001-workflow-pipelines.md).
 </Aside>
 
 ## Start from a built-in
@@ -63,18 +64,20 @@ That is a complete workflow. It implements with the agent you picked as Lead, re
 | `description` | string | — | One line under the name in the picker. |
 | `plan` | mapping | absent | Enables the planning stage. Omit the key to run without one. |
 | `implement` | mapping | defaults | Implementation stage. |
+| `verify` | mapping | absent | Enables the verification stage: an agent tests the change in the running app. See [`verify`](#verify). |
 | `review` | mapping | defaults | Review rounds — see below. |
 | `fix` | mapping | inherits `implement` | Repair stage between review rounds. |
 
 An unknown key is a **warning**, not an error — the workflow still loads, and the picker shows the warning in its tooltip. That keeps a file written for a newer build usable on an older one.
 
-### The planning stage is the one real switch
+### Planning and verification are the real switches
 
-`plan` is the only stage you can add or remove; the other three always run.
+`plan` and `verify` are the only stages you can add or remove; the other three always run.
 
 ```yaml
 plan:              # present with defaults — planning runs
 plan: false        # planning is off (deleting the key does the same)
+verify:            # present with defaults — verification runs
 ```
 
 Omitting `implement`, `review` or `fix` does **not** remove them — it selects Warpforge's built-in settings for that stage.
@@ -136,6 +139,44 @@ review:
   `context` and `focus` only shape the **built-in** reviewer prompt. If every reviewer defines its own `prompt`, a custom prompt decides its own context — so those keys do nothing, and Warpforge warns you rather than ignoring them silently.
 </Aside>
 
+## `verify`
+
+The verification stage tests the change the way a QA engineer would. After the implementation, and again after a fix, an agent starts the project's dev services, works out a test plan from the task, walks through it in the in-app browser, checks the browser console for errors, and takes screenshots of the key states. It ends with **pass**, **fail**, or **blocked** (it could not test at all), plus a checklist of what it tried.
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `agent` | string | the Lead agent | Who tests. |
+| `model` | string | the Lead model | |
+| `instructions` | string | — | Added to the built-in testing prompt: logins, seed data, the page to start from. |
+| `required` | boolean | `true` | `true`: review never starts without a pass. `false`: a failed or impossible check is noted and review goes on. |
+| `max_attempts` | number | `2` | How many times in a row verification may fail before the pipeline asks you. Must be ≥ 1; values above **5** are clamped with a warning. |
+
+```yaml title=".warpforge/workflows/qa-review.yaml"
+version: 1
+name: QA + review
+description: Test every change in the running app before review.
+
+verify:
+  agent: claude
+  instructions: |
+    Sign in as demo@example.com / demo. Billing lives under Settings → Billing.
+  max_attempts: 2
+
+review:
+  max_rounds: 3
+```
+
+How it fits the pipeline:
+
+- **Placement.** `implement → verify → review ⇄ fix`. A fix that follows a failed verification is always verified again. A fix that follows a review is verified again when it changed the code.
+- **A failure goes to the fixer, not the reviewers.** The failed steps become the fix stage's findings (`{{findings}}`), so reviewers only see work that passed.
+- **Out of attempts.** When verification has failed `max_attempts` times in a row, or could not run, the task moves to **Needs you** with three choices: try again (another fix, then another check), continue to review without a pass, or stop. Anything you type goes to the next attempt as guidance.
+- **Evidence.** Every screenshot the tester takes is kept with the pipeline and shown on its verify stage in the **Pipeline** view. The verdict, the checklist and the screenshots are part of the pipeline's final summary.
+
+<Aside type="caution">
+  Verification needs the Warpforge desktop app open, because the browser lives there. A task that runs in its **own worktree** cannot be verified yet: the project's dev services run from the main checkout, so they would test the wrong code. The stage says so and stops at the same decision point instead of reporting a pass it cannot back up.
+</Aside>
+
 ## Placeholders
 
 A custom `prompt` may interpolate `{{name}}`. **An unknown placeholder is a validation error, not a blank** — a typo like `{{taks_prompt}}` fails the file with the offending name rather than quietly sending an agent a prompt with a hole in it.
@@ -146,7 +187,7 @@ A custom `prompt` may interpolate `{{name}}`. **An unknown placeholder is a vali
 | `{{plan}}` — the approved plan | | ✓ | ✓ | ✓ |
 | `{{implementer_summary}}` — the last implement/fix session's closing message | | | ✓ | ✓ |
 | `{{diff}}` — the working-copy diff | | | ✓ | ✓ |
-| `{{findings}}` — what the reviewers raised | | | | ✓ |
+| `{{findings}}` — what the reviewers raised, or what verification found | | | | ✓ |
 | `{{round}}`, `{{max_rounds}}` — where the loop is | | | ✓ | ✓ |
 | `{{focus}}` — that reviewer's `focus` line | | | ✓ | |
 
@@ -192,8 +233,8 @@ fix:
 
 Invalid workflows are not hidden. They stay in the picker, greyed out, with the reason in the tooltip — including the line and column for a YAML error — so a broken file is something you notice and fix rather than something that silently disappears.
 
-Errors that reject a file: a missing `name`, an unsupported `version`, `max_rounds: 0`, an unknown value for `on_limit`, `reask` or `context`, more than four reviewers, and any unknown placeholder. Warnings that still load: unknown keys, `max_rounds` above the cap, an empty `context`, and `context` or `focus` set where a custom prompt makes them inert.
+Errors that reject a file: a missing `name`, an unsupported `version`, `max_rounds: 0`, `max_attempts: 0`, an unknown value for `on_limit`, `reask` or `context`, more than four reviewers, and any unknown placeholder. Warnings that still load: unknown keys, `max_rounds` or `max_attempts` above the cap, an empty `context`, and `context` or `focus` set where a custom prompt makes them inert.
 
 <Aside type="note">
-  Warpforge appends its own structured protocols to every stage prompt — how a stage asks you a question, and how a reviewer returns its verdict. You never write those; keep your prompt to the work itself.
+  Warpforge appends its own structured protocols to every stage prompt — how a stage asks you a question, and how a reviewer or tester returns its verdict. You never write those; keep your prompt to the work itself.
 </Aside>

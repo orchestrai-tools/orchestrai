@@ -146,6 +146,9 @@ impl Daemon {
                         workflow::format_findings(&run.deferred_findings)
                     ));
                 }
+                if let Some(section) = run.verification_section() {
+                    summary.push_str(&format!("\n\n{section}"));
+                }
                 summary.push_str("\n\nReview the changes and commit when ready.");
             }
             WorkflowOutcome::Stopped => {
@@ -165,6 +168,10 @@ impl Daemon {
         // to its orchestrator's inbox the same way a plain sub-agent does;
         // deliver_child_result no-ops when there is no parent.
         let success = matches!(outcome, WorkflowOutcome::Success { .. });
+        if let Some(section) = run.verification_section().filter(|_| !success) {
+            summary.push_str(&format!("\n\n{section}"));
+        }
+        run.report = Some(summary.clone());
         self.deliver_child_result(parent_id, success, summary.clone());
         self.workflow_timeline(parent_id, summary);
 
@@ -180,6 +187,7 @@ impl Daemon {
         }
         self.workflow_sync(&run);
         self.workflow_runs.insert(parent_id.to_string(), run);
+        self.runner_pipeline_finished(parent_id, &outcome);
         // The state transition succeeded even if a stage process was slow to
         // die; surfacing teardown trouble as the RPC's error would make a
         // completed decision look rejected.
@@ -223,7 +231,9 @@ impl Daemon {
                 Ok(())
             }
             RunState::Paused { .. } => Err("already paused".to_string()),
-            RunState::AwaitingReply { .. } | RunState::AwaitingLimitDecision { .. } => {
+            RunState::AwaitingReply { .. }
+            | RunState::AwaitingLimitDecision { .. }
+            | RunState::AwaitingVerifyDecision { .. } => {
                 Err("the pipeline is already waiting for your input".to_string())
             }
             RunState::Done | RunState::Failed => Err("the pipeline has finished".to_string()),
@@ -347,6 +357,15 @@ impl Daemon {
             let Some(run) = self.workflow_runs.get(parent_id) else {
                 return Err("no workflow pipeline on this task".to_string());
             };
+            if let RunState::AwaitingVerifyDecision {
+                barrier_id: open, ..
+            } = &run.state
+            {
+                refuse_stale_barrier(open, barrier_id.as_deref())?;
+                return self
+                    .workflow_verify_decide(parent_id, decision, rounds, note)
+                    .await;
+            }
             let RunState::AwaitingLimitDecision {
                 barrier_id: open, ..
             } = &run.state

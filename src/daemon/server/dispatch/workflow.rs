@@ -87,3 +87,23 @@ pub(super) async fn workflow_decide(
     })
     .await
 }
+
+/// File reads run on the request task, never inside the actor.
+pub(super) async fn workflow_evidence(
+    task: String,
+    name: String,
+) -> Result<serde_json::Value, wire::RpcError> {
+    let image =
+        tokio::task::spawn_blocking(move || crate::daemon::workflow::evidence::read(&task, &name))
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|read| read)
+            .map_err(|message| wire::RpcError {
+                code: wire::ErrorCode::InvalidRequest,
+                message,
+            })?;
+    serde_json::to_value(image).map_err(|e| wire::RpcError {
+        code: wire::ErrorCode::Internal,
+        message: e.to_string(),
+    })
+}

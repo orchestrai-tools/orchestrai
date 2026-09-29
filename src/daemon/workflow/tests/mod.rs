@@ -6,6 +6,7 @@ use super::*;
 use crate::workflow_config::{parse_workflow, WorkflowSpec};
 
 mod pause;
+mod verify;
 
 fn spec(yaml: &str) -> WorkflowSpec {
     parse_workflow("test", yaml).0.expect("valid spec")
@@ -219,6 +220,7 @@ fn default_prompts_include_context_and_protocols() {
         round: 1,
         max_rounds: 2,
         guidance: Some("prefer tower middleware".into()),
+        verify_findings: false,
     };
 
     let plan = build_plan_prompt(&run.spec, &ctx);

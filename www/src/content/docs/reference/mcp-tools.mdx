@@ -22,6 +22,7 @@ Which tools an agent sees depends on how the task was started:
 | --- | --- | --- |
 | Runtime, backlog, memory (24 tools) | ✅ | ✅ |
 | Automations (7 tools) | ✅ | ✅ |
+| Factory (2 tools) | ✅ | ✅ |
 | Browser (6 tools, when the task belongs to a project) | ✅ | ✅ |
 | Advisor (1 tool, when the task has an [advisor](/guides/choosing-your-mode/#add-an-advisor-to-a-single-session)) | ✅ | — |
 | Sub-agents and pipelines (11 tools) | — | ✅ |
@@ -113,6 +114,27 @@ close_backlog_task(number | id, project?, status?, note?)
 Statuses are `todo`, `in_progress`, `waiting`, `done` and `cancelled`; priorities are `none`, `low`, `medium`, `high` and `urgent`. Anything else is refused with the list of valid values. Edits change the local item only — they are not pushed to a linked GitHub or Linear issue.
 
 **When:** an agent finishes work that a backlog item described, or is asked to triage "#87". Closing the item with a note leaves the trail for whoever reads the backlog next.
+
+---
+
+## Factory — queue backlog items for draft pull requests
+
+Available in **every** session. The [Factory](/guides/factory/) runs queued items through a pipeline and opens a draft pull request for each one that passes review.
+
+### `runner_enqueue` · `runner_status`
+
+```
+runner_enqueue(number | numbers, project?)
+runner_status(project?, runs?)
+```
+
+`runner_enqueue` queues one item (`number`, as in #87) or several (`numbers`, queued in that order); an item already queued keeps its place, and a done or cancelled item is refused. Queuing starts nothing while the Factory is paused. It returns the queue as `runner_status` prints it.
+
+`runner_status` prints whether the Factory is running, what holds the queue (a limit, quota, the disk floor), each entry as `#87 [queued] Fix the login redirect` with its pull request or the reason it waits, and — with `runs: true` — the ten latest runs with outcome, review rounds, cost and pull request.
+
+**When:** you ask a chat to line up the next few items for the Factory, or to report how the queue is doing. The Factory, not the agent, decides when each item starts.
+
+**Why a Factory run cannot call it:** a run that queued more work would keep the Factory busy on work no person chose. `runner_enqueue` from inside a Factory pipeline is refused.
 
 ---
 
@@ -354,7 +376,7 @@ decide_workflow(task_id, decision, rounds?, note?, barrier_id?)
 A session works in one project, and most tools stay inside it:
 
 - **Scoped to the session's project.** The runtime tools (`list_runtime`, the log readers, `service_*`, `portforward_*`) and the orchestrator tools that look at your own children (`list_agents`, `stop_agent`, `cleanup_agents`, and the pipeline tools). Their optional `project` may only repeat the session's own project — naming another is **refused**. `spawn_agent` and `spawn_workflow` always start work in the session's project.
-- **Default to the session's project, but can name another.** `create_backlog_task` and the other backlog tools (`project`), the `memory_*` tools (`project_id`), and `automation_create` (`project`). `automation_list` lists every project's automations unless you pass a `project`, and the other `automation_*` tools address an automation by `id`, whatever project it belongs to.
+- **Default to the session's project, but can name another.** `create_backlog_task` and the other backlog tools (`project`), `runner_enqueue` and `runner_status` (`project`), the `memory_*` tools (`project_id`), and `automation_create` (`project`). `automation_list` lists every project's automations unless you pass a `project`, and the other `automation_*` tools address an automation by `id`, whatever project it belongs to.
 
 A bridge configured outside the daemon, with no project set, resolves the project from the working directory instead — including task worktrees — so one setup covers every registered project.
 
@@ -362,5 +384,6 @@ A bridge configured outside the daemon, with no project set, resolves the projec
 
 - [Choosing your mode](/guides/choosing-your-mode/) — single, orchestrator, or pipeline
 - [Automations](/guides/automations/) — what the `automation_*` tools schedule
+- [The Factory](/guides/factory/) — what `runner_enqueue` queues into
 - [Cross-harness memory](/concepts/memory/) — what the `memory_*` tools write into
 - [Orchestration and workflows](/concepts/orchestration/) — the concepts behind the delegation tools

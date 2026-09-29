@@ -8,6 +8,7 @@ import type {
 import type { Automation, AutomationRun } from "./automations";
 import type { ClientRequestBody } from "./browser";
 import type { TaskPullRequest } from "./pulls";
+import type { ItemRun, RunnerStatus } from "./runner";
 import type {
   PortForwardInfo,
   PortForwardStatus,
@@ -116,6 +117,9 @@ export type DaemonEvent =
   | { event: "automation.updated"; data: Automation }
   | { event: "automation.removed"; data: { id: string } }
   | { event: "automation.runUpdated"; data: AutomationRun }
+  // ── Backlog runner ──
+  | { event: "runner.updated"; data: RunnerStatus }
+  | { event: "runner.runUpdated"; data: ItemRun }
   // ── Daemon → client requests (sent only to the client chosen to answer) ──
   | {
       event: "client.request";

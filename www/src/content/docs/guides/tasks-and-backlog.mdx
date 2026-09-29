@@ -53,6 +53,8 @@ The backlog loads more as you scroll, and each row reads across a single line: t
 
 **Start task** turns a backlog item into an agent task and links the two. The row offers **Open task** from then on, so the connection survives — you can always get from the intent to the work and back.
 
+**Run in Factory** hands the item to the project's [Factory](/guides/factory/) instead: a pipeline makes the change in its own worktree, agents review it, and you get a draft pull request back — merging it marks the item done. Hover a row for the Factory button, press **Run in Factory** in the item's details, or tick several rows and press **Run selected in Factory**.
+
 Agents can add to the queue too: the [`create_task` tool](/reference/mcp-tools/#create_task) files work an agent discovered but wasn't asked to do. It lands *Queued* for you to triage rather than auto-running, because discovered work is exactly the work a human should look at first.
 
 ---
@@ -145,5 +147,6 @@ Task history and conversations persist locally. Quit the app, come back tomorrow
 
 - [Working in a task](/guides/working-in-a-task/) — the day-to-day craft once a task is running
 - [Choosing your mode](/guides/choosing-your-mode/) — how to start the task once you know what it is
+- [The Factory](/guides/factory/) — queue items and get draft pull requests back
 - [Projects and their runtime](/guides/projects-and-runtime/) — the services and ports a task inherits
 - [Agent tools (MCP)](/reference/mcp-tools/) — what an agent can do while the task runs

@@ -284,6 +284,10 @@ impl Daemon {
                 if delete_result.is_ok() && self.workflow_runs.remove(&id).is_some() {
                     self.persist
                         .write(PersistWrite::DeleteWorkflowRun(id.clone()));
+                    let evidence_of = id.clone();
+                    tokio::task::spawn_blocking(move || {
+                        crate::daemon::workflow::evidence::remove_run(&evidence_of)
+                    });
                 }
                 if delete_result.is_ok() {
                     self.drop_pending_permissions(&id);
@@ -326,6 +330,7 @@ impl Daemon {
                     // The run's task is gone — fail the run so it does not sit
                     // in Running until the stale-run sweep finds it.
                     self.automation_task_deleted(&id);
+                    self.runner_task_deleted(&id);
                     // Awaited, not queued: a failed delete is reported to the
                     // user, and dropping the error would leave a task that
                     // reappears on the next start with no explanation.

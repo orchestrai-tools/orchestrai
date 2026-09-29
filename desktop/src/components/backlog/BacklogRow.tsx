@@ -1,4 +1,4 @@
-import { ExternalLink, Flag, Play, UserRound } from "lucide-react";
+import { ExternalLink, Factory, Flag, Play, UserRound } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,11 @@ export interface BacklogRowActions {
   /** Set of task IDs the daemon still knows about. Used to downgrade a stale
    *  "Open task" link to "Start task" when the referenced task was deleted. */
   liveTaskIds?: ReadonlySet<string>;
+  /** Queues the item in the project's Factory. */
+  onRunInFactory?: (item: WorkItem) => void;
+  /** Item ids picked for a bulk action; rows show a checkbox when given. */
+  selected?: ReadonlySet<string>;
+  onToggleSelect?: (item: WorkItem) => void;
 }
 
 export function relativeTime(ts: number, now = Date.now()): string {
@@ -43,9 +48,23 @@ export const BacklogRow = React.memo(function BacklogRow({
 }) {
   const status = STATUS_META[item.status];
   const StatusIcon = status.icon;
+  const selected = actions.selected?.has(item.id) ?? false;
+  const selecting = (actions.selected?.size ?? 0) > 0;
 
   return (
     <div className="group flex h-9 min-w-0 items-center border-b border-rule pr-2 hover:bg-secondary/40">
+      {actions.onToggleSelect && (
+        <input
+          type="checkbox"
+          aria-label={`Select ${item.title}`}
+          checked={selected}
+          onChange={() => actions.onToggleSelect?.(item)}
+          className={cn(
+            "ml-3 size-3.5 shrink-0 accent-primary transition-opacity focus-visible:opacity-100 group-hover:opacity-100",
+            selected || selecting ? "opacity-100" : "opacity-0",
+          )}
+        />
+      )}
       <button
         type="button"
         onClick={() => actions.onOpen(item)}
@@ -95,7 +114,20 @@ export const BacklogRow = React.memo(function BacklogRow({
 
       {/* Reserved width, not conditional rendering: an action appearing on
           hover must not shift the columns to its left. */}
-      <div className="flex w-[4.5rem] shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+      <div className="flex w-[6rem] shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        {actions.onRunInFactory && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 text-muted-foreground hover:text-foreground"
+            onClick={() => actions.onRunInFactory?.(item)}
+            title="Run in Factory: a pipeline makes the change and opens a draft pull request"
+          >
+            <Factory className="size-3.5" />
+            <span className="sr-only">Run in Factory</span>
+          </Button>
+        )}
         {item.url && (
           <Button
             variant="ghost"

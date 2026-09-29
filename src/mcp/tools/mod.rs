@@ -7,12 +7,14 @@ mod backlog;
 mod browser;
 mod memory;
 mod orchestrator;
+mod runner;
 mod runtime;
 
 pub(crate) fn tool_defs(is_orchestrator: bool) -> Value {
     let mut tools: Vec<Value> = Vec::new();
     tools.extend(runtime::defs());
     tools.extend(backlog::defs());
+    tools.extend(runner::defs());
     tools.extend(memory::defs());
 
     if is_orchestrator {

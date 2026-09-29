@@ -61,6 +61,7 @@ fallback rather than a hard failure.
 **A finished pipeline commits nothing.** It lands in `NeedsReview` for a human.
 *Rejected:* an `on_success: commit` option — it makes an unattended pipeline
 able to write history.
+*Narrowed by ADR 0023:* the backlog runner commits and opens a draft PR for pipelines it starts.
 
 **Pause is soft, at stage boundaries.** The running stage finishes its turn and
 the next one does not start. This is what makes pause survive a daemon restart:

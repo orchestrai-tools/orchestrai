@@ -69,6 +69,8 @@ pub enum OrchNodeKind {
     Merge,
     /// Workflow-pipeline repair stage (fix findings from a review round).
     Fix,
+    /// Workflow-pipeline QA stage (exercise the change in the running app).
+    Verify,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -153,6 +155,13 @@ pub struct WorkflowRunInfo {
     /// finishes. Lets the UI show progress instead of an idle Pause button.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pause_requested: bool,
+    /// Every verify-stage run, oldest first. Empty without a verify stage.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verifications: Vec<crate::WorkflowVerification>,
+    /// The pipeline's final summary in Markdown, verification included; set
+    /// once the run has ended. Suitable as the body of a pull request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report: Option<String>,
 }
 
 /// Pipeline position for display.
@@ -163,6 +172,7 @@ pub enum WorkflowStage {
     Implement,
     Review,
     Fix,
+    Verify,
     Done,
     Failed,
 }
@@ -217,7 +227,9 @@ pub enum WorkflowWaitKind {
     /// A stage asked `need_user_input` — answer with `workflow.reply`.
     Question,
     /// Review rounds exhausted with open findings — answer with
-    /// `workflow.decide`.
+    /// `workflow.decide`. With `stage: verify`, verification failed too often
+    /// or could not run: `extend` retries, `finish` continues to review
+    /// without a pass, `stop` ends the run.
     Limit,
     /// Soft-paused — continue with `workflow.resume`.
     Paused,

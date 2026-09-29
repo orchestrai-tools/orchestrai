@@ -313,3 +313,73 @@ async fn backlog_list_prints_one_line_per_item_and_the_total() {
     assert_eq!(sent["search"], "cache");
     assert_eq!(sent["page_size"], 100);
 }
+
+#[tokio::test]
+async fn runner_enqueue_resolves_numbers_and_names_the_asking_task() {
+    let daemon = FakeDaemon::at("ws://a");
+    script(
+        &daemon,
+        "backlog.list",
+        vec![
+            page(vec![item(3, "todo"), item(5, "todo")], false),
+            page(vec![item(3, "todo"), item(5, "todo")], false),
+        ],
+    );
+    script(
+        &daemon,
+        "runner.enqueue",
+        vec![json!({
+            "settings": { "running": false, "workflow": "review-loop", "maxConcurrent": 1,
+                          "maxOpenPrs": 3, "maxPerDay": 10 },
+            "entries": [{ "number": 5, "state": "queued", "title": "Item 5" },
+                        { "number": 3, "state": "queued", "title": "Item 3" }],
+            "dispatchedToday": 0,
+            "hold": "The Factory is paused"
+        })],
+    );
+    let mut client = DaemonClient::new(Box::new(daemon.clone()));
+    let params = json!({ "name": "runner_enqueue", "arguments": { "numbers": [5, 3] } });
+    let text = handle_tool_call(&mut client, "t_chat", "demo", false, Some(&params))
+        .await
+        .unwrap();
+
+    let sent = last_params(&daemon);
+    assert_eq!(sent["item_ids"], json!(["b_5", "b_3"]));
+    assert_eq!(sent["origin_task"], "t_chat");
+    assert!(text.contains("Factory: paused"), "{text}");
+    assert!(text.contains("Waiting: The Factory is paused"), "{text}");
+    assert!(
+        text.contains("#5 [queued] Item 5\n#3 [queued] Item 3"),
+        "{text}"
+    );
+}
+
+#[tokio::test]
+async fn runner_status_lists_recent_runs_on_request() {
+    let daemon = FakeDaemon::at("ws://a");
+    script(
+        &daemon,
+        "runner.status",
+        vec![json!({ "settings": { "running": true }, "entries": [], "dispatchedToday": 1 })],
+    );
+    script(
+        &daemon,
+        "runner.runs",
+        vec![
+            json!({ "runs": [{ "itemNumber": 4, "itemTitle": "Fix it", "outcome": "delivered",
+                                "rounds": 2, "costUsd": 1.5,
+                                "prUrl": "https://github.com/o/r/pull/9" }] }),
+        ],
+    );
+    let text = call_single(&daemon, "demo", "runner_status", json!({ "runs": true })).await;
+
+    assert!(text.contains("Factory: running"), "{text}");
+    assert!(text.contains("The queue is empty."), "{text}");
+    assert!(
+        text.contains(
+            "#4 Fix it — delivered, 2 review round(s), $1.50, https://github.com/o/r/pull/9"
+        ),
+        "{text}"
+    );
+    assert_eq!(methods(&daemon), ["runner.status", "runner.runs"]);
+}

@@ -2,7 +2,7 @@
 //! `{{placeholder}}` prompt-template rendering, and the built-in templates
 //! shipped with the binary.
 //!
-//! The pipeline shape is fixed (`plan? → implement → review ⇄ fix`), so a
+//! The pipeline shape is fixed (`plan? → implement → verify? → review ⇄ fix`), so a
 //! workflow file configures the fixed stages rather than declaring arbitrary
 //! ones.
 //!
@@ -15,12 +15,16 @@ mod registry;
 mod template;
 #[cfg(test)]
 mod tests;
+mod verify;
 
 pub use parse::parse_workflow;
 pub use registry::{eject_builtin, list_workflows, load_workflow};
 pub use template::{
     extract_placeholders, render_template, VARS_FIX, VARS_IMPLEMENT, VARS_PLAN, VARS_REVIEW,
 };
+pub use verify::VerifyConfig;
+#[cfg(test)]
+pub use verify::{DEFAULT_VERIFY_ATTEMPTS, MAX_VERIFY_ATTEMPTS};
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -48,6 +52,10 @@ pub const BUILTIN_WORKFLOWS: &[(&str, &str)] = &[
         "plan-review-loop",
         include_str!("../workflows/plan-review-loop.yaml"),
     ),
+    (
+        "verify-review-loop",
+        include_str!("../workflows/verify-review-loop.yaml"),
+    ),
 ];
 
 // ─── Validated model ─────────────────────────────────────────────────────────
@@ -61,6 +69,9 @@ pub struct WorkflowSpec {
     /// `Some` when the optional planning stage is enabled.
     pub plan: Option<StageConfig>,
     pub implement: StageConfig,
+    /// `Some` when the QA verification stage is enabled.
+    #[serde(default)]
+    pub verify: Option<VerifyConfig>,
     pub review: ReviewConfig,
     pub fix: StageConfig,
 }
@@ -169,6 +180,9 @@ impl WorkflowSpec {
             stages.push("plan".to_string());
         }
         stages.push("implement".to_string());
+        if self.verify.is_some() {
+            stages.push("verify".to_string());
+        }
         stages.push(match self.review.reviewers.len() {
             1 => "review".to_string(),
             n => format!("review×{n}"),

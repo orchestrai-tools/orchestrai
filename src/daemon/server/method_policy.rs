@@ -64,6 +64,8 @@ pub(super) fn method_runs_concurrently(method: &wire::Method) -> bool {
             | AutomationList { .. }
             | AutomationShow { .. }
             | AutomationRuns { .. }
+            | RunnerStatus { .. }
+            | RunnerRuns { .. }
             | TrackerPullsList { .. }
             | TrackerPullDetails { .. }
             | TrackerPullDiff { .. }
@@ -115,6 +117,8 @@ pub(super) fn method_is_mutation(method: &wire::Method) -> bool {
             | AutomationList { .. }
             | AutomationShow { .. }
             | AutomationRuns { .. }
+            | RunnerStatus { .. }
+            | RunnerRuns { .. }
             | TrackerPullsList { .. }
             | TrackerPullDetails { .. }
             | TrackerPullDiff { .. }

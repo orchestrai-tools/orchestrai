@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { AttentionItem } from "@/lib/attentionRail";
 import { decisionActionKinds } from "@/lib/decisionActions";
 import { approvePermissionOption } from "@/lib/permissionApproval";
+import { verifyBarrier } from "@/lib/workflow";
 
 import { daemon } from "../daemon";
 
@@ -120,6 +121,7 @@ function RowActions({
     );
   }
 
+  const verify = verifyBarrier(item.task.workflowRun);
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -127,7 +129,13 @@ function RowActions({
           size="sm"
           className="gap-1 px-2.5"
           disabled={busy}
-          title="Run one more fix → review cycle"
+          title={
+            verify === "blocked"
+              ? "Run the verify stage again"
+              : verify
+                ? "Run one more fix → verify cycle"
+                : "Run one more fix → review cycle"
+          }
           onClick={() =>
             void act("add one review round", () =>
               daemon.workflowDecide(item.task.id, "extend", {
@@ -137,13 +145,23 @@ function RowActions({
             )
           }
         >
-          {busyAction === "add one review round" ? "Continuing…" : "1 more round"}
+          {busyAction === "add one review round"
+            ? "Continuing…"
+            : verify === "blocked"
+              ? "Retry verification"
+              : verify
+                ? "1 more attempt"
+                : "1 more round"}
         </Button>
         <Button
           size="sm"
           className="gap-1 px-2.5"
           disabled={busy}
-          title="Stop the pipeline and send the current changes to human review"
+          title={
+            verify
+              ? "Skip the verification gate and let the reviewers look at the change"
+              : "Stop the pipeline and send the current changes to human review"
+          }
           onClick={() =>
             void act("finish the workflow", () =>
               daemon.workflowDecide(item.task.id, "finish", {
@@ -152,7 +170,11 @@ function RowActions({
             )
           }
         >
-          {busyAction === "finish the workflow" ? "Finishing…" : "Finish for review"}
+          {busyAction === "finish the workflow"
+            ? "Finishing…"
+            : verify
+              ? "Continue to review"
+              : "Finish for review"}
         </Button>
       </div>
       <ErrorLine error={error} />

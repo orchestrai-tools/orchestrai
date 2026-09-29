@@ -78,5 +78,16 @@ export function OrchestrationMethods<TBase extends Constructor<CoreClient>>(Base
         task,
       });
     }
+
+    /** The bytes of one screenshot a verify stage kept as evidence. */
+    async workflowEvidence(
+      task: string,
+      name: string,
+    ): Promise<{ contentType: string; dataBase64: string }> {
+      return (await this.request("workflow.evidence", { name, task })) as {
+        contentType: string;
+        dataBase64: string;
+      };
+    }
   };
 }

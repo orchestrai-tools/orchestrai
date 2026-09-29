@@ -249,6 +249,13 @@ pub enum Command {
         barrier_id: Option<String>,
         reply: oneshot::Sender<Result<(), String>>,
     },
+    /// A verify stage took a browser screenshot: reserve an evidence file for
+    /// it. Replies `None` when the task is not a running verify stage.
+    WorkflowKeepEvidence {
+        task_id: String,
+        mime: String,
+        reply: oneshot::Sender<Option<(String, String)>>,
+    },
     /// `advisor.ask`: open a consultation with the task's advisor. The reply
     /// is a refusal, or a ticket that yields the answer (ADR 0022).
     AdvisorAsk {
@@ -1058,4 +1065,6 @@ pub enum Command {
     AgentLimitsUpdated {
         accounts: Vec<wire::AgentAccountLimits>,
     },
+    /// The backlog runner's commands, matched exhaustively in `actor/runner/`.
+    Runner(crate::daemon::actor::runner::RunnerCommand),
 }

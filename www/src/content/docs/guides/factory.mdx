@@ -1,0 +1,79 @@
+---
+title: The Factory
+description: Queue backlog items and get draft pull requests back — each item runs through a reviewed pipeline in its own worktree, and merging the pull request closes the item.
+sidebar:
+  order: 10
+  label: Factory
+---
+
+The **Factory** works through a project's backlog for you. You queue items; each one runs through a [workflow pipeline](/concepts/orchestration/) in a fresh worktree, agents review and fix it, and a successful run comes back as a **draft pull request**. You review the pull request. Merging it marks the item done.
+
+It works with local backlog items and with issues synced from GitHub or Linear. For a GitHub issue, the pull request says `Closes #N`, so merging it closes the issue too.
+
+<Aside type="note">
+  The Factory never merges. Agents review each other inside the pipeline, and people review the finished draft pull request — the same way you review anyone else's work.
+</Aside>
+
+## Queue items
+
+Open a project's **Backlog**, then:
+
+- **One item:** hover a row and press the Factory button, or open the item and press **Run in Factory**.
+- **Several:** tick the checkboxes on the left of the rows and press **Run selected in Factory**.
+
+Queued items appear on the project's **Factory** tab. They start in backlog priority order; within one priority, use the arrows to change the order, or remove an item that has not started yet.
+
+The Factory is **paused** until you start it. Press **Start** on the Factory tab, or **Start** in the notice that appears when you queue something.
+
+## What happens to an item
+
+<Steps>
+
+1. **It starts.** When a slot is free, the item's pipeline starts in a new worktree forked from the latest origin default branch — never from your local branch, so the pull request carries only this change. The item turns *In progress*.
+2. **Agents do the work and review it.** The pipeline runs the workflow you chose: implement, then review and fix until the reviewers approve (and a verification of the running app, when the workflow has one). Open the pipeline from the Factory tab to watch it or step in.
+3. **You get a draft pull request.** When the reviewers approve, the Factory commits the change on the task's branch, pushes it and opens a draft pull request. The body links the item, and carries the agent's summary, the verification result when there is one, any low-severity review notes that were not fixed, the review rounds used and the reported agent cost. The item turns *Waiting*.
+4. **You review it.** Read it on GitHub or in the task, like any pull request. Merging it marks the item **Done**. Closing it without merging sends the item back to *To do*.
+
+</Steps>
+
+A run that does not succeed ends without a pull request and sends its item back to *To do* with the reason on the Factory tab: the pipeline failed or was stopped, the review rounds ran out with findings open, the change came out empty, or the push or the pull request failed. The pipeline task stays, so you can finish it by hand. **Nothing is retried on its own** — queue the item again when you want another attempt.
+
+When a pipeline needs you — a question from an agent, the review round limit, a quota pause — it waits in **Needs you** and keeps its slot until you answer.
+
+## Settings
+
+Press **Settings** on the Factory tab.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Workflow** | *review-loop* | The pipeline every item runs through. Any workflow in the project works, including your own. |
+| **Lead agent** and **Model** | first enabled agent | Every stage the workflow does not pin to its own agent runs on this one. |
+| **Runs at once** | 1 | How many items run at the same time. |
+| **Open draft PRs** | 3 | New items wait while this many Factory pull requests are open. |
+| **Items per day** | 10 | Items started in any 24 hours. |
+| **Quota headroom** | 80% | A new item waits while any quota window of an agent it needs is above this. |
+| **Free disk floor** | 25 GB | A new item waits while the project's disk has less free space than this. `0` turns it off. |
+
+**Pause** stops new items from starting; items already running finish. To stop one item, open its pipeline and stop it there.
+
+## Limits and costs
+
+Unattended work spends real quota, so every start is checked first:
+
+- An item waits while an agent it needs is **out of quota** or above your headroom, and starts when the window resets. An agent that is only rate-limited does not hold it back.
+- The **daily limit**, the **open pull request limit** and the number of **runs at once** cap how much work piles up — the real limit is how many pull requests you can review.
+- Each worktree is a full checkout of the project, so the **disk floor** keeps the Factory from filling your disk.
+- The Factory tab shows why the queue is waiting, and each run's cost as reported by the agents. Harnesses that report no cost show *not reported*, never $0.
+
+Opening pull requests needs the [GitHub CLI](https://cli.github.com/) (`gh`) installed and signed in, and a project with a GitHub `origin`.
+
+## From an agent
+
+An agent in a session you started can queue items and read the Factory with the [`runner_enqueue` and `runner_status` tools](/reference/mcp-tools/#runner_enqueue--runner_status). A Factory run itself cannot queue more work.
+
+## See also
+
+- [Tasks and backlog](/guides/tasks-and-backlog/) — where the items come from
+- [Orchestration and workflows](/concepts/orchestration/) — the pipeline each item runs through
+- [Workflow files](/reference/workflow-files/) — write your own pipeline for the Factory
+- [Reviewing pull requests](/guides/pull-requests/) — where the draft lands

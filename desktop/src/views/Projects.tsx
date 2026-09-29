@@ -13,6 +13,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import type { SurfaceTab } from "@/components/workspace";
 import { useInboxPulls } from "@/hooks/useInboxUnseen";
+import { useQueueInFactory } from "@/hooks/useRunner";
 import { boardTasks } from "@/lib/taskOrigin";
 import { disposeTerminalWorkspace } from "@/lib/terminalWorkspace";
 import { DEFAULT_PROJECT_SURFACE, type ProjectSurface, useUi } from "@/store/ui";
@@ -24,6 +25,7 @@ import { WorkItemDrawer } from "../components/backlog/WorkItemDrawer";
 import { TerminalWorkspaceView } from "../components/runtime/TerminalWorkspace";
 import { daemon } from "../daemon";
 import type { ServiceInfo, Snapshot } from "../protocol";
+import { FactorySurface } from "./projects/factory/FactorySurface";
 import { PortRangeConflictCard, PortRangeSourceChip } from "./projects/PortRangeStatus";
 import { ProjectFilesSurface } from "./projects/ProjectFilesSurface";
 import { ProjectRuntimeSurface } from "./projects/ProjectRuntimeSurface";
@@ -162,6 +164,12 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
     [onNewTask],
   );
 
+  const queueInFactory = useQueueInFactory(projectName);
+  const runItemsInFactory = useCallback(
+    (items: WorkItem[]) => void queueInFactory(items.map((item) => item.id)),
+    [queueInFactory],
+  );
+
   const openTaskFromItem = useCallback(
     (taskId: string) => {
       setOpenItem(null);
@@ -297,6 +305,13 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
           />
         ) : surface === "worktrees" ? (
           <WorktreesSurface project={project.name} />
+        ) : surface === "factory" ? (
+          <FactorySurface
+            project={project.name}
+            agents={snapshot.agents ?? []}
+            tasks={snapshot.tasks}
+            onOpenTask={onOpenTask}
+          />
         ) : surface === "pulls" ? (
           <PullRequestSurface
             project={project.name}
@@ -311,6 +326,7 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
               onOpenTask={onOpenTask}
               onOpenItem={setOpenItem}
               onStartTask={startTaskFromItem}
+              onRunInFactory={runItemsInFactory}
               onCreate={() => setBacklogOpen(true)}
             />
           </div>
@@ -331,6 +347,7 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
         linkedTask={linkedTask}
         onClose={() => setOpenItem(null)}
         onStartTask={startTaskFromItem}
+        onRunInFactory={(item) => runItemsInFactory([item])}
         onOpenTask={openTaskFromItem}
       />
     </div>

@@ -33,7 +33,7 @@ pub use branch::{branch_create, delete_branch, list_branches, rename_branch, swi
 pub use commit::{commit, last_commit_message, reject_hunk, stage_paths};
 pub use files::{create_file, delete_file, file_doc, rename_file, save_file};
 pub use listing::{is_ignored_path, list_files};
-pub use remote::{create_pr, push, push_info};
+pub use remote::{create_draft_pr, create_pr, push, push_info};
 pub use roots::git_roots;
 pub use shelf::{shelf_apply, shelf_create, shelf_drop, shelf_get, shelf_list};
 pub use stash::{stash_apply, stash_checkout_file, stash_drop, stash_get, stash_list, stash_push};

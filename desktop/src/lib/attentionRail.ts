@@ -122,7 +122,7 @@ export function buildAttentionQueue(
         reason:
           waiting.kind === "question"
             ? (waiting.question ?? "workflow needs your input")
-            : `review limit reached${waiting.question ? ` — ${waiting.question}` : ""}`,
+            : `${waiting.stage === "verify" ? "verification needs a decision" : "review limit reached"}${waiting.question ? ` — ${waiting.question}` : ""}`,
         task,
       });
     } else if (parked) {

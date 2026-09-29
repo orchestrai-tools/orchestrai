@@ -56,7 +56,7 @@ mod serve;
 #[cfg(test)]
 mod tests;
 mod tools;
-mod untrusted;
+pub(crate) mod untrusted;
 
 pub(crate) use daemon_client::DaemonClient;
 pub(crate) use tools::{advisor_tool_defs, browser_tool_defs, tool_defs, READ_ONLY_TOOLS};

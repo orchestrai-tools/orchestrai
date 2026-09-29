@@ -6,7 +6,7 @@
 use crate::{
     default_true, AdvisorPick, AgentConfig, AutomationPatch, AutomationTrigger, BacklogStorageMode,
     BootstrapAnswers, HunkResolution, OrchestratorConfigDto, PermissionOutcome, PromptAttachment,
-    TextGenKind, WorkItemPriority, WorkflowDecision, WorktreeBase,
+    RunnerSettingsPatch, TextGenKind, WorkItemPriority, WorkflowDecision, WorktreeBase,
     DEFAULT_MISSED_RUN_GRACE_MINUTES,
 };
 use serde::{Deserialize, Serialize};
@@ -986,6 +986,15 @@ pub enum Method {
         #[serde(default)]
         barrier_id: Option<String>,
     },
+    /// Read one screenshot a verify stage kept as evidence. Returns
+    /// `WorkflowEvidenceImage`.
+    #[serde(rename = "workflow.evidence")]
+    WorkflowEvidence {
+        /// The pipeline's parent task id.
+        task: String,
+        /// `WorkflowEvidence.name`, e.g. `shot-3.png`.
+        name: String,
+    },
 
     // ── Bootstrap wizard (desktop) ──
     /// Scan the repo, build the bootstrap prompt from the user's answers, and
@@ -1403,6 +1412,48 @@ pub enum Method {
     #[serde(rename = "automation.runs")]
     AutomationRuns {
         id: String,
+        #[serde(default)]
+        limit: Option<u32>,
+    },
+
+    // ── Backlog runner (ADR 0023) ────────────────────────────────────────────
+    /// One project's runner: settings, queue and counters. Returns [`crate::RunnerStatus`].
+    #[serde(rename = "runner.status")]
+    RunnerStatus { project: String },
+    /// Queue backlog items. Items already queued are left where they are.
+    /// `origin_task` names the session asking, when an agent asks.
+    #[serde(rename = "runner.enqueue")]
+    RunnerEnqueue {
+        project: String,
+        item_ids: Vec<String>,
+        #[serde(default)]
+        workflow: Option<String>,
+        #[serde(default)]
+        agent: Option<String>,
+        #[serde(default)]
+        model: Option<String>,
+        #[serde(default)]
+        origin_task: Option<String>,
+    },
+    /// Remove an item that has not started yet.
+    #[serde(rename = "runner.dequeue")]
+    RunnerDequeue { project: String, item_id: String },
+    /// Put the queued items in this order; ids not given keep their places after them.
+    #[serde(rename = "runner.reorder")]
+    RunnerReorder {
+        project: String,
+        item_ids: Vec<String>,
+    },
+    /// Change settings, including starting and pausing. Returns [`crate::RunnerStatus`].
+    #[serde(rename = "runner.updateSettings")]
+    RunnerUpdateSettings {
+        project: String,
+        patch: RunnerSettingsPatch,
+    },
+    /// Recent attempts, newest first.
+    #[serde(rename = "runner.runs")]
+    RunnerRuns {
+        project: String,
         #[serde(default)]
         limit: Option<u32>,
     },

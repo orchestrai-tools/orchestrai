@@ -5,7 +5,7 @@ use warpforge_protocol as wire;
 
 use crate::workflow_config::WorkflowSpec;
 
-use super::{format, Finding, RunState, StageKind, StageRecord, Verdict};
+use super::{format, Finding, FindingsSource, RunState, StageKind, StageRecord, Verdict};
 
 // ─── The run ─────────────────────────────────────────────────────────────────
 
@@ -73,6 +73,31 @@ pub struct WorkflowRun {
     /// unique across a restart.
     #[serde(default)]
     barrier_seq: u32,
+    /// Failed verifications in a row since the last pass.
+    #[serde(default)]
+    pub verify_failures: u32,
+    /// Verify attempts granted by `workflow.decide { extend }` at a verify
+    /// barrier.
+    #[serde(default)]
+    pub verify_extra: u32,
+    /// What the last failed verification found; kept apart from
+    /// `open_findings` so a verify failure never erases the review findings
+    /// the next review round must re-check.
+    #[serde(default)]
+    pub verify_findings: Vec<Finding>,
+    /// Which findings the next fix stage repairs.
+    #[serde(default)]
+    pub findings_source: FindingsSource,
+    /// Fingerprint of the working copy when the current fix started; tells
+    /// whether the fix changed the code the last verification saw.
+    #[serde(default)]
+    pub fix_base: Option<u64>,
+    /// Every verify stage run, oldest first.
+    #[serde(default)]
+    pub verifications: Vec<wire::WorkflowVerification>,
+    /// The final summary, set when the run ends.
+    #[serde(default)]
+    pub report: Option<String>,
 }
 
 impl WorkflowRun {
@@ -115,6 +140,13 @@ impl WorkflowRun {
             include_runtime_context,
             config_overrides,
             barrier_seq: 0,
+            verify_failures: 0,
+            verify_extra: 0,
+            verify_findings: Vec::new(),
+            findings_source: FindingsSource::Review,
+            fix_base: None,
+            verifications: Vec::new(),
+            report: None,
         }
         .with_attachments(attachments)
     }
@@ -176,6 +208,13 @@ impl WorkflowRun {
                 (
                     r.and_then(|r| r.agent.clone()),
                     r.and_then(|r| r.model.clone()),
+                )
+            }
+            StageKind::Verify => {
+                let v = self.spec.verify.as_ref();
+                (
+                    v.and_then(|v| v.agent.clone()),
+                    v.and_then(|v| v.model.clone()),
                 )
             }
         };
@@ -266,6 +305,19 @@ impl WorkflowRun {
                     pause_reason: None,
                 }),
             ),
+            RunState::AwaitingVerifyDecision {
+                barrier_id,
+                blocked,
+            } => (
+                wire::WorkflowStage::Verify,
+                Some(wire::WorkflowWaiting {
+                    kind: wire::WorkflowWaitKind::Limit,
+                    stage: Some(wire::WorkflowStage::Verify),
+                    question: Some(self.verify_barrier_summary(*blocked)),
+                    barrier_id: (!barrier_id.is_empty()).then(|| barrier_id.clone()),
+                    pause_reason: None,
+                }),
+            ),
             RunState::Paused {
                 next,
                 reason,
@@ -292,6 +344,26 @@ impl WorkflowRun {
             verdict: self.last_verdict.map(Verdict::wire),
             waiting,
             pause_requested: self.pause_requested,
+            verifications: self.verifications.clone(),
+            report: self.report.clone(),
+        }
+    }
+
+    /// The one-line reason shown at a verify barrier.
+    fn verify_barrier_summary(&self, blocked: bool) -> String {
+        let reason = self
+            .verifications
+            .last()
+            .map(|v| v.summary.trim().to_string())
+            .filter(|s| !s.is_empty());
+        match (blocked, reason) {
+            (true, Some(reason)) => format!("verification could not run: {reason}"),
+            (true, None) => "verification could not run".to_string(),
+            (false, _) => format!(
+                "verification failed {} time(s) in a row — {}",
+                self.verify_failures,
+                format::summarize_findings(&self.verify_findings)
+            ),
         }
     }
 

@@ -20,6 +20,7 @@ fn minimal_workflow_gets_defaults() {
     assert!(warnings.is_empty());
     assert_eq!(spec.name, "Minimal");
     assert!(spec.plan.is_none());
+    assert!(spec.verify.is_none());
     assert_eq!(spec.implement, StageConfig::default());
     assert_eq!(spec.review.max_rounds, DEFAULT_MAX_ROUNDS);
     assert_eq!(spec.review.on_limit, OnLimit::Ask);
@@ -253,6 +254,7 @@ fn listing_project_overrides_builtin_and_reports_invalid() {
             ("broken", WorkflowSource::Project, false),
             ("review-loop", WorkflowSource::Project, true),
             ("plan-review-loop", WorkflowSource::Builtin, true),
+            ("verify-review-loop", WorkflowSource::Builtin, true),
         ]
     );
     let mine = load_workflow(dir.path(), "review-loop").unwrap();
@@ -294,4 +296,60 @@ fn eject_writes_once() {
     // Second eject refuses to overwrite.
     assert!(eject_builtin(dir.path(), "review-loop").is_err());
     assert!(eject_builtin(dir.path(), "nope").is_err());
+}
+
+#[test]
+fn verify_stage_parses_with_defaults_and_overrides() {
+    let (spec, warnings) = parse_ok("name: X\nverify:\n");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(spec.verify, Some(VerifyConfig::default()));
+    let verify = spec.verify.unwrap();
+    assert!(verify.required);
+    assert_eq!(verify.max_attempts, DEFAULT_VERIFY_ATTEMPTS);
+    assert_eq!(
+        spec_stages("name: X\nverify: true\n"),
+        vec!["implement", "verify", "review", "fix"]
+    );
+    assert!(parse_ok("name: X\nverify: false\n").0.verify.is_none());
+
+    let yaml = "name: X\nverify:\n  agent: claude\n  model: m\n  instructions: |\n    Sign in as demo.\n  required: false\n  max_attempts: 3\n";
+    let (spec, warnings) = parse_ok(yaml);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let verify = spec.verify.unwrap();
+    assert_eq!(verify.agent.as_deref(), Some("claude"));
+    assert_eq!(verify.model.as_deref(), Some("m"));
+    assert_eq!(verify.instructions.as_deref(), Some("Sign in as demo."));
+    assert!(!verify.required);
+    assert_eq!(verify.max_attempts, 3);
+}
+
+fn spec_stages(yaml: &str) -> Vec<String> {
+    parse_ok(yaml).0.stage_summary()
+}
+
+#[test]
+fn verify_stage_validation() {
+    assert!(parse_err("name: X\nverify:\n  max_attempts: 0\n").contains("at least 1"));
+    let err = parse_err("name: X\nverify:\n  required: sometimes\n");
+    assert!(err.contains("invalid verify stage"), "{err}");
+    let (spec, warnings) = parse_ok("name: X\nverify:\n  max_attempts: 9\n  prompt: hi\n");
+    assert_eq!(spec.verify.unwrap().max_attempts, MAX_VERIFY_ATTEMPTS);
+    assert_eq!(
+        warnings,
+        vec![
+            "unknown key `prompt` in verify".to_string(),
+            "verify.max_attempts 9 exceeds the cap, clamped to 5".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn a_run_persisted_before_verify_existed_still_loads() {
+    let (spec, _) = parse_ok("name: X\n");
+    let mut json: serde_json::Value = serde_json::to_value(&spec).unwrap();
+    json.as_object_mut().unwrap().remove("verify");
+    let restored: WorkflowSpec = serde_json::from_value(json).unwrap();
+    assert!(restored.verify.is_none());
+    let config: VerifyConfig = serde_json::from_str("{}").unwrap();
+    assert_eq!(config, VerifyConfig::default());
 }

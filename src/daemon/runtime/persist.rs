@@ -53,6 +53,10 @@ pub enum Write {
     /// Retention sweep for automation run history, piggybacked on the queue so
     /// a final run write does not trigger a separate store round-trip.
     PruneAutomationRuns,
+    RunnerSettings(Box<wire::RunnerSettings>),
+    RunnerEntry(Box<wire::RunnerEntry>),
+    RunnerDequeue(String),
+    ItemRun(Box<wire::ItemRun>),
 }
 
 impl Write {
@@ -80,6 +84,10 @@ impl Write {
                 store.prune_automation_runs()?;
                 Ok(())
             }
+            Write::RunnerSettings(settings) => store.save_runner_settings(&settings),
+            Write::RunnerEntry(entry) => store.upsert_runner_entry(&entry),
+            Write::RunnerDequeue(item_id) => store.delete_runner_entry(&item_id),
+            Write::ItemRun(run) => store.upsert_item_run(&run),
         }
     }
 }

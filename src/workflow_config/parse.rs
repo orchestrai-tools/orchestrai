@@ -1,4 +1,5 @@
 use super::template::validate_prompt;
+use super::verify::{build_verify, RawVerify, VERIFY_KEYS};
 use super::{
     extract_placeholders, OnLimit, ReaskMode, ReviewConfig, ReviewContextItem, ReviewerConfig,
     StageConfig, WorkflowSpec, DEFAULT_MAX_ROUNDS, MAX_REVIEWERS, MAX_ROUNDS_CAP,
@@ -41,6 +42,14 @@ where
     }
 }
 
+/// Any value for a key that is present, a bare `key:` (null) included.
+fn present<'de, D>(deserializer: D) -> Result<Option<serde_yaml::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    serde_yaml::Value::deserialize(deserializer).map(Some)
+}
+
 #[derive(Debug, Default, Deserialize)]
 struct RawWorkflow {
     version: Option<u64>,
@@ -50,6 +59,10 @@ struct RawWorkflow {
     plan: Option<RawStage>,
     #[serde(default, deserialize_with = "nullable")]
     implement: Option<RawStage>,
+    /// Kept raw so a malformed stage is reported under its own name rather
+    /// than as an untagged-enum mismatch.
+    #[serde(default, deserialize_with = "present")]
+    verify: Option<serde_yaml::Value>,
     #[serde(default, deserialize_with = "nullable")]
     review: Option<RawReview>,
     #[serde(default, deserialize_with = "nullable")]
@@ -116,6 +129,7 @@ fn collect_unknown_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
         "description",
         "plan",
         "implement",
+        "verify",
         "review",
         "fix",
     ];
@@ -128,6 +142,9 @@ fn collect_unknown_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
         if let Some(v) = value.get(stage) {
             check_keys(v, STAGE, stage, warnings);
         }
+    }
+    if let Some(verify) = value.get("verify") {
+        check_keys(verify, VERIFY_KEYS, "verify", warnings);
     }
     if let Some(review) = value.get("review") {
         check_keys(review, REVIEW, "review", warnings);
@@ -181,6 +198,17 @@ fn build_spec(
     let plan = raw.plan.map(stage_config);
     let implement = raw.implement.map(stage_config).unwrap_or_default();
     let fix = raw.fix.map(stage_config).unwrap_or_default();
+    let verify = match raw.verify {
+        None | Some(serde_yaml::Value::Bool(false)) => None,
+        Some(serde_yaml::Value::Null) | Some(serde_yaml::Value::Bool(true)) => {
+            Some(build_verify(RawVerify::default(), warnings)?)
+        }
+        Some(value) => {
+            let raw: RawVerify =
+                serde_yaml::from_value(value).map_err(|e| format!("invalid verify stage: {e}"))?;
+            Some(build_verify(raw, warnings)?)
+        }
+    };
     let review = build_review(raw.review.unwrap_or_default(), warnings)?;
 
     // A placeholder this workflow can never populate renders as an empty
@@ -248,6 +276,7 @@ fn build_spec(
             .filter(|d| !d.is_empty()),
         plan,
         implement,
+        verify,
         review,
         fix,
     })

@@ -2,7 +2,7 @@
 //! helpers (stage prompts, verdict/marker parsing, review merging, context
 //! formatting).
 //!
-//! The pipeline shape is fixed: `plan? → implement → review ⇄ fix`. This
+//! The pipeline shape is fixed: `plan? → implement → verify? → review ⇄ fix`. This
 //! module has no side effects — the actor glue that spawns stage sessions,
 //! reacts to turn ends, and emits events lives in `actor.rs` and calls into
 //! these helpers, so everything here is unit-testable in isolation.
@@ -10,10 +10,12 @@
 use serde::{Deserialize, Serialize};
 use warpforge_protocol as wire;
 
+pub mod evidence;
 mod format;
 mod parse;
 mod prompt;
 mod run;
+mod verify;
 
 #[cfg(test)]
 mod tests;
@@ -28,6 +30,10 @@ pub use prompt::{
     build_reviewer_prompt, reask_verdict_prompt, PromptCtx,
 };
 pub use run::WorkflowRun;
+pub use verify::{
+    build_verify_prompt, format_verification, parse_verify_verdict, reask_verify_prompt,
+    FindingsSource, VerifyCtx, VerifyReport, VerifyRoute,
+};
 
 /// Byte budget for the diff embedded into review/fix prompts.
 pub const DIFF_CONTEXT_MAX_BYTES: usize = 200 * 1024;
@@ -48,6 +54,7 @@ pub enum StageKind {
     Implement,
     Review,
     Fix,
+    Verify,
 }
 
 impl StageKind {
@@ -57,6 +64,7 @@ impl StageKind {
             StageKind::Implement => "implement",
             StageKind::Review => "review",
             StageKind::Fix => "fix",
+            StageKind::Verify => "verify",
         }
     }
 
@@ -66,6 +74,7 @@ impl StageKind {
             StageKind::Implement => "Implement",
             StageKind::Review => "Review",
             StageKind::Fix => "Fix",
+            StageKind::Verify => "Verify",
         }
     }
 
@@ -75,6 +84,7 @@ impl StageKind {
             StageKind::Implement => wire::WorkflowStage::Implement,
             StageKind::Review => wire::WorkflowStage::Review,
             StageKind::Fix => wire::WorkflowStage::Fix,
+            StageKind::Verify => wire::WorkflowStage::Verify,
         }
     }
 
@@ -84,18 +94,7 @@ impl StageKind {
             StageKind::Implement => wire::OrchNodeKind::Implement,
             StageKind::Review => wire::OrchNodeKind::Review,
             StageKind::Fix => wire::OrchNodeKind::Fix,
-        }
-    }
-
-    /// The stage that follows a successfully completed one. Review is not a
-    /// simple successor — it branches on the merged verdict — so it has no
-    /// entry here.
-    pub fn successor(self) -> Option<StageKind> {
-        match self {
-            StageKind::Plan => Some(StageKind::Implement),
-            StageKind::Implement => Some(StageKind::Review),
-            StageKind::Fix => Some(StageKind::Review),
-            StageKind::Review => None,
+            StageKind::Verify => wire::OrchNodeKind::Verify,
         }
     }
 }
@@ -122,6 +121,14 @@ pub enum RunState {
     AwaitingLimitDecision {
         #[serde(default)]
         barrier_id: String,
+    },
+    /// A required verify stage failed `max_attempts` times in a row, or could
+    /// not run (`blocked`); suspended until `workflow.decide`.
+    AwaitingVerifyDecision {
+        #[serde(default)]
+        barrier_id: String,
+        #[serde(default)]
+        blocked: bool,
     },
     /// Soft-paused at a stage barrier; `next` starts on `workflow.resume`.
     Paused {

@@ -37,6 +37,51 @@ pub fn parse_review_verdict(text: &str, reviewer: &str) -> Result<(Verdict, Vec<
         }
         None => return Err("the `verdict` field is not a string".to_string()),
     };
+    let mut findings = parse_findings(&value, reviewer);
+    // A reviewer that asks for changes but leaves `findings` empty (prose-only
+    // review, a differently-named key, entries without a description) must not
+    // read as "nothing to fix" — that path finishes the pipeline as a success
+    // and silently rubber-stamps the change. Salvage its own words instead so
+    // the repair stage still has something concrete to act on.
+    if verdict == Verdict::RequestChanges && findings.is_empty() {
+        let prose = salvaged_prose(text);
+        findings.push(Finding {
+            severity: Severity::Medium,
+            file: None,
+            line: None,
+            snippet: None,
+            description: if prose.is_empty() {
+                "Changes were requested without any detail. Re-check the diff against the task \
+                 and fix what looks wrong."
+                    .to_string()
+            } else {
+                format!(
+                    "Changes requested without a structured findings list — the reviewer's own \
+                     words follow:\n\n{prose}"
+                )
+            },
+            reviewer: reviewer.to_string(),
+        });
+    }
+
+    Ok((verdict, findings))
+}
+
+/// An agent's own words outside the protocol block, clipped, for when the
+/// block itself did not say enough.
+pub(super) fn salvaged_prose(text: &str) -> String {
+    let prose = strip_protocol_blocks(text).trim().to_string();
+    if prose.len() > SALVAGED_FINDING_MAX_BYTES {
+        let end = floor_char_boundary(&prose, SALVAGED_FINDING_MAX_BYTES);
+        format!("{}\n[…truncated…]", &prose[..end])
+    } else {
+        prose
+    }
+}
+
+/// The `findings` array of a protocol block, entries without a description
+/// dropped.
+pub(super) fn parse_findings(value: &serde_json::Value, reviewer: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
     if let Some(items) = value.get("findings").and_then(|v| v.as_array()) {
         for item in items {
@@ -89,39 +134,7 @@ pub fn parse_review_verdict(text: &str, reviewer: &str) -> Result<(Verdict, Vec<
             });
         }
     }
-    // A reviewer that asks for changes but leaves `findings` empty (prose-only
-    // review, a differently-named key, entries without a description) must not
-    // read as "nothing to fix" — that path finishes the pipeline as a success
-    // and silently rubber-stamps the change. Salvage its own words instead so
-    // the repair stage still has something concrete to act on.
-    if verdict == Verdict::RequestChanges && findings.is_empty() {
-        let prose = strip_protocol_blocks(text).trim().to_string();
-        let prose = if prose.len() > SALVAGED_FINDING_MAX_BYTES {
-            let end = floor_char_boundary(&prose, SALVAGED_FINDING_MAX_BYTES);
-            format!("{}\n[…truncated…]", &prose[..end])
-        } else {
-            prose
-        };
-        findings.push(Finding {
-            severity: Severity::Medium,
-            file: None,
-            line: None,
-            snippet: None,
-            description: if prose.is_empty() {
-                "Changes were requested without any detail. Re-check the diff against the task \
-                 and fix what looks wrong."
-                    .to_string()
-            } else {
-                format!(
-                    "Changes requested without a structured findings list — the reviewer's own \
-                     words follow:\n\n{prose}"
-                )
-            },
-            reviewer: reviewer.to_string(),
-        });
-    }
-
-    Ok((verdict, findings))
+    findings
 }
 
 /// The last fenced code block in `text` that parses as a JSON object

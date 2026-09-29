@@ -109,6 +109,57 @@ describe("WorkflowControls", () => {
     expect(workflowDecide).toHaveBeenCalledWith("t_1", "stop", { barrierId: "t_1:3" });
   });
 
+  it("offers retry / continue / stop when verification keeps failing", async () => {
+    render(
+      <WorkflowControls
+        task={task({
+          stage: "verify",
+          verifications: [
+            { attempt: 2, checklist: [], evidence: [], summary: "save is lost", verdict: "fail" },
+          ],
+          waiting: {
+            barrierId: "t_1:4",
+            kind: "limit",
+            question: "verification failed 2 time(s) in a row — open findings: 1 high",
+            stage: "verify",
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("Verification keeps failing")).toBeInTheDocument();
+    expect(screen.queryByText("Review limit reached")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /1 more attempt/i }));
+    expect(workflowDecide).toHaveBeenCalledWith("t_1", "extend", {
+      barrierId: "t_1:4",
+      rounds: 1,
+    });
+    await userEvent.click(screen.getByRole("button", { name: /continue to review/i }));
+    expect(workflowDecide).toHaveBeenCalledWith("t_1", "finish", { barrierId: "t_1:4" });
+  });
+
+  it("offers a retry when verification could not run", () => {
+    render(
+      <WorkflowControls
+        task={task({
+          stage: "verify",
+          verifications: [
+            {
+              attempt: 1,
+              checklist: [],
+              evidence: [],
+              summary: "no desktop app",
+              verdict: "blocked",
+            },
+          ],
+          waiting: { kind: "limit", question: "verification could not run", stage: "verify" },
+        })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /retry verification/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /2 more/i })).not.toBeInTheDocument();
+  });
+
   it("shows which limit action is in progress and locks competing decisions", async () => {
     let finishRequest: (() => void) | undefined;
     workflowDecide.mockImplementationOnce(

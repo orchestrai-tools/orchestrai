@@ -15,7 +15,7 @@ export interface OrchNodeInfo {
   result?: string | null;
 }
 
-export type OrchNodeKind = "plan" | "implement" | "review" | "fix" | "merge";
+export type OrchNodeKind = "plan" | "implement" | "review" | "fix" | "verify" | "merge";
 
 export type OrchNodeStatus = "pending" | "running" | "complete" | "failed" | "skipped";
 
@@ -68,9 +68,42 @@ export interface WorkflowRunInfo {
   waiting?: WorkflowWaiting | null;
   /** A pause is queued and takes effect when the running stage finishes. */
   pauseRequested?: boolean;
+  /** Every verify-stage run, oldest first. Absent without a verify stage. */
+  verifications?: WorkflowVerification[];
+  /** The final summary in Markdown, verification included, once the run ended. */
+  report?: string | null;
 }
 
-export type WorkflowStage = "plan" | "implement" | "review" | "fix" | "done" | "failed";
+/** One run of the verify stage: an agent testing the change in the running app. */
+export interface WorkflowVerification {
+  /** Absent when the stage was refused before an agent started. */
+  taskId?: string | null;
+  attempt: number;
+  /** Absent while the stage is still running. */
+  verdict?: WorkflowVerifyVerdict | null;
+  summary: string;
+  checklist: WorkflowCheckItem[];
+  evidence: WorkflowEvidence[];
+}
+
+export type WorkflowVerifyVerdict = "pass" | "fail" | "blocked";
+
+export interface WorkflowCheckItem {
+  step: string;
+  status: "pass" | "fail" | "skipped";
+  note?: string | null;
+  /** Names of the screenshots the step relies on. */
+  evidence?: string[];
+}
+
+/** A screenshot kept from a verify stage; read it with `workflow.evidence`. */
+export interface WorkflowEvidence {
+  name: string;
+  path: string;
+  mimeType: string;
+}
+
+export type WorkflowStage = "plan" | "implement" | "review" | "fix" | "verify" | "done" | "failed";
 
 export type WorkflowVerdict = "approve" | "request_changes";
 

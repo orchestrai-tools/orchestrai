@@ -317,6 +317,7 @@ impl Daemon {
             }
             Verdict::RequestChanges => {
                 run.open_findings = to_fix;
+                run.findings_source = crate::daemon::workflow::FindingsSource::Review;
                 self.workflow_timeline(
                     parent_id,
                     format!(

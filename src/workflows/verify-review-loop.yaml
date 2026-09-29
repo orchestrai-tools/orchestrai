@@ -1,0 +1,30 @@
+# Built-in workflow: implement → verify → review ⇄ fix.
+#
+# The verify stage tests the change in the running app the way a QA engineer
+# would: it starts the project's dev services, walks the flow the task
+# describes in the in-app browser, checks the console, takes screenshots and
+# reports pass or fail. A failure goes to the fix stage, and every fix that
+# follows a failure is verified again before review. Reviewers only see work
+# that passed.
+#
+# Needs the Warpforge desktop app open (the browser lives there). Tasks in
+# their own worktree cannot be verified yet: the dev services run from the
+# project's main checkout, so they would test the wrong code.
+version: 1
+name: Implement + verify + review loop
+description: Implement the task, test it in the running app, then loop reviews and fixes until approved.
+
+verify:
+  # agent: claude
+  # model: claude-opus-5
+  # instructions: | # anything the tester needs: logins, seed data, the start page
+  #   Sign in as demo@example.com / demo. The feature lives under Settings.
+  required: true # true: no review without a pass; false: note it and move on
+  max_attempts: 2 # failed verifications in a row before asking you
+
+review:
+  max_rounds: 3 # review rounds; a fix runs between them, so 3 = two fix attempts
+  on_limit: ask # ask | finish — behaviour when the limit is hit
+
+# implement, fix and the reviewers use Warpforge's built-in prompts here. See the
+# "Implement + review loop" template for a fully spelled-out example of those.

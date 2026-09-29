@@ -7,6 +7,7 @@
 // fix, review round 1 → review round 2) continue one script. Prompts past the
 // end of the script repeat the last behavior.
 import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const [stateFile, ...script] = process.argv.slice(2);
 let buf = "";
@@ -103,9 +104,36 @@ function handle(msg) {
         // before the stage produces any verdict at all.
         process.exit(1);
         break;
+      case "fix-edit":
+        // A repair that changes the working copy, unlike "fix".
+        writeFileSync(join(process.cwd(), "fixed.txt"), `fixed ${Date.now()}\n`);
+        text("FIX-DONE: edited fixed.txt.");
+        endTurn(msg.id);
+        break;
       case "slow-fix":
         text("FIX-DONE: addressed the findings (slowly).");
         setTimeout(() => endTurn(msg.id), 600);
+        break;
+      case "verify-pass":
+      case "slow-verify-pass": {
+        text(
+          'Tested the flow.\n```json\n{"verdict": "pass", "summary": "VERIFY-PASS the flow works", "checklist": [{"step": "Open the home page", "status": "pass", "evidence": ["shot-1.png"]}], "findings": []}\n```'
+        );
+        const delay = behavior === "slow-verify-pass" ? 800 : 0;
+        setTimeout(() => endTurn(msg.id), delay);
+        break;
+      }
+      case "verify-fail":
+        text(
+          'Found a broken step.\n```json\n{"verdict": "fail", "summary": "VERIFY-FAIL saving is broken", "checklist": [{"step": "Save the form", "status": "fail", "note": "the name reverts"}], "findings": [{"severity": "high", "description": "VERIFY-FINDING: saving does not persist"}]}\n```'
+        );
+        endTurn(msg.id);
+        break;
+      case "verify-blocked":
+        text(
+          'Could not test.\n```json\n{"verdict": "blocked", "summary": "VERIFY-BLOCKED no desktop app is connected"}\n```'
+        );
+        endTurn(msg.id);
         break;
       case "garbage":
         text("looks fine to me, ship it");

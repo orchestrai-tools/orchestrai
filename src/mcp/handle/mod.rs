@@ -12,6 +12,7 @@ mod agents;
 mod backlog;
 mod browser;
 mod memory;
+mod runner;
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -76,6 +77,9 @@ pub(crate) async fn handle_tool_call(
         | "get_backlog_task"
         | "update_backlog_task"
         | "close_backlog_task" => backlog::dispatch(name, client, project, &args).await,
+        "runner_enqueue" | "runner_status" => {
+            runner::dispatch(name, client, parent_task, project, &args).await
+        }
         "memory_store"
         | "memory_search"
         | "memory_list"

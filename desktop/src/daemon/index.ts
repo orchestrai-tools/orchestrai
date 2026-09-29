@@ -18,6 +18,7 @@ import { MemoryMethods } from "./memory";
 import { OrchestrationMethods } from "./orchestration";
 import { ProjectMethods } from "./projects";
 import { PullMethods } from "./pulls";
+import { RunnerMethods } from "./runner";
 import { RuntimeMethods } from "./runtime";
 import { SessionMethods } from "./sessions";
 import { TaskMethods } from "./tasks";
@@ -33,17 +34,19 @@ export { DAEMON_PROTOCOL_VERSION } from "./types";
 export type { ConnectionState, DaemonState, TerminalDataListener } from "./types";
 
 const ComposedClient = TerminalMethods(
-  AutomationMethods(
-    OrchestrationMethods(
-      ProjectMethods(
-        RuntimeMethods(
-          TaskMethods(
-            MemoryMethods(
-              BacklogMethods(
-                WorkItemMethods(
-                  PullMethods(
-                    TrackerMethods(
-                      TextMethods(AgentMethods(SessionMethods(WorktreeMethods(CoreClient)))),
+  RunnerMethods(
+    AutomationMethods(
+      OrchestrationMethods(
+        ProjectMethods(
+          RuntimeMethods(
+            TaskMethods(
+              MemoryMethods(
+                BacklogMethods(
+                  WorkItemMethods(
+                    PullMethods(
+                      TrackerMethods(
+                        TextMethods(AgentMethods(SessionMethods(WorktreeMethods(CoreClient)))),
+                      ),
                     ),
                   ),
                 ),

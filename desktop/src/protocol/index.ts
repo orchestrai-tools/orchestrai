@@ -18,4 +18,5 @@ export * from "./pulls";
 export * from "./backlog";
 export * from "./project";
 export * from "./automations";
+export * from "./runner";
 export * from "./memory";

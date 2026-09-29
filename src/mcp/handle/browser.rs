@@ -138,6 +138,15 @@ fn render_page(action: &Value, result: &Value) -> Vec<Value> {
         }
         "screenshot" => {
             let mut content = vec![text(page(""))];
+            let evidence = field(result, "evidence");
+            if !evidence.is_empty() {
+                content.insert(
+                    0,
+                    text(format!(
+                        "Kept as verification evidence: {evidence}. Cite this name in your checklist."
+                    )),
+                );
+            }
             let data = field(result, "data");
             if !data.is_empty() {
                 let mime = match field(result, "mimeType") {

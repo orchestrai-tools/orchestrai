@@ -150,6 +150,7 @@ impl Daemon {
                 RunState::Running { .. } => Some(TaskStatus::Running),
                 RunState::AwaitingReply { .. }
                 | RunState::AwaitingLimitDecision { .. }
+                | RunState::AwaitingVerifyDecision { .. }
                 | RunState::Paused { .. } => Some(TaskStatus::Waiting),
                 RunState::Done | RunState::Failed => None,
             };
@@ -385,6 +386,7 @@ impl Daemon {
                         RunState::Running { .. } => TaskStatus::Running,
                         RunState::AwaitingReply { .. }
                         | RunState::AwaitingLimitDecision { .. }
+                        | RunState::AwaitingVerifyDecision { .. }
                         | RunState::Paused { .. } => TaskStatus::Waiting,
                         RunState::Done | RunState::Failed => task.status.clone(),
                     };

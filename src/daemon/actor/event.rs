@@ -156,6 +156,9 @@ pub enum Event {
     },
     /// A run row was written or its status changed.
     AutomationRunUpdated(Box<wire::AutomationRun>),
+    /// A project's backlog runner changed (ADR 0023).
+    RunnerUpdated(Box<wire::RunnerStatus>),
+    RunnerRunUpdated(Box<wire::ItemRun>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

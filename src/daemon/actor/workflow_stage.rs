@@ -7,7 +7,9 @@ use warpforge_protocol as wire;
 use crate::daemon::actor::transcript::StageText;
 use crate::daemon::actor::{Daemon, Event};
 use crate::daemon::task::{Task, TaskStatus};
-use crate::daemon::workflow::{self, RunState, StageKind, StageSignal, WorkflowOutcome};
+use crate::daemon::workflow::{
+    self, FindingsSource, RunState, StageKind, StageSignal, WorkflowOutcome,
+};
 
 impl Daemon {
     pub(crate) async fn workflow_spawn_stage(&mut self, parent_id: &str, stage: StageKind) {
@@ -25,6 +27,14 @@ impl Daemon {
         if let Some(reason) = self.workflow_stage_refusal(&run, stage) {
             self.workflow_park_on_quota(parent_id, run, stage, &reason);
             return;
+        }
+        if stage == StageKind::Verify {
+            self.workflow_spawn_verify(parent_id, run).await;
+            return;
+        }
+        let repairs_verify = run.findings_source == FindingsSource::Verify;
+        if stage == StageKind::Fix {
+            self.workflow_mark_fix_base(&mut run).await;
         }
 
         if stage == StageKind::Review {
@@ -54,6 +64,9 @@ impl Daemon {
             implementer_summary: run.last_summary.as_deref().map(workflow::clip_summary),
             diff,
             findings: match stage {
+                StageKind::Fix if repairs_verify => {
+                    Some(workflow::format_findings(&run.verify_findings))
+                }
                 StageKind::Fix => Some(workflow::format_findings(&run.open_findings)),
                 _ => None,
             },
@@ -68,6 +81,7 @@ impl Daemon {
             round: run.round,
             max_rounds: run.effective_max_rounds(),
             guidance,
+            verify_findings: stage == StageKind::Fix && repairs_verify,
         };
         // The dialog's attachments ride along with the very first stage only.
         let attachments = if run.history.is_empty() {
@@ -188,7 +202,7 @@ impl Daemon {
                     StageKind::Plan => workflow::build_plan_prompt(&run.spec, &ctx),
                     StageKind::Implement => workflow::build_implement_prompt(&run.spec, &ctx),
                     StageKind::Fix => workflow::build_fix_prompt(&run.spec, &ctx),
-                    StageKind::Review => unreachable!(),
+                    StageKind::Review | StageKind::Verify => unreachable!(),
                 };
                 let spawned = self.workflow_spawn_child(
                     &run.project,
@@ -203,6 +217,13 @@ impl Daemon {
                     run.config_overrides.clone(),
                 );
                 let label = match stage {
+                    StageKind::Fix if repairs_verify => {
+                        format!(
+                            "fix (verify {}/{})",
+                            run.verify_failures,
+                            run.verify_limit()
+                        )
+                    }
                     StageKind::Fix => format!("{} (round {})", stage.label(), run.round),
                     _ => stage.label().to_string(),
                 };
@@ -363,6 +384,10 @@ impl Daemon {
                 self.workflow_review_finished(&parent_id, run, child_id, output)
                     .await;
             }
+            StageKind::Verify => {
+                self.workflow_verify_finished(&parent_id, run, child_id, output)
+                    .await;
+            }
             StageKind::Plan | StageKind::Implement | StageKind::Fix => {
                 match workflow::parse_stage_signal(&output) {
                     StageSignal::Question(question) => {
@@ -425,7 +450,9 @@ impl Daemon {
                             event_agent.into_iter().collect(),
                             wire::WorkflowEventTone::Success,
                         );
-                        let next = stage.successor().unwrap_or(StageKind::Review);
+                        let changed =
+                            stage == StageKind::Fix && self.workflow_fix_changed(&mut run).await;
+                        let next = run.stage_after(stage, changed);
                         self.workflow_runs.insert(parent_id.clone(), run);
                         self.workflow_advance(&parent_id, next).await;
                     }

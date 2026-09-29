@@ -20,6 +20,8 @@ pub struct PromptCtx {
     pub round: u32,
     pub max_rounds: u32,
     pub guidance: Option<String>,
+    /// The fix stage is repairing what the verify stage found, not a review.
+    pub verify_findings: bool,
 }
 
 /// Appended to every plan/implement/fix prompt — the question protocol the
@@ -68,7 +70,7 @@ fn vars_from_ctx(ctx: &PromptCtx, focus: Option<&str>) -> HashMap<&'static str, 
     vars
 }
 
-fn push_section(out: &mut String, title: &str, body: &str) {
+pub(super) fn push_section(out: &mut String, title: &str, body: &str) {
     if body.trim().is_empty() {
         return;
     }
@@ -79,7 +81,7 @@ fn push_section(out: &mut String, title: &str, body: &str) {
     out.push_str("\n\n");
 }
 
-fn finish_prompt(mut body: String, protocol: &str, guidance: Option<&str>) -> String {
+pub(super) fn finish_prompt(mut body: String, protocol: &str, guidance: Option<&str>) -> String {
     if let Some(guidance) = guidance {
         if !guidance.trim().is_empty() {
             push_section(&mut body, "User guidance", guidance);
@@ -226,14 +228,23 @@ pub fn build_fix_prompt(spec: &WorkflowSpec, ctx: &PromptCtx) -> String {
     let body = match spec.fix.prompt.as_deref() {
         Some(custom) => render_template(custom, &vars_from_ctx(ctx, None)),
         None => {
-            let mut out = format!(
-                "You are the repair stage of a workflow pipeline (round {}/{}). Reviewers \
-                 found the problems listed below. Address every finding — fix it or, when a \
-                 finding is factually wrong, explain why in your summary. Do not change \
-                 unrelated code. Your final message should summarize what you changed; it is \
-                 handed back to the reviewers.\n\n",
-                ctx.round, ctx.max_rounds
-            );
+            let mut out = if ctx.verify_findings {
+                "You are the repair stage of a workflow pipeline. The QA verification stage \
+                 exercised the change in the running app and found the problems listed below. \
+                 Fix every one — or, when a finding is factually wrong, explain why in your \
+                 summary. Do not change unrelated code. Your final message should summarize \
+                 what you changed; the change is verified again in the running app.\n\n"
+                    .to_string()
+            } else {
+                format!(
+                    "You are the repair stage of a workflow pipeline (round {}/{}). Reviewers \
+                     found the problems listed below. Address every finding — fix it or, when a \
+                     finding is factually wrong, explain why in your summary. Do not change \
+                     unrelated code. Your final message should summarize what you changed; it is \
+                     handed back to the reviewers.\n\n",
+                    ctx.round, ctx.max_rounds
+                )
+            };
             push_section(&mut out, "Task", &ctx.task_prompt);
             if let Some(findings) = ctx.findings.as_deref() {
                 push_section(&mut out, "Findings to address", findings);

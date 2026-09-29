@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { workflowStageLabel } from "@/lib/workflow";
+import { verifyBarrier, workflowStageLabel } from "@/lib/workflow";
 
 import { daemon } from "../daemon";
 import type { TaskInfo, WorkflowRunInfo } from "../protocol";
@@ -126,7 +126,43 @@ export const WorkflowControls = memo(function WorkflowControls({ task }: { task:
   );
 });
 
-/** Buttons shown when review rounds ran out with findings still open. */
+const LIMIT_COPY = {
+  blocked: {
+    body: "Verification could not run",
+    extendOne: "Retry verification",
+    extendOneTitle: "Run the verify stage again, e.g. after opening the app or starting services",
+    extendTwo: null,
+    extendTwoTitle: null,
+    finish: "Continue to review",
+    finishTitle: "Skip the verification gate and let the reviewers look at the change",
+    hint: "Retry verification, continue to review without it, or stop the workflow.",
+    title: "Verification could not run",
+  },
+  failed: {
+    body: "The change keeps failing verification in the running app",
+    extendOne: "1 more attempt",
+    extendOneTitle: "Run one more fix → verify cycle",
+    extendTwo: "2 more attempts",
+    extendTwoTitle: "Run two more fix → verify cycles",
+    finish: "Continue to review",
+    finishTitle: "Skip the verification gate and let the reviewers look at the change",
+    hint: "Continue the fix → verify loop, continue to review without a pass, or stop the workflow.",
+    title: "Verification keeps failing",
+  },
+  review: {
+    body: "Reviewers still request changes",
+    extendOne: "1 more round",
+    extendOneTitle: "Run one more fix → review cycle",
+    extendTwo: "2 more rounds",
+    extendTwoTitle: "Run two more fix → review cycles",
+    finish: "Finish for review",
+    finishTitle: "Stop the pipeline and send the current changes to human review",
+    hint: "Continue the fix → review loop, finish with the current changes, or stop the workflow.",
+    title: "Review limit reached",
+  },
+} as const;
+
+/** Buttons shown when review rounds or verify attempts ran out. */
 function LimitDecision({
   task,
   summary,
@@ -140,21 +176,21 @@ function LimitDecision({
 }) {
   const busy = busyAction !== null;
   const barrierId = task.workflowRun?.waiting?.barrierId ?? undefined;
+  const copy = LIMIT_COPY[verifyBarrier(task.workflowRun) ?? "review"];
   return (
     <section
-      aria-label="Review limit reached"
+      aria-label={copy.title}
       className="mt-2 rounded-md border border-warn/40 bg-warn/[0.07] p-3"
     >
       <div className="flex items-start gap-2">
         <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" />
         <div className="min-w-0">
-          <p className="text-[13px] font-semibold text-foreground">Review limit reached</p>
+          <p className="text-[13px] font-semibold text-foreground">{copy.title}</p>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
-            Reviewers still request changes{summary ? ` — ${summary}` : ""}.
+            {copy.body}
+            {summary ? ` — ${summary}` : ""}.
           </p>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Continue the fix → review loop, finish with the current changes, or stop the workflow.
-          </p>
+          <p className="mt-1 text-[13px] text-muted-foreground">{copy.hint}</p>
         </div>
       </div>
 
@@ -163,7 +199,7 @@ function LimitDecision({
           size="sm"
           className="gap-1 px-2.5"
           disabled={busy}
-          title="Run one more fix → review cycle"
+          title={copy.extendOneTitle}
           onClick={() =>
             void act("add one review round", () =>
               daemon.workflowDecide(task.id, "extend", { barrierId, rounds: 1 }),
@@ -171,27 +207,33 @@ function LimitDecision({
           }
         >
           {busyAction === "add one review round" ? <Loader2 className="animate-spin" /> : <Plus />}
-          {busyAction === "add one review round" ? "Continuing…" : "1 more round"}
+          {busyAction === "add one review round" ? "Continuing…" : copy.extendOne}
         </Button>
+        {copy.extendTwo && (
+          <Button
+            size="sm"
+            className="gap-1 px-2.5"
+            disabled={busy}
+            title={copy.extendTwoTitle ?? undefined}
+            onClick={() =>
+              void act("add two review rounds", () =>
+                daemon.workflowDecide(task.id, "extend", { barrierId, rounds: 2 }),
+              )
+            }
+          >
+            {busyAction === "add two review rounds" ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Plus />
+            )}
+            {busyAction === "add two review rounds" ? "Continuing…" : copy.extendTwo}
+          </Button>
+        )}
         <Button
           size="sm"
           className="gap-1 px-2.5"
           disabled={busy}
-          title="Run two more fix → review cycles"
-          onClick={() =>
-            void act("add two review rounds", () =>
-              daemon.workflowDecide(task.id, "extend", { barrierId, rounds: 2 }),
-            )
-          }
-        >
-          {busyAction === "add two review rounds" ? <Loader2 className="animate-spin" /> : <Plus />}
-          {busyAction === "add two review rounds" ? "Continuing…" : "2 more rounds"}
-        </Button>
-        <Button
-          size="sm"
-          className="gap-1 px-2.5"
-          disabled={busy}
-          title="Stop the pipeline and send the current changes to human review"
+          title={copy.finishTitle}
           onClick={() =>
             void act("finish the workflow", () =>
               daemon.workflowDecide(task.id, "finish", { barrierId }),
@@ -203,7 +245,7 @@ function LimitDecision({
           ) : (
             <CircleCheckBig />
           )}
-          {busyAction === "finish the workflow" ? "Finishing…" : "Finish for review"}
+          {busyAction === "finish the workflow" ? "Finishing…" : copy.finish}
         </Button>
         <Button
           size="sm"

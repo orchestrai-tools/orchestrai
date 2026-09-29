@@ -45,11 +45,34 @@ fn friendly_gh_error(stderr: &str) -> String {
 /// Requires `gh` on PATH and authenticated. Returns the PR URL. If a PR for the
 /// branch already exists, returns its URL instead of erroring.
 pub async fn create_pr(repo: &str, title: &str, body: &str, base: Option<&str>) -> Result<String> {
+    open_pr(repo, title, body, base, false).await
+}
+
+/// [`create_pr`], opened as a draft.
+pub async fn create_draft_pr(
+    repo: &str,
+    title: &str,
+    body: &str,
+    base: Option<&str>,
+) -> Result<String> {
+    open_pr(repo, title, body, base, true).await
+}
+
+async fn open_pr(
+    repo: &str,
+    title: &str,
+    body: &str,
+    base: Option<&str>,
+    draft: bool,
+) -> Result<String> {
     let branch = current_branch(repo)
         .await
         .ok_or_else(|| anyhow!("not on a branch (detached HEAD or not a git repo)"))?;
 
     let mut args: Vec<&str> = vec!["pr", "create", "--head", &branch, "--title", title];
+    if draft {
+        args.push("--draft");
+    }
     if !body.trim().is_empty() {
         args.push("--body");
         args.push(body);

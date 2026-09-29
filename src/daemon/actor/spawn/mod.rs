@@ -191,6 +191,9 @@ impl Daemon {
         }
 
         let config_observer = ConfigObserver::new(&projects);
+        let mut runner = crate::daemon::actor::runner::load_state(store.as_ref());
+        let (runner_watch_tx, runner_watch_rx) = mpsc::unbounded_channel();
+        runner.set_watch(runner_watch_tx);
         let daemon = Daemon {
             agent_limits,
             projects,
@@ -244,6 +247,7 @@ impl Daemon {
             automation_run_tasks: HashMap::new(),
             automation_run_counters,
             advisors: Default::default(),
+            runner,
         };
 
         let handle = DaemonHandle {
@@ -284,6 +288,8 @@ impl Daemon {
                                      // Bring persisted workflow pipelines back: barrier states as-is,
                                      // mid-stage runs paused at their last barrier.
         daemon.restore_workflow_runs();
+        daemon.runner_restore();
+        crate::daemon::actor::runner::spawn_pull_bridge(&handle, runner_watch_rx);
 
         // Dreaming idle/cron scheduler (config-driven, enabled false by default)
         let dream_cfg = daemon.memory.config().dreaming.clone();
@@ -349,6 +355,8 @@ impl Daemon {
                 if automation_tx.send(Command::AutomationTick).await.is_err() {
                     break;
                 }
+                let runner_tick = crate::daemon::actor::runner::RunnerCommand::Tick;
+                let _ = automation_tx.send(Command::Runner(runner_tick)).await;
                 tick.tick().await;
             }
         });

@@ -68,6 +68,13 @@ impl Daemon {
                         .await,
                 );
             }
+            Command::WorkflowKeepEvidence {
+                task_id,
+                mime,
+                reply,
+            } => {
+                let _ = reply.send(self.workflow_keep_evidence(&task_id, &mime));
+            }
 
             Command::StartOrchestration {
                 project,

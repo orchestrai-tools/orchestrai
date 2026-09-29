@@ -108,7 +108,10 @@ export function useWorkflowSend(task: TaskInfo): WorkflowSend {
     disabled,
     handoff,
     isWorkflow: !!run,
-    placeholder: placeholderFor(waiting?.kind, !!run, finished),
+    placeholder:
+      waiting?.kind === "limit" && waiting.stage === "verify"
+        ? "Add guidance for the next attempt, or pick an option above…"
+        : placeholderFor(waiting?.kind, !!run, finished),
     send,
     undeliverable,
   };
