@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.22.1
+
+### Patch Changes
+
+- [`85b26be`](https://github.com/warpforgehq/warpforge/commit/85b26bed056e3e9922ca63eff20cae07539e5441) Thanks [@ephor](https://github.com/ephor)! - Services that depend on a port-forward start again when you run that dependency locally. If a local ClickHouse, Postgres, or your own `kubectl port-forward` already answers on the forward's local port, Warpforge uses it and starts the service right away instead of trying to open a forward that can't bind; the service's log says it is using the local server. If the port is held by something that doesn't accept connections, the service now fails with a reason naming the port, so you know what to stop.
+
+- [`2f84ef1`](https://github.com/warpforgehq/warpforge/commit/2f84ef1a43d635cf9e7d03a4e10b9a900dd37abf) Thanks [@ephor](https://github.com/ephor)! - The wrong-port warning on a service now names only ports that actually answer, so a service that also starts other dev servers no longer points you at the wrong one. Starting a port-forward by hand now fails right away, with a clear reason, when its local port is already served by another process.
+
 ## 0.22.0
 
 ### Minor Changes
