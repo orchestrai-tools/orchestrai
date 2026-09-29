@@ -6,6 +6,7 @@ import { daemon } from "@/daemon";
 import { cn } from "@/lib/utils";
 import type { TaskInfo } from "@/protocol";
 
+import { AdvisorIndicator } from "./AdvisorIndicator";
 import { GitWorkspaceControls } from "./GitWorkspaceControls";
 
 interface Props {
@@ -17,8 +18,9 @@ interface Props {
 }
 
 /**
- * The task's footer: its harness, account and quota on the left, git state on
- * the right. Switching the account still moves the harness's global login.
+ * The task's footer: its harness, account, quota and advisor on the left, git
+ * state on the right. Switching the account still moves the harness's global
+ * login.
  *
  * @param task the open task
  * @param branch the task's current branch, when known
@@ -41,6 +43,7 @@ export function TaskStatusStrip({
         agents={snapshot.agents ?? []}
         accounts={snapshot.accounts ?? []}
       />
+      {task.advisor && <AdvisorIndicator advisor={task.advisor} agents={snapshot.agents ?? []} />}
       {repositoryOperation && (
         <span className="ml-auto mr-2 flex shrink-0 items-center gap-1 text-muted-foreground">
           <Loader2 className="size-3 animate-spin" />

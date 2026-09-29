@@ -47,6 +47,65 @@ removed through the same path a merge-and-remove uses (`discard_worktree` in
 `actor/commands/worktree.rs`). The work is on GitHub, so nothing merges
 locally — a squash-merged branch would conflict with its own squash.
 
+### Feedback goes back to the task (amended 2026-09-29)
+
+After **Open pull request** the CI results and the review land on GitHub,
+and the agent that made the change never hears about them. The entry now
+carries what that agent would need, and the task offers to send it.
+
+**Failing checks ride the listing; remarks are a second read.** `gh pr list`
+already returns `statusCheckRollup`, so `failed_checks` (name, link, a
+status's description) costs nothing. It cannot return review threads, so an
+open pull request's conversation is one more GraphQL read — the inbox's own
+query (`tracker::github_pr_conversation`, PAT or `gh`) narrowed by
+`pull_status/comments`: unresolved inline threads with their replies, and each
+reviewer's latest verdict when it requests changes. Conversation comments are
+left out; bots fill them with previews and coverage reports.
+
+**That read is gated, not timed.** It runs inside a fetch this record already
+schedules, only for an open or draft pull request, and only when `updatedAt`
+moved since the last read or that read is older than 15 minutes (resolving a
+thread need not move `updatedAt`). A failed read keeps the known remarks and
+is retried on the next fetch.
+
+**What the agent was told is per device.** The daemon reports the current
+facts; the desktop keeps the keys already sent or dismissed per task
+(`store/prFeedback`, localStorage) and raises the rest — a notice above the
+task's conversation and an entry in Needs you. A check is keyed by head commit
+and name, so the same failure after a new push is raised again; a thread by
+its root and its latest comment not written by the pull request's author, so
+a reviewer's reply re-raises it and the author's own "fixed" does not.
+*Rejected:* a watermark in the daemon — a schema column for a fact only the
+clicking surface produces, and the same trade ADR 0010 made for seen marks.
+
+**Send is one `session.prompt` into the existing session.** `lib/prFeedback`
+formats it in the diff-notes style: failing checks first, then remarks with
+`path:line`, the quoted hunk lines, author and body. A busy agent queues it
+(ADR 0011); it runs as a `User` turn because a person pressed the button.
+Everything GitHub supplied — check names and summaries, links, the title,
+authors, quoted hunks, comment bodies — goes inside a `<github_untrusted>`
+block (`lib/untrustedBlock`, the scheme of `src/mcp/untrusted.rs`), because
+anyone who can comment on a public repository writes it and it would
+otherwise reach the agent as the owner's words. The instructions, and the
+log commands built from a job id that must be digits in a `github.com`
+Actions link, stay outside it. The inbox's task prompts (`lib/inboxTaskPrompt`)
+and the PR Assistant's opening prompt (`lib/prAssistantPrompt`, ADR 0010)
+wrap the same way, and name a branch in a command only when it is
+shell-safe (`isShellSafeRef`).
+**Dismiss** records the same keys without sending.
+
+**Job logs are not fetched.** `gh run view --log-failed` downloads the run's
+whole log — seconds and megabytes per failed check, on a three-minute poll,
+for failures nobody may act on. The prompt carries the check's link and, for
+an Actions job, the command that prints the last 80 lines of its failed steps;
+the agent runs it once, in its checkout, when it acts. Same rule as ADR 0010's
+prompts: say where it is, do not paste it.
+
+**Nothing is sent on its own.** An "auto-send CI failures" toggle is deferred:
+it would have to work with the window closed, which moves the watermark into
+the daemon and the send onto a dispatch path that must respect ADR 0019's
+quota gate.
+
 ## Invariants
 
 1. **No `gh` call on the actor loop** (ADR 0002). `PullWatch` never holds a
@@ -62,4 +121,15 @@ locally — a squash-merged branch would conflict with its own squash.
    `task.pullRequest` and a `task.pullRequests` reply leaves stamped entries
    alone (`daemon/tasks.ts`).
 4. **Test daemons never run `gh`.** `PullWatch::default()` fetches nothing
-   under `cfg(test)`; tests inject a scripted fetcher.
+   under `cfg(test)`; tests inject a scripted fetcher and comments fetcher.
+5. **The remarks read has no timer of its own.** It rides a scheduled fetch,
+   is skipped for merged and closed pull requests, and while `updatedAt`
+   stands still inside `COMMENTS_MAX_AGE`.
+6. **A failed remarks read never clears remarks**, for the same reason a
+   failed listing never clears a badge.
+7. **Only a click sends feedback to an agent.** The notice and the Needs-you
+   entry offer; nothing in the daemon or the desktop prompts on its own.
+8. **No GitHub-supplied text outside the untrusted block**, and none in a
+   command: a command carries only a validated number or a shell-safe ref.
+   This holds for every prompt built from a pull request — task feedback,
+   the inbox's task prompts and the PR Assistant's.

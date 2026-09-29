@@ -18,6 +18,9 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod advisor;
+pub use advisor::*;
+
 pub mod agents;
 pub use agents::*;
 
@@ -41,6 +44,9 @@ pub use method::*;
 
 pub mod project;
 pub use project::*;
+
+pub mod prompts;
+pub use prompts::*;
 
 pub mod pulls;
 pub use pulls::*;

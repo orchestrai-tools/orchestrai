@@ -4,7 +4,7 @@
 //! carry live in the topic modules beside this one.
 
 use crate::{
-    default_true, AgentConfig, AutomationPatch, AutomationTrigger, BacklogStorageMode,
+    default_true, AdvisorPick, AgentConfig, AutomationPatch, AutomationTrigger, BacklogStorageMode,
     BootstrapAnswers, HunkResolution, OrchestratorConfigDto, PermissionOutcome, PromptAttachment,
     TextGenKind, WorkItemPriority, WorkflowDecision, WorktreeBase,
     DEFAULT_MISSED_RUN_GRACE_MINUTES,
@@ -261,6 +261,10 @@ pub enum Method {
         /// When false, create without starting session. Defaults to true.
         #[serde(default = "default_true")]
         start: bool,
+        /// A second agent the task's agent may consult through `ask_advisor`.
+        /// Single-agent tasks only: refused with `workflow`.
+        #[serde(default)]
+        advisor: Option<AdvisorPick>,
     },
     #[serde(rename = "task.cancel")]
     TaskCancel { task_id: String },
@@ -378,6 +382,21 @@ pub enum Method {
         #[serde(default)]
         project: Option<String>,
     },
+    /// Put a question to the task's advisor, starting its session on the
+    /// first one. Waits a while for the answer and returns `AdvisorReply`;
+    /// `pending` means `advisor.wait` should be called next.
+    #[serde(rename = "advisor.ask")]
+    AdvisorAsk {
+        task_id: String,
+        question: String,
+        /// What the executor wants the advisor to see beyond the digest.
+        #[serde(default)]
+        context: Option<String>,
+    },
+    /// Keep waiting for the answer to the task's pending advisor question.
+    /// Returns `AdvisorReply`.
+    #[serde(rename = "advisor.wait")]
+    AdvisorWait { task_id: String },
 
     // ── Shared memory ──
     /// Persist a durable fact into shared memory. `scope` defaults to the
@@ -1116,6 +1135,10 @@ pub enum Method {
     /// Returns `PullThread`.
     #[serde(rename = "tracker.pulls.thread")]
     TrackerPullThread { project: String, number: u64 },
+    /// The checks on one pull request's head commit. Returns
+    /// `{ items: [PullCheckRun] }`.
+    #[serde(rename = "tracker.pulls.checks")]
+    TrackerPullChecks { project: String, number: u64 },
     /// Post a conversation comment, or reply on a review thread when
     /// `in_reply_to` carries the thread's node id. Returns `{ url }`.
     #[serde(rename = "tracker.pulls.comment")]

@@ -1,4 +1,9 @@
-import type { DeleteSettledResult, ExternalSession, TaskPullRequest } from "../protocol";
+import type {
+  AdvisorPick,
+  DeleteSettledResult,
+  ExternalSession,
+  TaskPullRequest,
+} from "../protocol";
 import type { CoreClient } from "./client";
 import type { Constructor } from "./types";
 
@@ -18,8 +23,10 @@ export function TaskMethods<TBase extends Constructor<CoreClient>>(Base: TBase) 
       worktree?: boolean;
       includeRuntimeContext?: boolean;
       defaultModel?: string;
+      advisor?: AdvisorPick;
     }): Promise<string> {
       const result = (await this.request("task.create", {
+        advisor: params.advisor,
         agent: params.agent,
         default_model: params.defaultModel,
         include_runtime_context: params.includeRuntimeContext ?? true,

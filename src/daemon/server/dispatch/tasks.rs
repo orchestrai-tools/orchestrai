@@ -26,7 +26,15 @@ pub(super) async fn task_create(
     backlog_item_id: Option<String>,
     origin: Option<String>,
     start: bool,
+    advisor: Option<wire::AdvisorPick>,
 ) -> Result<serde_json::Value, wire::RpcError> {
+    let orchestrated = workflow.is_some() || tags.iter().any(|tag| tag == "orchestrator-chat");
+    if advisor.is_some() && orchestrated {
+        return Err(wire::RpcError {
+            code: wire::ErrorCode::InvalidRequest,
+            message: "an advisor is only available to a single-agent task".into(),
+        });
+    }
     // Resolved before the task exists, so a branch that cannot be used is a
     // refusal the dialog shows, not a task that lands blocked.
     let worktree_base = match worktree_base.filter(|_| worktree) {
@@ -99,6 +107,7 @@ pub(super) async fn task_create(
             backlog_item_id,
             origin,
             start,
+            advisor,
             reply: tx,
         })
         .await;

@@ -224,6 +224,18 @@ pub(super) async fn tracker_pull_thread(
     serde_json::to_value(thread).map_err(|e| rpc_err(e.to_string()))
 }
 
+pub(super) async fn tracker_pull_checks(
+    handle: &DaemonHandle,
+    project: String,
+    number: u64,
+) -> Result<serde_json::Value, wire::RpcError> {
+    let repo_dir = project_path(handle, &project).await?;
+    let items = tracker::github_pr_checks(&repo_dir, number)
+        .await
+        .map_err(|e| rpc_err(format!("{e:#}")))?;
+    Ok(json!({ "items": items }))
+}
+
 pub(super) async fn tracker_pull_comment(
     handle: &DaemonHandle,
     project: String,

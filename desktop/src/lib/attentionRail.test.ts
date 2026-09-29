@@ -450,3 +450,17 @@ describe("partitionRailTasks", () => {
     expect(result.wokeIds).toStrictEqual([]);
   });
 });
+
+describe("buildAttentionQueue with pull-request feedback", () => {
+  it("lists a task whose pull request came back, below what halts work", () => {
+    const queue = buildAttentionQueue(
+      [task("fed"), task("stuck", { status: "blocked", blockedReason: "no disk" })],
+      {},
+      new Map([["fed", "2 checks failed · 3 new comments"]]),
+    );
+    expect(queue.map((item) => [item.task.id, item.reason])).toEqual([
+      ["stuck", "no disk"],
+      ["fed", "2 checks failed · 3 new comments"],
+    ]);
+  });
+});

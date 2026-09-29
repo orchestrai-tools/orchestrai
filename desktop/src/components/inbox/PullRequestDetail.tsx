@@ -204,7 +204,7 @@ export function PullRequestDetail({
   );
 
   const refresh = React.useCallback(() => {
-    for (const part of ["details", "thread", "diff", "commits"]) {
+    for (const part of ["details", "thread", "diff", "commits", "checks"]) {
       void queryClient.invalidateQueries({
         queryKey: ["pull", part, pr.project, pr.number],
       });

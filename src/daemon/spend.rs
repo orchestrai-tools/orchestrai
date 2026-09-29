@@ -194,6 +194,7 @@ mod tests {
             model: None,
             pending_permission: false,
             queued_prompts: Vec::new(),
+            advisor: None,
         }
     }
 

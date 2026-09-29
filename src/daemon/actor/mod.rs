@@ -38,6 +38,7 @@ use crate::policies::registry::PolicyRegistry;
 
 mod accounts;
 mod acp_update;
+pub(crate) mod advisor;
 mod agent_health;
 mod command;
 mod config_observer;
@@ -220,6 +221,8 @@ pub struct Daemon {
     /// In-memory so run numbers never collide with the write-behind queue and
     /// assigning one costs no blocking SQLite read on the actor loop.
     automation_run_counters: HashMap<String, u64>,
+    /// Pending advisor consultations per executor task (ADR 0022).
+    advisors: advisor::Advisors,
 }
 
 impl Daemon {

@@ -46,6 +46,38 @@ A regular task is one agent in one conversation. It still gets the [runtime tool
 
 ---
 
+## Add an advisor to a single session
+
+A single session can bring a second opinion along without turning into a pipeline. In New Task, turn on **Advisor** and pick its harness and model — usually the *other* one: Claude Code does the work and Codex advises, or the reverse, or a fast model works while a stronger one advises.
+
+The agent doing the work gets one extra tool, [`ask_advisor`](/reference/mcp-tools/#ask_advisor), and is told to use it at three moments: **before a big design decision**, **when it's stuck after a couple of failed attempts**, and **before it declares the task done**. It asks, the advisor answers, and the working agent decides what to do with the answer.
+
+**The advisor knows the task, not just the diff.** A reviewer that only sees a diff can't tell whether the change does what you asked. The advisor gets your opening message as the goal, and every question comes with what happened since the last one: your recent messages, the working agent's recent messages, and the changed files — a few kilobytes, never the whole transcript. It works in the task's own checkout, so it can open any file or run `git diff` itself. And it's one conversation for the whole task, so it remembers what it said before.
+
+**It can't change anything.** Its requests to edit files or run commands are denied automatically, its harness is switched to read-only where it has such a mode (Codex's read-only mode, Claude Code's plan mode), and its Warpforge tools are the ones that only read.
+
+**Where you see it.** Each consultation appears in the chat as a collapsed **Asked advisor** block — expand it for the question and the answer. The advisor's own conversation stays out of your sidebar; open it from the block when you want to see how it got there. The task header shows which advisor the task has.
+
+**Reach for it when:**
+
+- One agent should do the work, but a decision in it deserves a second look.
+- You want another model family's view. Different models get different things wrong.
+- You'd reach for a review pipeline, except the change is small enough that one pass of advice is enough.
+
+<Aside type="caution" title="What an advisor costs">
+  Every question is a turn for a second agent — often a bigger model reading the code — on that agent's own quota. The cost of each answer is shown on its block when the harness reports it. Nothing is asked automatically: the working agent decides when to consult, the advisor's session only starts on the first question, and an advisor that's never asked costs nothing.
+</Aside>
+
+**Limits:**
+
+- Single sessions only — not orchestrators or pipelines.
+- Three questions per turn of the working agent; a fourth is refused until its next turn.
+- An answer that takes longer than 15 minutes is given up on, and the working agent carries on without it.
+- If the advisor's account is known to be out of quota, the question is refused rather than left to fail.
+- It's advice. Nothing checks that the working agent follows it.
+
+---
+
 ## Use an orchestrator when the work genuinely splits
 
 Enabling **Orchestrator** turns the agent into a lead with [11 extra tools](/reference/mcp-tools/#orchestrator-only--delegation): it can `spawn_agent`, follow up with `message_agent`, and drain results with `read_inbox` — while you keep talking to it.
@@ -99,6 +131,7 @@ That's usually the shape of a big task done well: **one lead, mostly single sub-
 | --- | --- |
 | One coherent change | Single session |
 | You want to steer turn by turn | Single session |
+| One agent should do it, but you want a second opinion on the way | Single session + advisor |
 | You're still exploring the problem | Single session |
 | Independent parts that won't collide | Orchestrator |
 | You want different harnesses on different pieces | Orchestrator |

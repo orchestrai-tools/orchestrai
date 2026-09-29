@@ -76,6 +76,7 @@ impl DaemonHandle {
             // arrives over the wire (see `server::dispatch`).
             origin: None,
             start: true,
+            advisor: None,
             reply: tx,
         })
         .await;
@@ -113,6 +114,7 @@ impl DaemonHandle {
             backlog_item_id,
             origin: None,
             start: false,
+            advisor: None,
             reply: tx,
         })
         .await;

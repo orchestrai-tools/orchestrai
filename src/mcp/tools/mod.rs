@@ -2,6 +2,7 @@ use serde_json::Value;
 
 use super::automations;
 
+mod advisor;
 mod backlog;
 mod browser;
 mod memory;
@@ -24,6 +25,14 @@ pub(crate) fn tool_defs(is_orchestrator: bool) -> Value {
     }
     Value::Array(tools)
 }
+
+/// `ask_advisor`, offered to a session whose task has an advisor.
+/// @returns the tool definitions
+pub(crate) fn advisor_tool_defs() -> Vec<Value> {
+    advisor::defs()
+}
+
+pub(crate) use advisor::READ_ONLY_TOOLS;
 
 /// The browser tools, offered to sessions bound to a project.
 /// @returns the tool definitions

@@ -337,49 +337,48 @@ pub(super) async fn handshake(session: &Session, agent_name: &str) -> Result<Ini
 
     // Apply non-model config overrides (reasoning effort, mode, etc.)
     // the user picked in the "New task" dialog. Unknown option ids are
-    // logged and skipped — never abort session startup.
-    if session.resume.is_none() {
-        for (opt_id, opt_value) in &session.config_overrides {
-            let set_res = tokio::time::timeout(
-                RPC_TIMEOUT,
-                rpc(
-                    &session.out_tx,
-                    &session.pending,
-                    &session.next_id,
-                    "session/set_config_option",
-                    json!({
-                        "sessionId": session_id,
-                        "configId": opt_id,
-                        "value": opt_value,
-                    }),
-                ),
-            )
-            .await;
-            match set_res {
-                Ok(Some(resp)) if resp.get("error").is_none() => {
-                    if let Some(result) = resp.get("result") {
-                        let opts = parse_config_options(result.get("configOptions"));
-                        if !opts.is_empty() {
-                            let _ = session.updates.send((
-                                session.task_id.clone(),
-                                AcpUpdate::ConfigOptions { options: opts },
-                            ));
-                        }
+    // logged and skipped — never abort session startup. A resume passes only
+    // the advisor's read-only mode, which must hold across a reconnect.
+    for (opt_id, opt_value) in &session.config_overrides {
+        let set_res = tokio::time::timeout(
+            RPC_TIMEOUT,
+            rpc(
+                &session.out_tx,
+                &session.pending,
+                &session.next_id,
+                "session/set_config_option",
+                json!({
+                    "sessionId": session_id,
+                    "configId": opt_id,
+                    "value": opt_value,
+                }),
+            ),
+        )
+        .await;
+        match set_res {
+            Ok(Some(resp)) if resp.get("error").is_none() => {
+                if let Some(result) = resp.get("result") {
+                    let opts = parse_config_options(result.get("configOptions"));
+                    if !opts.is_empty() {
+                        let _ = session.updates.send((
+                            session.task_id.clone(),
+                            AcpUpdate::ConfigOptions { options: opts },
+                        ));
                     }
                 }
-                Ok(Some(resp)) => {
-                    eprintln!(
-                        "[daemon] config override '{}' rejected by agent: {}",
-                        opt_id,
-                        acp_error_detail(&resp)
-                    );
-                }
-                Ok(None) => {
-                    eprintln!("[daemon] config override '{}': transport closed", opt_id);
-                }
-                Err(_) => {
-                    eprintln!("[daemon] config override '{}': RPC timed out", opt_id);
-                }
+            }
+            Ok(Some(resp)) => {
+                eprintln!(
+                    "[daemon] config override '{}' rejected by agent: {}",
+                    opt_id,
+                    acp_error_detail(&resp)
+                );
+            }
+            Ok(None) => {
+                eprintln!("[daemon] config override '{}': transport closed", opt_id);
+            }
+            Err(_) => {
+                eprintln!("[daemon] config override '{}': RPC timed out", opt_id);
             }
         }
     }

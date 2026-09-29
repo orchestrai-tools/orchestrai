@@ -194,6 +194,8 @@ pub enum Command {
         origin: Option<String>,
         /// When false, create the task but do not start its agent session.
         start: bool,
+        /// The agent this task may consult through `ask_advisor`.
+        advisor: Option<wire::AdvisorPick>,
         reply: oneshot::Sender<String>,
     },
     /// Create a workflow-pipeline parent task and start its first stage.
@@ -244,6 +246,36 @@ pub enum Command {
         /// Barrier the decision was made against; a mismatch is refused.
         barrier_id: Option<String>,
         reply: oneshot::Sender<Result<(), String>>,
+    },
+    /// `advisor.ask`: open a consultation with the task's advisor. The reply
+    /// is a refusal, or a ticket that yields the answer (ADR 0022).
+    AdvisorAsk {
+        task_id: String,
+        question: String,
+        context: Option<String>,
+        reply: oneshot::Sender<Result<crate::daemon::actor::advisor::AdvisorTicket, String>>,
+    },
+    /// `advisor.wait`: keep waiting for the pending consultation's answer.
+    AdvisorWait {
+        task_id: String,
+        reply: oneshot::Sender<Result<crate::daemon::actor::advisor::AdvisorTicket, String>>,
+    },
+    /// The transcript digest for a consultation was read off the loop.
+    AdvisorContextReady {
+        executor: String,
+        consultation: u64,
+        digest: crate::daemon::actor::advisor::prompt::Digest,
+    },
+    /// The advisor's session refused the consultation's prompt.
+    AdvisorUndelivered {
+        executor: String,
+        consultation: u64,
+        error: String,
+    },
+    /// A consultation reached its deadline without an answer.
+    AdvisorDeadline {
+        executor: String,
+        consultation: u64,
     },
     /// Drain an orchestrator task's inbox of finished sub-agent results.
     ReadInbox {

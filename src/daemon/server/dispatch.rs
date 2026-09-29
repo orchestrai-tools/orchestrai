@@ -9,6 +9,7 @@ use warpforge_protocol as wire;
 use crate::daemon::actor::DaemonHandle;
 use crate::daemon::server::ServerLifecycle;
 
+mod advisor;
 mod agents;
 mod automations;
 mod backlog;
@@ -59,9 +60,11 @@ pub(super) async fn dispatch(
         ServiceStopAll { project } => runtime::service_stop_all(handle, project).await,
         PortForwardStartAll { project } => runtime::port_forward_start_all(handle, project).await,
         PortForwardStart { project, name } => runtime::port_forward_start(handle, project, name).await,
-        TaskCreate { project, prompt, agent, tags, include_runtime_context, worktree, worktree_base, parent_task_id, attachments, default_model, config_overrides, workflow, backlog_item_id, origin, start, } => tasks::task_create(handle, project, prompt, agent, tags, include_runtime_context, worktree, worktree_base, parent_task_id, attachments, default_model, config_overrides, workflow, backlog_item_id, origin, start).await,
+        TaskCreate { project, prompt, agent, tags, include_runtime_context, worktree, worktree_base, parent_task_id, attachments, default_model, config_overrides, workflow, backlog_item_id, origin, start, advisor, } => tasks::task_create(handle, project, prompt, agent, tags, include_runtime_context, worktree, worktree_base, parent_task_id, attachments, default_model, config_overrides, workflow, backlog_item_id, origin, start, advisor).await,
         OrchestratorReadInbox { parent_task_id } => orchestration::orchestrator_read_inbox(handle, parent_task_id).await,
         OrchestratorListAgents { parent_task_id, project, } => orchestration::orchestrator_list_agents(handle, parent_task_id, project).await,
+        AdvisorAsk { task_id, question, context } => advisor::advisor_ask(handle, task_id, question, context).await,
+        AdvisorWait { task_id } => advisor::advisor_wait(handle, task_id).await,
         DiffGet { task_id, include_ignored, } => files::diff_get(handle, task_id, include_ignored).await,
         MemoryStore { content, scope, kind, tags, project_id, created_by, } => memory::memory_store(handle, content, scope, kind, tags, project_id, created_by).await,
         MemorySearch { query, scope, limit, mode, } => memory::memory_search(handle, query, scope, limit, mode).await,
@@ -201,6 +204,7 @@ pub(super) async fn dispatch(
         TrackerPullDiff { project, number, from_oid, to_oid, } => tracker::tracker_pull_diff(handle, project, number, from_oid, to_oid).await,
         TrackerPullCommits { project, number } => tracker::tracker_pull_commits(handle, project, number).await,
         TrackerPullThread { project, number } => tracker::tracker_pull_thread(handle, project, number).await,
+        TrackerPullChecks { project, number } => tracker::tracker_pull_checks(handle, project, number).await,
         TrackerPullComment { project, number, body, in_reply_to, } => tracker::tracker_pull_comment(handle, project, number, body, in_reply_to).await,
         TrackerPullReviewComment { project, number, path, line, side, body, start_line, start_side, } => tracker::tracker_pull_review_comment(handle, project, number, path, line, side, body, start_line, start_side).await,
         // The verdict write runs here on the request task like the other PR

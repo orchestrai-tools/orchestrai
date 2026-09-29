@@ -1,4 +1,11 @@
-import type { DaemonEvent, FileDoc, SessionUpdate, Snapshot, TaskDiff } from "../protocol";
+import type {
+  AdvisorPick,
+  DaemonEvent,
+  FileDoc,
+  SessionUpdate,
+  Snapshot,
+  TaskDiff,
+} from "../protocol";
 import { bytesToBase64 } from "./base64";
 import { DaemonEvents } from "./events";
 
@@ -158,6 +165,7 @@ export class DaemonDemo extends DaemonEvents {
           project: String(p.project),
           prompt: promptText,
           origin: p.origin ? String(p.origin) : null,
+          advisor: p.advisor ? { ...(p.advisor as AdvisorPick), consultations: 0 } : null,
           status: "running" as const,
           tags: (p.tags as string[]) ?? [],
           title: promptText.trim().split("\n")[0]?.trim().slice(0, 80) ?? "",

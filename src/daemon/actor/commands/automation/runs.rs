@@ -301,6 +301,7 @@ impl Daemon {
                         backlog_item_id: None,
                         origin: None,
                         start: true,
+                        advisor: None,
                         reply: tx,
                     })
                     .await

@@ -8,6 +8,7 @@ use serde::Deserialize;
 use tokio::process::Command;
 use warpforge_protocol as wire;
 
+use super::checks::{check_name, check_state, rollup};
 use super::PullTarget;
 
 const GH_TIMEOUT: Duration = Duration::from_secs(20);
@@ -16,11 +17,20 @@ const GH_TIMEOUT: Duration = Duration::from_secs(20);
 /// ones reusing the same branch name.
 const LIST_LIMIT: &str = "10";
 
-const FIELDS: &str = "number,title,url,state,isDraft,statusCheckRollup,headRefOid";
+const FIELDS: &str = "number,title,url,state,isDraft,statusCheckRollup,headRefOid,author,updatedAt";
+
+/// A pull request as `gh pr list` reports it, plus the timestamp that says
+/// whether its conversation needs reading again.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Listed {
+    pub pull: wire::TaskPullRequest,
+    /// GitHub's `updatedAt`: a comment or review moves it, a check does not.
+    pub updated_at: String,
+}
 
 /// The pull request whose head is the worktree's current branch, or `None`
 /// when there is none, the checkout is detached, or it sits on its base branch.
-pub(super) async fn fetch(target: PullTarget) -> Result<Option<wire::TaskPullRequest>> {
+pub(super) async fn fetch(target: PullTarget) -> Result<Option<Listed>> {
     let Some(branch) = crate::daemon::diff::current_branch(&target.worktree).await else {
         return Ok(None);
     };
@@ -61,11 +71,22 @@ struct GhPull {
     status_check_rollup: Option<Vec<GhCheck>>,
     #[serde(default)]
     head_ref_oid: Option<String>,
+    #[serde(default)]
+    author: Option<GhAuthor>,
+    #[serde(default)]
+    updated_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GhAuthor {
+    #[serde(default)]
+    login: String,
 }
 
 /// A `CheckRun` carries `status` and `conclusion`; a legacy `StatusContext`
-/// carries `state` alone.
+/// carries `state` alone. Any of these may arrive as `null`.
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GhCheck {
     #[serde(default)]
     status: Option<String>,
@@ -73,11 +94,47 @@ struct GhCheck {
     conclusion: Option<String>,
     #[serde(default)]
     state: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    workflow_name: Option<String>,
+    #[serde(default)]
+    context: Option<String>,
+    #[serde(default)]
+    details_url: Option<String>,
+    #[serde(default)]
+    target_url: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+impl GhCheck {
+    fn into_run(self) -> wire::PullCheckRun {
+        let text = |field: &Option<String>| field.as_deref().unwrap_or_default().to_string();
+        wire::PullCheckRun {
+            name: check_name(
+                &text(&self.name),
+                &text(&self.workflow_name),
+                &text(&self.context),
+            ),
+            state: check_state(
+                self.status.as_deref(),
+                self.conclusion.as_deref(),
+                self.state.as_deref(),
+            ),
+            url: self
+                .details_url
+                .filter(|url| !url.is_empty())
+                .or(self.target_url)
+                .unwrap_or_default(),
+            summary: text(&self.description).trim().to_string(),
+        }
+    }
 }
 
 /// Pick the branch's open pull request, else its most recent one. `gh` lists
 /// newest first.
-pub(super) fn parse_pull_list(stdout: &[u8]) -> Result<Option<wire::TaskPullRequest>> {
+pub(super) fn parse_pull_list(stdout: &[u8]) -> Result<Option<Listed>> {
     let pulls: Vec<GhPull> = serde_json::from_slice(stdout)?;
     let chosen = pulls
         .iter()
@@ -92,43 +149,32 @@ pub(super) fn parse_pull_list(stdout: &[u8]) -> Result<Option<wire::TaskPullRequ
         "MERGED" => wire::TaskPullState::Merged,
         _ => wire::TaskPullState::Closed,
     };
-    Ok(Some(wire::TaskPullRequest {
-        number: pull.number,
-        title: pull.title,
-        url: pull.url,
-        state,
-        checks: summarize_checks(pull.status_check_rollup.as_deref().unwrap_or_default()),
-        head_oid: pull.head_ref_oid.filter(|oid| !oid.is_empty()),
+    let runs: Vec<wire::PullCheckRun> = pull
+        .status_check_rollup
+        .unwrap_or_default()
+        .into_iter()
+        .map(GhCheck::into_run)
+        .collect();
+    let checks = rollup(&runs);
+    let failed_checks = runs
+        .into_iter()
+        .filter(|run| run.state == wire::PullChecks::Failing)
+        .collect();
+    Ok(Some(Listed {
+        pull: wire::TaskPullRequest {
+            number: pull.number,
+            title: pull.title,
+            url: pull.url,
+            state,
+            checks,
+            head_oid: pull.head_ref_oid.filter(|oid| !oid.is_empty()),
+            author: pull
+                .author
+                .map(|author| author.login)
+                .filter(|login| !login.is_empty()),
+            failed_checks,
+            open_comments: Vec::new(),
+        },
+        updated_at: pull.updated_at.unwrap_or_default(),
     }))
-}
-
-fn summarize_checks(checks: &[GhCheck]) -> Option<wire::PullChecks> {
-    if checks.is_empty() {
-        return None;
-    }
-    let mut pending = false;
-    for check in checks {
-        if let Some(state) = check.state.as_deref() {
-            match state {
-                "FAILURE" | "ERROR" => return Some(wire::PullChecks::Failing),
-                "PENDING" | "EXPECTED" => pending = true,
-                _ => {}
-            }
-            continue;
-        }
-        if matches!(
-            check.conclusion.as_deref(),
-            Some("FAILURE" | "TIMED_OUT" | "CANCELLED" | "ACTION_REQUIRED" | "STARTUP_FAILURE")
-        ) {
-            return Some(wire::PullChecks::Failing);
-        }
-        if check.status.as_deref().is_some_and(|s| s != "COMPLETED") {
-            pending = true;
-        }
-    }
-    Some(if pending {
-        wire::PullChecks::Pending
-    } else {
-        wire::PullChecks::Passing
-    })
 }

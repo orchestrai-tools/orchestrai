@@ -59,7 +59,7 @@ mod tools;
 mod untrusted;
 
 pub(crate) use daemon_client::DaemonClient;
-pub(crate) use tools::{browser_tool_defs, tool_defs};
+pub(crate) use tools::{advisor_tool_defs, browser_tool_defs, tool_defs, READ_ONLY_TOOLS};
 
 /// MCP protocol version we implement.
 const MCP_VERSION: &str = "2024-11-05";
@@ -94,6 +94,7 @@ pub async fn run() -> Result<()> {
         parent_task: identity.parent_task,
         project,
         is_orchestrator: identity.is_orchestrator,
+        mode: identity.mode,
     };
     let stdin = BufReader::new(tokio::io::stdin());
     serve::serve(stdin, tokio::io::stdout(), &mut client, &session).await

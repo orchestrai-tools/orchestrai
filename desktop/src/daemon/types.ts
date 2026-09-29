@@ -71,6 +71,7 @@ export const SLOW_METHODS = new Set([
   "tracker.pulls.diff",
   "tracker.pulls.commits",
   "tracker.pulls.thread",
+  "tracker.pulls.checks",
   "tracker.pulls.comment",
   "tracker.pulls.review",
   "tracker.pulls.reviewComment",

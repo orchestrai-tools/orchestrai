@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// One person on a pull request, as the UI renders them (login + avatar).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PullActor {
     pub login: String,
@@ -157,7 +157,7 @@ pub struct PullCommit {
 /// One comment-shaped node of a pull request conversation. Issue comments,
 /// review bodies and inline review comments all render through this shape;
 /// `kind` says which, and review threads carry their replies nested.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PullComment {
     pub id: String,
@@ -242,6 +242,34 @@ pub struct TaskPullRequest {
     /// worktree is allowed only when local HEAD is contained in it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_oid: Option<String>,
+    /// Login of whoever opened it. Their own replies do not make a review
+    /// thread new again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    /// Checks on the head commit that failed, errored or were cancelled.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_checks: Vec<PullCheckRun>,
+    /// Review remarks still open: unresolved inline threads, and each
+    /// reviewer's latest review when it requested changes. Read only while
+    /// the pull request is open.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub open_comments: Vec<PullComment>,
+}
+
+/// One check on a pull request's head commit: a check run or a legacy status.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullCheckRun {
+    /// `workflow / job` for an Actions run, the context for a status.
+    pub name: String,
+    /// Skipped and neutral results read `passing`, as in the rollup.
+    pub state: PullChecks,
+    #[serde(default)]
+    pub url: String,
+    /// The one line GitHub already carries about the result (a status's
+    /// description); empty for check runs.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub summary: String,
 }
 
 /// Lifecycle of a task's pull request. A draft is its own state here because
@@ -306,6 +334,9 @@ mod tests {
                 state: TaskPullState::Draft,
                 checks: Some(PullChecks::Failing),
                 head_oid: None,
+                author: None,
+                failed_checks: Vec::new(),
+                open_comments: Vec::new(),
             }),
         };
         assert_eq!(

@@ -96,7 +96,7 @@ over writing CLAUDE.md/AGENTS.md. Check memory_stats for active scopes.";
 pub(crate) fn mcp_servers(
     task_id: &str,
     project: &str,
-    is_orchestrator: bool,
+    mode: crate::mcp::identity::BridgeMode,
 ) -> Vec<serde_json::Value> {
     let exe = std::env::current_exe()
         .ok()
@@ -109,7 +109,7 @@ pub(crate) fn mcp_servers(
         "env": [
             { "name": "WF_TASK", "value": task_id },
             { "name": "WF_PROJECT", "value": project },
-            { "name": "WF_MODE", "value": bridge_mode(is_orchestrator) },
+            { "name": "WF_MODE", "value": mode.as_str() },
         ],
     })]
 }
@@ -120,12 +120,12 @@ pub(crate) fn mcp_servers(
 /// @param env the agent process's environment changes
 /// @param task_id the session's task
 /// @param project the task's project
-/// @param is_orchestrator whether the session is an orchestrator chat
+/// @param mode which tool set the session's bridge serves
 pub(crate) fn bridge_env(
     env: &mut crate::daemon::accounts::AgentEnv,
     task_id: &str,
     project: &str,
-    is_orchestrator: bool,
+    mode: crate::mcp::identity::BridgeMode,
 ) {
     use crate::mcp::identity::{
         REMOTE_CONTROL_CARRIER, SESSION_MODE, SESSION_PROJECT, SESSION_TASK,
@@ -133,20 +133,9 @@ pub(crate) fn bridge_env(
     env.set.extend([
         (SESSION_TASK.to_string(), task_id.to_string()),
         (SESSION_PROJECT.to_string(), project.to_string()),
-        (
-            SESSION_MODE.to_string(),
-            bridge_mode(is_orchestrator).to_string(),
-        ),
+        (SESSION_MODE.to_string(), mode.as_str().to_string()),
     ]);
     env.remove.push(REMOTE_CONTROL_CARRIER.to_string());
-}
-
-fn bridge_mode(is_orchestrator: bool) -> &'static str {
-    if is_orchestrator {
-        "orchestrator"
-    } else {
-        "single"
-    }
 }
 
 /// Cap the diff we feed a text-generation agent. A commit message or PR body
@@ -358,7 +347,12 @@ mod tests {
     #[test]
     fn a_same_named_entry_from_the_agents_config_still_serves_the_session() {
         let mut env = crate::daemon::accounts::AgentEnv::default();
-        bridge_env(&mut env, "t_orch", "demo", true);
+        bridge_env(
+            &mut env,
+            "t_orch",
+            "demo",
+            crate::mcp::identity::BridgeMode::Orchestrator,
+        );
         // What Claude Code hands the bridge when a user's `warpforge` entry
         // wins the name: that entry's env over the agent's own.
         let entry = [

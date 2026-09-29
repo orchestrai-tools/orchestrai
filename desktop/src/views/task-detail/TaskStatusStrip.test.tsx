@@ -1,8 +1,10 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { daemon, type DaemonState } from "@/daemon";
 import type { AgentAccountLimits, TaskInfo } from "@/protocol";
+import { useUi } from "@/store/ui";
 
 vi.mock("./GitWorkspaceControls", () => ({
   GitWorkspaceControls: ({ branch }: { branch: string | null }) => (
@@ -99,5 +101,36 @@ describe("TaskStatusStrip", () => {
     );
 
     expect(await screen.findByText("Pushing to remote…")).toBeInTheDocument();
+  });
+
+  it("names the advisor and opens its conversation", async () => {
+    mockDaemon();
+    useUi.setState({ openTaskId: "t1" });
+    render(
+      <TaskStatusStrip
+        task={{
+          ...task,
+          advisor: {
+            agent: "codex",
+            consultations: 2,
+            cost: { amount: 0.5, currency: "USD" },
+            model: "gpt-5",
+            taskId: "t_adv",
+          },
+        }}
+        branch="main"
+        repositoryOperation={null}
+        onOpenCommit={() => {}}
+        onOpenPush={() => {}}
+      />,
+    );
+
+    const advisor = screen.getByRole("button", {
+      name: "Open advisor conversation (Codex / gpt-5)",
+    });
+    expect(advisor).toHaveTextContent("Advisor · Codex / gpt-5");
+    expect(advisor.title).toContain("Consulted 2 times · $0.50");
+    await userEvent.click(advisor);
+    expect(useUi.getState().openTaskId).toBe("t_adv");
   });
 });

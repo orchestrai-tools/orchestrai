@@ -71,6 +71,15 @@ describe("task orchestration groups", () => {
     expect(root.children).toHaveLength(0);
   });
 
+  it("keeps an advisor task out of its executor's group", () => {
+    const advisor = { ...task("advisor", "waiting", "executor"), origin: "advisor" };
+    const forest = buildTaskForest([task("executor", "running"), advisor]);
+    expect(forest.map((root) => [root.task.id, root.children.length])).toEqual([
+      ["executor", 0],
+      ["advisor", 0],
+    ]);
+  });
+
   it("builds multi-level trees from nested parent chains", () => {
     const forest = buildTaskForest([
       task("root", "waiting"),

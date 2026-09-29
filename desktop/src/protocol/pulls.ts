@@ -152,4 +152,23 @@ export interface TaskPullRequest {
   checks?: PullChecks | null;
   /** Commit the pull request's head points at. */
   headOid?: string | null;
+  /** Login of whoever opened it; their own replies do not make a thread new. */
+  author?: string | null;
+  /** Checks on the head commit that failed, errored or were cancelled. */
+  failedChecks?: PullCheckRun[];
+  /** Unresolved inline threads and standing "changes requested" reviews,
+   *  read while the pull request is open. */
+  openComments?: PullComment[];
+}
+
+/** One check on a pull request's head commit. `tracker.pulls.checks` takes
+ *  `{ project, number }` and answers `{ items: PullCheckRun[] }`. */
+export interface PullCheckRun {
+  /** `workflow / job` for an Actions run, the context for a status. */
+  name: string;
+  /** Skipped and neutral results read `passing`, as in the rollup. */
+  state: PullChecks;
+  url: string;
+  /** A status's own one-line description; absent for check runs. */
+  summary?: string;
 }

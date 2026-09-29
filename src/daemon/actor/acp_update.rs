@@ -90,10 +90,13 @@ impl Daemon {
                     self.emit(Event::TaskUpdated(updated));
                 }
             }
-            AcpUpdate::Usage { used, size, cost } => self.emit_session_unless_last_duplicate(
-                &task_id,
-                wire::SessionUpdate::Usage { used, size, cost },
-            ),
+            AcpUpdate::Usage { used, size, cost } => {
+                self.advisor_usage(&task_id, cost.as_ref());
+                self.emit_session_unless_last_duplicate(
+                    &task_id,
+                    wire::SessionUpdate::Usage { used, size, cost },
+                )
+            }
             AcpUpdate::PromptCapabilities {
                 image,
                 embedded_context,
@@ -135,18 +138,19 @@ impl Daemon {
                 options,
                 tool_call_id,
             } => {
+                let request = wire::SessionUpdate::PermissionRequest {
+                    request_id: request_id.clone(),
+                    title,
+                    options: options.clone(),
+                    tool_call_id,
+                    browser_origin: None,
+                };
+                if self.advisor_denies_permission(&task_id, request.clone()) {
+                    return;
+                }
                 self.pending_permissions
                     .record(&task_id, &request_id, &options);
-                self.emit_acp_session(
-                    &task_id,
-                    wire::SessionUpdate::PermissionRequest {
-                        request_id,
-                        title,
-                        options,
-                        tool_call_id,
-                        browser_origin: None,
-                    },
-                )
+                self.emit_acp_session(&task_id, request)
             }
             // A prompt left the queue: the agent is working on it now, whether
             // it was typed a second ago or has been waiting for a turn. The
@@ -156,6 +160,7 @@ impl Daemon {
             AcpUpdate::TurnStarted { echo, .. } => {
                 self.turn_updates.remove(&task_id);
                 self.mark_task_running(&task_id);
+                self.advisor_turn_started(&task_id);
                 if let Some(echo) = echo {
                     // A reconnect retry can submit the same text again after
                     // the first attempt was already recorded; drop only that
@@ -219,6 +224,9 @@ impl Daemon {
                             self.emit(Event::TaskUpdated(updated));
                         }
                     }
+                }
+                if !interrupted {
+                    self.advisor_turn_ended(&task_id, success);
                 }
                 if stage_finished {
                     // A workflow stage finished — advance the pipeline. Parse
@@ -300,6 +308,7 @@ impl Daemon {
                     self.emit(Event::TaskUpdated(updated));
                 }
                 self.notify_orch_finished(&task_id, false, reason.clone());
+                self.advisor_session_failed(&task_id, &reason);
                 if self.workflow_child_of(&task_id).is_some() {
                     self.workflow_stage_finished(
                         &task_id,

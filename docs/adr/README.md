@@ -34,3 +34,4 @@ stale and then misleads.
 | [0019](0019-quota-gate-at-dispatch.md) | Unattended work is gated on known quota exhaustion, at dispatch |
 | [0020](0020-task-pull-request-status.md) | A worktree task's pull request is a daemon cache, pushed as it changes |
 | [0021](0021-agent-driven-browser.md) | Agents drive the in-app browser through a daemon → client request |
+| [0022](0022-advisor-mode.md) | An advisor is a hidden, read-only child session the executor consults |

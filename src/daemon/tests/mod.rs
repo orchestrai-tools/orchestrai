@@ -87,6 +87,7 @@ async fn wait_for_parent(
     .unwrap_or_else(|_| panic!("timed out waiting for: {what}"))
 }
 
+mod advisor;
 mod agent_health;
 mod browser;
 mod lifecycle;

@@ -23,6 +23,7 @@ impl Daemon {
                 backlog_item_id,
                 origin,
                 start,
+                advisor,
                 reply,
             } => {
                 // Conversation branches tag the source task they were forked
@@ -35,6 +36,13 @@ impl Daemon {
                 task.parent_task_id = parent_task_id;
                 task.backlog_item_id = backlog_item_id;
                 task.origin = origin.clone();
+                task.advisor = advisor.map(|pick| warpforge_protocol::TaskAdvisor {
+                    agent: pick.agent,
+                    model: pick.model,
+                    task_id: None,
+                    consultations: 0,
+                    cost: None,
+                });
                 // Durable model intent: only an explicit pick counts. The
                 // last_model fallback below is a default, not something the
                 // user asked this task to run on, so it must not land here.
@@ -331,6 +339,7 @@ impl Daemon {
                         }
                     }
                     self.emit(Event::TaskRemoved { id: id.clone() });
+                    self.advisor_task_deleted(&id);
                     // Deleting a stage child mid-run fails that stage.
                     self.workflow_child_gone(&id).await;
                 }

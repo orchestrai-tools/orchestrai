@@ -1,3 +1,4 @@
+import type { AdvisorOutcome, TaskAdvisor } from "./advisor";
 import type { ConfigOption } from "./runtime";
 import type {
   OrchGraphInfo,
@@ -72,6 +73,8 @@ export interface TaskInfo {
    *  sends them all at once, joined into a single prompt; that call errors
    *  when this is already empty — nothing is left to hurry along. */
   queuedPrompts?: QueuedPrompt[];
+  /** The advisor this task's agent may consult, when one was picked at creation. */
+  advisor?: TaskAdvisor | null;
 }
 
 /** One message waiting behind the running turn. */
@@ -178,7 +181,19 @@ export type SessionUpdate =
   | { kind: "plan"; entries: PlanEntry[] }
   | { kind: "available_commands"; commands: CommandInfo[] }
   | { kind: "usage"; used: number; size: number; cost?: SessionUsageCost }
-  | { kind: "turn_ended"; stop_reason: string };
+  | { kind: "turn_ended"; stop_reason: string }
+  | {
+      /** One question the executor put to its advisor, recorded when it ends. */
+      kind: "advisor_consultation";
+      question: string;
+      /** The advisor's answer, or the failure reason when `outcome` is `failed`. */
+      answer: string;
+      outcome: AdvisorOutcome;
+      agent: string;
+      model?: string;
+      advisor_task_id: string;
+      cost?: SessionUsageCost;
+    };
 
 export interface EditHunk {
   oldStart: number;

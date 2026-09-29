@@ -7,6 +7,7 @@ import { withOccurrenceKeys } from "@/lib/renderKeys";
 import { toolDisplayTitle } from "@/lib/toolDisplay";
 import { cn } from "@/lib/utils";
 
+import { AdvisorConsultationBlock } from "../../components/AdvisorConsultationBlock";
 import {
   BrowserAnnotationCard,
   hasAnnotation,
@@ -299,6 +300,8 @@ export function StreamLine({
       );
     case "workflow_event":
       return <WorkflowEventLine update={update} compact={compact} onOpenTask={onOpenTask} />;
+    case "advisor_consultation":
+      return <AdvisorConsultationBlock update={update} compact={compact} onOpenTask={onOpenTask} />;
     case "agent_thought":
       return compact ? (
         <Markdown

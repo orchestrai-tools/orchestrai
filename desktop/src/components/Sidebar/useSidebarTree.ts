@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DaemonState } from "@/daemon";
 import { useAgentUpdatesCount } from "@/hooks/useAgentUpdates";
 import { useInboxUnseenCount } from "@/hooks/useInboxUnseen";
+import { usePrFeedbackReasons } from "@/hooks/usePrFeedbackReasons";
 import { buildAttentionQueue } from "@/lib/attentionRail";
 import { buildTaskGroupIndex, isTaskGroupPinned, setTaskGroupPinned } from "@/lib/taskGroups";
 import { boardTasks } from "@/lib/taskOrigin";
@@ -49,9 +50,10 @@ export function useSidebarTree(state: DaemonState, openTaskId: string | null) {
   // exactly the rows that button would settle — the preview IS the list.
   const [settlingProject, setSettlingProject] = useState<string | null>(null);
 
+  const prFeedback = usePrFeedbackReasons(state.taskPullRequests);
   const queue = useMemo(
-    () => buildAttentionQueue(tasks, state.sessionUpdates),
-    [state.sessionUpdates, tasks],
+    () => buildAttentionQueue(tasks, state.sessionUpdates, prFeedback),
+    [prFeedback, state.sessionUpdates, tasks],
   );
   const taskGroupIndex = useMemo(() => buildTaskGroupIndex(tasks), [tasks]);
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);

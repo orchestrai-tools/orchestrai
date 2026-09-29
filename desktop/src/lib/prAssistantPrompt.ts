@@ -1,5 +1,12 @@
-import { prIdentityBlock } from "@/lib/inboxTaskPrompt";
+import {
+  GITHUB_UNTRUSTED_GUIDANCE,
+  GITHUB_UNTRUSTED_NOTICE,
+  GITHUB_UNTRUSTED_TAG,
+  isShellSafeRef,
+  prIdentityBlock,
+} from "@/lib/inboxTaskPrompt";
 import { groupPullFiles } from "@/lib/pullFileGroups";
+import { untrustedBlock } from "@/lib/untrustedBlock";
 import type { PullRequestDetails, PullRequestDiff, PullRequestSummary } from "@/protocol";
 
 export type PrAssistantIntent = "explain" | "review";
@@ -45,7 +52,17 @@ Then one line: what you could not verify, if anything.
 If nothing is worth flagging, say that in one sentence rather than padding the
 list.`;
 
-/** Both openings share the context; only the task on top differs. */
+/**
+ * The Assistant's opening prompt. Both intents share the context; only the
+ * task on top differs. The title, description, branch names, file paths and
+ * patch go inside the untrusted block; the task, the size and the commands
+ * stay outside it, and a command names a branch only when it is shell-safe.
+ * @param args.intent Explain or Review.
+ * @param args.pr The pull request as the inbox lists it.
+ * @param args.details Its detail fields, when fetched.
+ * @param args.diff The whole-PR diff, when the review pane has already fetched it.
+ * @returns Prompt text for the Assistant's session.
+ */
 export function prAssistantPrompt({
   intent,
   pr,
@@ -61,8 +78,9 @@ export function prAssistantPrompt({
   const parts = [
     intent === "explain" ? EXPLAIN_TASK : REVIEW_TASK,
     "",
-    prIdentityBlock(pr, details),
+    `The pull request is #${pr.number}.`,
   ];
+  const data = [prIdentityBlock(pr, details)];
 
   const additions = details?.additions ?? pr.additions ?? 0;
   const deletions = details?.deletions ?? pr.deletions ?? 0;
@@ -77,14 +95,14 @@ export function prAssistantPrompt({
   }
 
   const body = details?.body?.trim();
-  if (body) parts.push("", "What it says about itself:", "", quote(body));
+  if (body) data.push("", "What it says about itself:", "", quote(body));
 
   const inline = !!diff?.patch && diff.patch.length <= INLINE_PATCH_MAX_BYTES;
-  if (diff?.files.length) parts.push("", "Files changed:", fileList(diff));
+  if (diff?.files.length) data.push("", "Files changed:", fileList(diff));
 
   if (inline && diff?.patch) {
-    parts.push("", "The whole diff, so you do not need to fetch it:");
-    parts.push("```diff", diff.patch.trimEnd(), "```");
+    parts.push("", "The whole diff is in the block below, so you do not need to fetch it.");
+    data.push("", "The whole diff:", "```diff", diff.patch.trimEnd(), "```");
   } else {
     parts.push("", readTheDiff(pr, details));
   }
@@ -92,6 +110,12 @@ export function prAssistantPrompt({
     parts.push("", "GitHub truncated its own patch at a size cap, so read from git, not from it.");
   }
 
+  parts.push(
+    "",
+    GITHUB_UNTRUSTED_GUIDANCE,
+    "",
+    untrustedBlock(GITHUB_UNTRUSTED_TAG, GITHUB_UNTRUSTED_NOTICE, data),
+  );
   return `${parts.join("\n")}\n`;
 }
 
@@ -104,11 +128,20 @@ function readTheDiff(pr: PullRequestSummary, details?: PullRequestDetails | null
   const base = (details?.baseRefName || pr.baseRefName).trim() || "main";
   const head = (details?.headRefName || pr.headRefName).trim();
   if (!head) return "Read the pull request on GitHub for its diff.";
-  return [
+  const preamble = [
     "Read the diff once, for the files you actually need — do not re-read what",
-    "is already above. This is the developer's working tree: fetch and diff,",
+    "is already listed. This is the developer's working tree: fetch and diff,",
     "never switch or check out a branch here.",
     "",
+  ];
+  if (!isShellSafeRef(base) || !isShellSafeRef(head)) {
+    return [
+      ...preamble,
+      `\`gh pr diff ${pr.number}\` prints it when the \`gh\` CLI is set up. The branch names, in the block below, have characters a shell treats specially — quote them if you fetch from git instead.`,
+    ].join("\n");
+  }
+  return [
+    ...preamble,
     "```sh",
     `git fetch origin ${base} ${head}`,
     `git diff origin/${base}...origin/${head} -- <path>   # one file, or omit for all`,

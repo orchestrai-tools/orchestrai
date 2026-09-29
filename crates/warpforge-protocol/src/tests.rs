@@ -236,6 +236,7 @@ fn request_wire_shape() {
             backlog_item_id: None,
             origin: None,
             start: true,
+            advisor: None,
         },
     };
     let json = serde_json::to_value(&req).unwrap();

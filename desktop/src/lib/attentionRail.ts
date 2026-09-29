@@ -80,6 +80,7 @@ export function taskStatusRank(task: TaskInfo, permission?: PermissionUpdate): n
 export function buildAttentionQueue(
   tasks: TaskInfo[],
   sessionUpdates: Record<string, SessionUpdate[]>,
+  prFeedback?: ReadonlyMap<string, string>,
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
   prunePermissionCache(new Set(tasks.map((task) => task.id)));
@@ -105,6 +106,10 @@ export function buildAttentionQueue(
       items.push({ priority: 2, reason: task.blockedReason ?? "blocked", task });
     } else if (task.status === "interrupted") {
       items.push({ priority: 3, reason: "session lost on daemon restart", task });
+    } else if (prFeedback?.has(task.id)) {
+      // The task's pull request came back with failing checks or new review
+      // comments; the notice in the task sends them to its agent.
+      items.push({ priority: 3.5, reason: prFeedback.get(task.id) ?? "", task });
     } else if (task.blockedKind === "model_mismatch") {
       // Informational, not halting: the session works, it is just not on the
       // requested model. Ranks below everything that actually stops work.

@@ -4,10 +4,17 @@ import { toast } from "sonner";
 
 import type { TaskMode } from "../../components/TaskComposeBar";
 import { daemon } from "../../daemon";
-import type { ConfigOption, PromptSubmission, WorkflowMeta, WorktreeBase } from "../../protocol";
+import type {
+  AdvisorPick,
+  ConfigOption,
+  PromptSubmission,
+  WorkflowMeta,
+  WorktreeBase,
+} from "../../protocol";
 import { useUi } from "../../store/ui";
 
 export function useTaskCreation({
+  advisor,
   agent,
   agentOptions,
   backlogItemId,
@@ -20,6 +27,8 @@ export function useTaskCreation({
   workflow,
   worktreeBase,
 }: {
+  /** The advisor pick; sent only for a single-agent task. */
+  advisor: AdvisorPick | null;
   agent: string;
   agentOptions: ConfigOption[];
   backlogItemId?: string | null;
@@ -77,6 +86,7 @@ export function useTaskCreation({
         config_overrides: configOverrides,
         workflow: workflow ?? undefined,
         backlog_item_id: backlogItemId ?? undefined,
+        advisor: mode === "single" ? (advisor ?? undefined) : undefined,
       });
     } catch (error) {
       // A workflow can fail validation daemon-side after the list loads; keep

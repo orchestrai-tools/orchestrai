@@ -105,6 +105,9 @@ pub struct Task {
     /// Messages submitted while the agent was mid-turn, waiting to be sent as
     /// their own turns. Live session state, so it is never persisted.
     pub queued_prompts: Vec<warpforge_protocol::QueuedPrompt>,
+    /// The agent this task consults through `ask_advisor`, and the hidden
+    /// task its advice runs in once started (ADR 0022).
+    pub advisor: Option<warpforge_protocol::TaskAdvisor>,
 }
 
 impl Task {
@@ -140,6 +143,7 @@ impl Task {
             origin: None,
             model: None,
             queued_prompts: Vec::new(),
+            advisor: None,
         }
     }
 

@@ -5,6 +5,7 @@ use anyhow::Result;
 use warpforge_protocol as wire;
 
 use crate::daemon::acp::spawn_acp_session;
+use crate::daemon::actor::advisor::prompt::EXECUTOR_NUDGE;
 use crate::daemon::actor::prompt::bridge_env;
 use crate::daemon::actor::prompt::mcp_servers;
 use crate::daemon::actor::prompt::MEMORY_SYSTEM;
@@ -14,6 +15,7 @@ use crate::daemon::actor::PendingSessionStart;
 use crate::daemon::actor::{Daemon, Event};
 use crate::daemon::task::TaskStatus;
 use crate::daemon::worktree::{StartPoint, WorktreeManager};
+use crate::mcp::identity::BridgeMode;
 
 pub(crate) struct WorktreeRequest {
     pub(crate) project: String,
@@ -208,7 +210,9 @@ impl Daemon {
         config_overrides: std::collections::HashMap<String, String>,
     ) {
         // Resolve cwd: worktree path if set, otherwise project root.
-        let cwd = if let Some(task) = self.tasks.get(task_id) {
+        let cwd = if let Some(cwd) = self.advisor_cwd(task_id) {
+            cwd
+        } else if let Some(task) = self.tasks.get(task_id) {
             if let Some(ref wt_path) = task.worktree {
                 wt_path.clone()
             } else {
@@ -244,12 +248,11 @@ impl Daemon {
         // restart a service, …). An orchestrator-chat session additionally gets
         // the orchestrator system preamble and, via WF_MODE=orchestrator, the
         // spawn_agent / read_inbox tools. A plain task gets the core tools only.
-        let is_orchestrator = self
-            .tasks
-            .get(task_id)
-            .is_some_and(|t| t.tags.iter().any(|x| x == "orchestrator-chat"));
-        let mcp_servers = mcp_servers(task_id, project, is_orchestrator);
-        bridge_env(&mut env, task_id, project, is_orchestrator);
+        let mode = self.session_bridge_mode(task_id);
+        let is_orchestrator = mode == BridgeMode::Orchestrator;
+        let mcp_servers = mcp_servers(task_id, project, mode);
+        bridge_env(&mut env, task_id, project, mode);
+        let config_overrides = self.advisor_overrides(task_id, agent, config_overrides);
         let memory_prefix = if self.memory.enabled() {
             format!("{MEMORY_SYSTEM}\n\n")
         } else {
@@ -287,8 +290,14 @@ impl Daemon {
                 )
             };
             format!("{memory_prefix}{ORCHESTRATOR_SYSTEM}{roster}{workflow_roster}\n\n{RUNTIME_MCP_SYSTEM}\n\n{prompt}")
+        } else if mode == BridgeMode::Advisor {
+            prompt.to_string()
         } else {
-            format!("{memory_prefix}{pr_assistant_prefix}{RUNTIME_MCP_SYSTEM}\n\n{prompt}")
+            let nudge = match mode {
+                BridgeMode::Advised => format!("{EXECUTOR_NUDGE}\n\n"),
+                _ => String::new(),
+            };
+            format!("{memory_prefix}{pr_assistant_prefix}{RUNTIME_MCP_SYSTEM}\n\n{nudge}{prompt}")
         };
         let full_prompt = match include_runtime_context
             .then(|| self.runtime_context(project, Some(task_id)))

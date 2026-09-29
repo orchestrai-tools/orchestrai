@@ -1,4 +1,5 @@
 import type {
+  PullCheckRun,
   PullCommentResult,
   PullCommit,
   PullRequestDetails,
@@ -72,6 +73,15 @@ export function PullMethods<TBase extends Constructor<CoreClient>>(Base: TBase) 
         number,
         project,
       })) as PullThread;
+    }
+
+    /** The checks on one pull request's head commit. */
+    async pullChecks(project: string, number: number): Promise<PullCheckRun[]> {
+      const result = (await this.request("tracker.pulls.checks", {
+        number,
+        project,
+      })) as { items?: PullCheckRun[] };
+      return result.items ?? [];
     }
 
     /** Post a conversation comment, or reply on a review thread when

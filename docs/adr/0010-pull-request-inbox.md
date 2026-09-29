@@ -345,6 +345,15 @@ The last two are one store query (`find_stale_origin_tasks`) run off the actor
 loop when a new PR Assistant task is created, and on the existing history
 sweep.
 
+**Checks are their own read (amended 2026-09-29).** The rail's Checks
+section is `tracker.pulls.checks`: the head commit's `statusCheckRollup`,
+failures first, passed checks folded into a count. It is a separate query
+rather than a field on `pulls.details` because GraphQL fails the whole query
+on one field the token may not read — a token without checks access must not
+lose the pane. It refetches every minute while a check is still running and
+the pane is open, and not otherwise. Read-only: sending feedback to an agent
+belongs to the task that opened the pull request (ADR 0020), not to the inbox.
+
 **Style is daemon-side, shape is per-request.** The standing instruction
 (`actor/pr_assistant::PR_ASSISTANT_SYSTEM`, adapted from Dex Horthy's
 `/show-me` skill) started out listing every compact form the agent could
@@ -417,10 +426,10 @@ the transcript's own config bar from then on.
     removed line is not guessed onto a diff row. A thread with no `line` at
     all (GitHub outdated it) renders in Overview's Activity instead — the
     only conversation node that surface takes from the diff.
-12. **A rail section that has no data says so.** Checks render "Status checks
-    aren't read yet", not a green tick, and merged and closed both read
-    "Closed" because no `mergedAt` travels. A review surface that invents
-    reassurance is worse than one that admits a gap.
+12. **A rail section that has no data says so.** Checks render "Checks
+    couldn't be read" on a failed read, not a green tick, and merged and
+    closed both read "Closed" because no `mergedAt` travels. A review surface
+    that invents reassurance is worse than one that admits a gap.
 13. **A control never unmounts the surface it is driving.** The Diff tab
     renders its toolbar, then its body — the patch's loading and error states
     live *inside* `PullDiffView`, not in the host that chooses between a
@@ -454,6 +463,8 @@ the transcript's own config bar from then on.
 18. **A prompt says where the code is; it does not carry all of it.** Above
     `INLINE_PATCH_MAX_BYTES` the agent gets the file list and the commands,
     not the patch — measured, after watching it read the same change twice.
+    What it does carry from GitHub — title, description, file paths, patch,
+    comments — sits inside the untrusted block (ADR 0020 invariant 8).
 19. **An off-screen hunk holds the height it measured, not the height it was
     estimated at.** `PullDiffHunk` reads the real height before it unmounts;
     substituting the estimate moves every row below the spacer and drags the
@@ -468,8 +479,6 @@ the transcript's own config bar from then on.
 The daemon reads none of these yet, and the UI is built to say so rather than
 to guess:
 
-- **Check runs.** `statusCheckRollup` (state, name, url per run) would fill
-  the rail's Checks section, which currently renders its own absence.
 - **Merge state.** `mergeStateStatus` / `mergedAt` for "Behind main", a real
   Merged status, and a merge action.
 - **More than 100 commits.** The picker reads `commits(last: 100)`: a longer
@@ -484,6 +493,7 @@ to guess:
 
 Also deferred: Linear parity (the same pane takes a second provider later),
 pending "draft" reviews (a verdict posts immediately), issue-only inbox items
-(the backlog owns those), pushing a PR's comments into an existing task, and
-posting the Assistant's suggested comments straight onto the diff (it writes
+(the backlog owns those), pushing a PR's comments into an existing task from
+the inbox (a task that *opened* the pull request is told itself — ADR 0020),
+and posting the Assistant's suggested comments straight onto the diff (it writes
 them into the conversation; the reviewer still places them).

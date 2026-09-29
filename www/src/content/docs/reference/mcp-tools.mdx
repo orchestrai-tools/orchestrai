@@ -23,6 +23,7 @@ Which tools an agent sees depends on how the task was started:
 | Runtime, tasks, memory (20 tools) | ✅ | ✅ |
 | Automations (7 tools) | ✅ | ✅ |
 | Browser (6 tools, when the task belongs to a project) | ✅ | ✅ |
+| Advisor (1 tool, when the task has an [advisor](/guides/choosing-your-mode/#add-an-advisor-to-a-single-session)) | ✅ | — |
 | Sub-agents and pipelines (11 tools) | — | ✅ |
 
 A regular session is one agent doing the work. An **orchestrator** session is an agent that can also *delegate* — so it gets 11 extra tools for dispatching sub-agents and driving pipelines. See [Choosing your mode](/guides/choosing-your-mode/) for which to reach for.
@@ -228,6 +229,22 @@ The page's console messages and uncaught errors since it loaded — the newest 2
 <Aside type="caution" title="What a simulated click can't do">
   Pages see the agent's events as synthetic. File pickers, pop-up windows, new-tab links, captchas and payment widgets that require a real gesture don't respond, and frames from another site can't be read.
 </Aside>
+
+---
+
+## Advisor — ask a second agent
+
+Available in a regular task started with an **Advisor** picked in New Task. See [Add an advisor](/guides/choosing-your-mode/#add-an-advisor-to-a-single-session) for when that's worth it.
+
+### `ask_advisor`
+
+Puts `question` to the task's advisor — a second agent, often another harness or a stronger model — and returns its answer. Optional `context` carries what the agent tried or which options it's weighing. The advisor already gets the task's goal, the messages since the last question and the list of changed files, and it remembers its earlier answers, so the question can be the question.
+
+**Reach for it** before a big design decision, when stuck after a couple of failed attempts, and before declaring the task done — the agent is told exactly that when the task starts.
+
+The call waits for the answer. Harnesses that give a tool call a short timeout (Codex) get a "still working" reply after about 50 seconds; calling again with `wait: true` keeps waiting for the same answer instead of asking twice. A turn allows three questions; the fourth is refused, as is a question while the previous one is still being answered or while the advisor's account is out of quota. An answer that takes longer than 15 minutes is given up on.
+
+The advisor's own session is read-only: of these tools it gets only the ones that read — `list_runtime`, the log tools, `memory_search` / `memory_list` / `memory_stats` / `memory_edges`, and the read-only automation tools.
 
 ---
 

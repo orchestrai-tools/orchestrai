@@ -69,6 +69,13 @@ export function sessionUpdatesSemanticallyEqual(a: SessionUpdate, b: SessionUpda
         a.detail === (b as typeof a).detail &&
         a.tone === (b as typeof a).tone
       );
+    case "advisor_consultation":
+      return (
+        a.question === (b as typeof a).question &&
+        a.answer === (b as typeof a).answer &&
+        a.outcome === (b as typeof a).outcome &&
+        a.advisor_task_id === (b as typeof a).advisor_task_id
+      );
     case "prompt_capabilities":
       return (
         a.image === (b as typeof a).image && a.embedded_context === (b as typeof a).embedded_context

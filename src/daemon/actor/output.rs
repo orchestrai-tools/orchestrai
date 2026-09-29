@@ -97,7 +97,9 @@ impl Daemon {
         };
         let orchestrator_node =
             self.orch_tx.is_some() && task.tags.iter().any(|tag| tag == "orchestrator");
-        let feeds_parent = !workflow_child && task.parent_task_id.is_some();
+        let feeds_parent = !workflow_child
+            && task.parent_task_id.is_some()
+            && task.origin.as_deref() != Some(crate::daemon::actor::advisor::ADVISOR_ORIGIN);
         orchestrator_node || feeds_parent || self.automation_run_tasks.contains_key(task_id)
     }
 
@@ -222,6 +224,10 @@ impl Daemon {
         let Some(child) = self.tasks.get(child_id) else {
             return;
         };
+        // An advisor answers through `ask_advisor`, never the inbox.
+        if child.origin.as_deref() == Some(crate::daemon::actor::advisor::ADVISOR_ORIGIN) {
+            return;
+        }
         let Some(parent_id) = child.parent_task_id.clone() else {
             return;
         };

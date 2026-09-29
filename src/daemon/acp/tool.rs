@@ -95,6 +95,15 @@ fn render_mcp_tool(server: &str, tool: &str, update: &Value) -> String {
             (None, None) => "Spawn agent".to_string(),
         };
     }
+    if tool == "ask_advisor" {
+        return match update
+            .get("rawInput")
+            .and_then(|i| input_value(i, &["question"]))
+        {
+            Some(question) => format!("Ask advisor: {question}"),
+            None => "Ask advisor".to_string(),
+        };
+    }
     if server.is_empty() || tool.is_empty() {
         return format!("{server} {tool}").trim().to_string();
     }
@@ -221,4 +230,24 @@ pub(super) fn content_text(content: &Value) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn ask_advisor_shows_the_question() {
+        let asking = json!({
+            "title": "mcp__warpforge__ask_advisor",
+            "rawInput": { "question": "Is a trie overkill here?" }
+        });
+        assert_eq!(
+            tool_title(&asking, "c1", "other"),
+            "Ask advisor: Is a trie overkill here?"
+        );
+        let waiting = json!({ "title": "warpforge_ask_advisor", "rawInput": { "wait": true } });
+        assert_eq!(tool_title(&waiting, "c2", "other"), "Ask advisor");
+    }
 }

@@ -43,6 +43,8 @@ pub(super) fn method_runs_concurrently(method: &wire::Method) -> bool {
             | PortForwardLogs { .. }
             | RuntimeList { .. }
             | BrowserAct { .. }
+            | AdvisorAsk { .. }
+            | AdvisorWait { .. }
             | TaskListWorktrees { .. }
             | WorktreeList { .. }
             | WorktreeSetupLog { .. }
@@ -67,6 +69,7 @@ pub(super) fn method_runs_concurrently(method: &wire::Method) -> bool {
             | TrackerPullDiff { .. }
             | TrackerPullCommits { .. }
             | TrackerPullThread { .. }
+            | TrackerPullChecks { .. }
     )
 }
 
@@ -117,5 +120,6 @@ pub(super) fn method_is_mutation(method: &wire::Method) -> bool {
             | TrackerPullDiff { .. }
             | TrackerPullCommits { .. }
             | TrackerPullThread { .. }
+            | TrackerPullChecks { .. }
     )
 }

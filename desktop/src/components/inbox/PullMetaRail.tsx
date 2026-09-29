@@ -2,6 +2,7 @@ import { CircleDot, Clock, GitBranch, GitPullRequest, GitPullRequestClosed } fro
 import * as React from "react";
 
 import { AuthorBadge } from "@/components/inbox/AuthorBadge";
+import { PullChecksList } from "@/components/inbox/PullChecksList";
 import { PullFilesChanged } from "@/components/inbox/PullFilesChanged";
 import { REVIEW_DECISION_META } from "@/components/inbox/ReviewDecisionChip";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -55,12 +56,7 @@ export function PullMetaRail({
       </Section>
 
       <Section title="Checks">
-        {/* Deliberately empty rather than optimistic: nothing on the wire
-            carries a check run yet (ADR-0010, deferred), and a green tick
-            this surface invented is worse than no tick at all. */}
-        <p className="text-[13px] text-muted-foreground/60" title="Planned — see docs/adr/0010">
-          Status checks aren't read yet.
-        </p>
+        <PullChecksList project={pr.project} number={pr.number} />
       </Section>
 
       <Section title="Branch">

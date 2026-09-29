@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { AgentLimitsExhaustedBanner } from "../../components/AgentLimitsExhaustedBanner";
 import { DiffNotesProvider } from "../../components/diffNotes/DiffNotesContext";
 import { ModelMismatchBanner } from "../../components/ModelMismatchBanner";
+import { PrFeedbackNotice } from "../../components/pullRequest/PrFeedbackNotice";
 import { TerminalWorkspaceView } from "../../components/runtime/TerminalWorkspace";
 import { RuntimePanel } from "../../components/RuntimePanel";
 import { SessionLostBanner } from "../../components/SessionLostBanner";
@@ -164,6 +165,7 @@ export function TaskDetailPanes({ task, onOpenTask, onOpenPush, detail }: Props)
           <AgentLimitsExhaustedBanner agentId={task.agent} />
           <SessionLostBanner task={task} onOpenTask={onOpenTask} />
           <ModelMismatchBanner task={task} />
+          <PrFeedbackNotice task={task} />
           <TaskConversation
             active={showChat}
             agents={enabledAgents}

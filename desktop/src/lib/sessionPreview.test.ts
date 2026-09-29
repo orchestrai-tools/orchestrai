@@ -49,4 +49,23 @@ describe("latestSessionPreview", () => {
     ];
     expect(latestSessionPreview(updates, { active: true })?.text).toBe("Run tests · in progress");
   });
+
+  it("previews an advisor consultation by the answer's first line", () => {
+    const updates: SessionUpdate[] = [
+      {
+        advisor_task_id: "t_adv",
+        agent: "codex",
+        answer: "Use a lock file.\nThen retry.",
+        kind: "advisor_consultation",
+        outcome: "answered",
+        question: "How do I stop the race?",
+      },
+    ];
+    expect(latestSessionPreview(updates, { active: false })).toEqual({
+      kind: "message",
+      label: "Advisor",
+      text: "Use a lock file.",
+      truncated: true,
+    });
+  });
 });

@@ -68,11 +68,13 @@ export function ProjectChip({
 export function HarnessChip({
   agent,
   agents,
+  label = "Harness",
   onChange,
   title,
 }: {
   agent: string;
   agents: AgentConfig[];
+  label?: string;
   onChange: (next: string) => void;
   title: string;
 }) {
@@ -81,7 +83,7 @@ export function HarnessChip({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" aria-label="Harness" title={title} className={CHIP}>
+        <button type="button" aria-label={label} title={title} className={CHIP}>
           <AgentLogo agentId={agent} displayName={currentName} className="size-3.5 shrink-0" />
           <span className="max-w-32 truncate">{currentName}</span>
           <ChevronDown aria-hidden className="size-3 shrink-0 opacity-60" />

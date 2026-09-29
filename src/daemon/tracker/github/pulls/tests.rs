@@ -1,10 +1,12 @@
 //! Parsed-shape tests for the pull-request reads. They run against canned
 //! JSON, never the network.
 
+use super::checks::parse_checks;
 use super::comment::{review_comment_input, valid_thread_id};
 use super::list::RawPull;
 use super::thread::parse_pr_thread;
 use super::MAX_PR_DIFF_BYTES;
+use warpforge_protocol as wire;
 
 fn summary_json() -> serde_json::Value {
     serde_json::json!({
@@ -290,4 +292,44 @@ async fn review_rejects_changes_without_a_summary() {
         .await
         .unwrap_err();
     assert!(error.to_string().contains("needs a summary comment"));
+}
+
+#[test]
+fn checks_name_their_workflow_and_link_to_the_run() {
+    let pr = serde_json::json!({
+        "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "contexts": { "nodes": [
+            { "__typename": "CheckRun", "name": "test", "status": "COMPLETED", "conclusion": "FAILURE",
+              "detailsUrl": "https://github.com/a/b/actions/runs/1/job/2",
+              "checkSuite": { "workflowRun": { "workflow": { "name": "CI" } } } },
+            { "__typename": "CheckRun", "name": "build", "status": "IN_PROGRESS", "conclusion": null,
+              "detailsUrl": "https://ci", "checkSuite": { "workflowRun": null } },
+            { "__typename": "StatusContext", "context": "deploy", "state": "SUCCESS",
+              "targetUrl": "https://deploy", "description": " Ready " }
+        ] } } } } ] }
+    });
+    let checks = parse_checks(&pr).unwrap();
+    let got: Vec<(&str, wire::PullChecks, &str, &str)> = checks
+        .iter()
+        .map(|c| (c.name.as_str(), c.state, c.url.as_str(), c.summary.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (
+                "CI / test",
+                wire::PullChecks::Failing,
+                "https://github.com/a/b/actions/runs/1/job/2",
+                ""
+            ),
+            ("build", wire::PullChecks::Pending, "https://ci", ""),
+            (
+                "deploy",
+                wire::PullChecks::Passing,
+                "https://deploy",
+                "Ready"
+            ),
+        ]
+    );
+    let none = serde_json::json!({ "commits": { "nodes": [ { "commit": { "statusCheckRollup": null } } ] } });
+    assert!(parse_checks(&none).unwrap().is_empty());
 }

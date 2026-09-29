@@ -318,7 +318,7 @@ impl Daemon {
                 request_id,
             } => self.withdraw_ask(task_id, request_id),
 
-            other => self.handle_accounts_command(other).await,
+            other => self.handle_advisor_command(other).await,
         }
     }
 }

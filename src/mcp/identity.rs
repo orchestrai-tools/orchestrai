@@ -25,6 +25,39 @@ pub(crate) fn forget_inherited_session() {
     }
 }
 
+/// Which tool set a session's bridge serves, as `WF_MODE` spells it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BridgeMode {
+    Single,
+    Orchestrator,
+    /// A single session that may consult its advisor (`ask_advisor`).
+    Advised,
+    /// An advisor's own session: read-only tools only.
+    Advisor,
+}
+
+impl BridgeMode {
+    /// The `WF_MODE` value.
+    /// @returns the mode's name
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            BridgeMode::Single => "single",
+            BridgeMode::Orchestrator => "orchestrator",
+            BridgeMode::Advised => "advised",
+            BridgeMode::Advisor => "advisor",
+        }
+    }
+
+    fn parse(value: Option<&str>) -> Self {
+        match value {
+            Some("orchestrator") => BridgeMode::Orchestrator,
+            Some("advised") => BridgeMode::Advised,
+            Some("advisor") => BridgeMode::Advisor,
+            _ => BridgeMode::Single,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) struct Identity {
     /// The inbox owner and parent of spawned sub-agents.
@@ -32,6 +65,7 @@ pub(crate) struct Identity {
     /// `None` leaves the project to the working directory.
     pub(crate) project: Option<String>,
     pub(crate) is_orchestrator: bool,
+    pub(crate) mode: BridgeMode,
     /// Whether the identity came from the launching session.
     pub(crate) from_session: bool,
 }
@@ -42,10 +76,12 @@ pub(crate) struct Identity {
 pub(crate) fn resolve(var: impl Fn(&str) -> Option<String>) -> Result<Identity> {
     let non_empty = |name: &str| var(name).filter(|value| !value.trim().is_empty());
     if let Some(task) = non_empty(SESSION_TASK) {
+        let mode = BridgeMode::parse(var(SESSION_MODE).as_deref());
         return Ok(Identity {
             parent_task: task,
             project: non_empty(SESSION_PROJECT),
-            is_orchestrator: var(SESSION_MODE).as_deref() == Some("orchestrator"),
+            is_orchestrator: mode == BridgeMode::Orchestrator,
+            mode,
             from_session: true,
         });
     }
@@ -66,6 +102,11 @@ pub(crate) fn resolve(var: impl Fn(&str) -> Option<String>) -> Result<Identity> 
             .or_else(|| var("WF_ORCH_PROJECT"))
             .filter(|project| !project.trim().is_empty()),
         is_orchestrator,
+        mode: if is_orchestrator {
+            BridgeMode::Orchestrator
+        } else {
+            BridgeMode::parse(mode.as_deref())
+        },
         from_session: false,
     })
 }
@@ -99,6 +140,7 @@ mod tests {
                 parent_task: "t_orch".into(),
                 project: Some("demo".into()),
                 is_orchestrator: true,
+                mode: BridgeMode::Orchestrator,
                 from_session: true,
             }
         );
@@ -131,6 +173,20 @@ mod tests {
         let global = resolve_from(&[]).unwrap();
         assert!(!global.is_orchestrator);
         assert_eq!(global.project, None);
+    }
+
+    #[test]
+    fn the_advisor_modes_travel_with_the_session() {
+        let advised = resolve_from(&[(SESSION_TASK, "t_exec"), (SESSION_MODE, "advised")]).unwrap();
+        assert_eq!(advised.mode, BridgeMode::Advised);
+        assert!(!advised.is_orchestrator);
+        let advisor = resolve_from(&[
+            ("WF_MODE", "advised"),
+            (SESSION_TASK, "t_adv"),
+            (SESSION_MODE, "advisor"),
+        ])
+        .unwrap();
+        assert_eq!(advisor.mode, BridgeMode::Advisor);
     }
 
     #[test]

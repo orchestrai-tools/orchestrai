@@ -61,18 +61,25 @@ export function isSettledTask(task: TaskInfo): boolean {
 export function buildTaskForest(tasks: TaskInfo[]): TaskTree[] {
   const byId = new Map(tasks.map((task) => [task.id, task]));
   const children = new Map<string, TaskInfo[]>();
+  // A surface-owned task (an advisor) is not a member of its parent's group.
+  const parentOf = (task: TaskInfo) =>
+    task.parentTaskId &&
+    !task.origin &&
+    byId.has(task.parentTaskId) &&
+    task.parentTaskId !== task.id
+      ? task.parentTaskId
+      : null;
 
   for (const task of tasks) {
-    if (task.parentTaskId && byId.has(task.parentTaskId) && task.parentTaskId !== task.id) {
-      const siblings = children.get(task.parentTaskId) ?? [];
+    const parent = parentOf(task);
+    if (parent) {
+      const siblings = children.get(parent) ?? [];
       siblings.push(task);
-      children.set(task.parentTaskId, siblings);
+      children.set(parent, siblings);
     }
   }
 
-  const roots = tasks.filter(
-    (task) => !task.parentTaskId || !byId.has(task.parentTaskId) || task.parentTaskId === task.id,
-  );
+  const roots = tasks.filter((task) => !parentOf(task));
   const visited = new Set<string>();
   const build = (task: TaskInfo, path: Set<string>): TaskTree => {
     visited.add(task.id);

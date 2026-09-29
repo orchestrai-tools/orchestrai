@@ -4,6 +4,9 @@ use serde_json::{json, Value};
 use super::automations;
 use super::daemon_client::DaemonClient;
 
+pub(crate) use advisor::ask_advisor;
+
+mod advisor;
 mod agents;
 mod backlog;
 mod browser;

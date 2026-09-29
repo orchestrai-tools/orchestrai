@@ -1,11 +1,24 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { PullComment, PullRequestDetails, PullRequestSummary, PullThread } from "@/protocol";
+import type {
+  PullCheckRun,
+  PullComment,
+  PullRequestDetails,
+  PullRequestSummary,
+  PullThread,
+} from "@/protocol";
 
 vi.mock("@/daemon", () => ({
-  daemon: { postPullComment: vi.fn<() => Promise<string>>(async () => "https://github.test/c/1") },
+  daemon: {
+    postPullComment: vi.fn<() => Promise<string>>(async () => "https://github.test/c/1"),
+    pullChecks: vi.fn<() => Promise<PullCheckRun[]>>(async () => [
+      { name: "CI / lint", state: "passing", url: "https://github.test/run/1" },
+      { name: "CI / test", state: "failing", url: "https://github.test/run/2" },
+    ]),
+  },
 }));
 
 import { PullOverview } from "./PullOverview";
@@ -57,22 +70,25 @@ function renderOverview(
   thread: PullThread | null,
   overrides: Partial<React.ComponentProps<typeof PullOverview>> = {},
 ) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <PullOverview
-      pr={pr}
-      details={details}
-      detailsLoading={false}
-      thread={thread}
-      threadLoading={false}
-      reviewers={[{ login: "gemini-code-assist", state: "APPROVED" }]}
-      files={[
-        { path: "src/a.ts", additions: 30, deletions: 1 },
-        { path: "src/b.ts", additions: 10, deletions: 0 },
-        { path: "docs/notes.md", additions: 1, deletions: 0 },
-      ]}
-      onThreadChanged={() => {}}
-      {...overrides}
-    />,
+    <QueryClientProvider client={client}>
+      <PullOverview
+        pr={pr}
+        details={details}
+        detailsLoading={false}
+        thread={thread}
+        threadLoading={false}
+        reviewers={[{ login: "gemini-code-assist", state: "APPROVED" }]}
+        files={[
+          { path: "src/a.ts", additions: 30, deletions: 1 },
+          { path: "src/b.ts", additions: 10, deletions: 0 },
+          { path: "docs/notes.md", additions: 1, deletions: 0 },
+        ]}
+        onThreadChanged={() => {}}
+        {...overrides}
+      />
+    </QueryClientProvider>,
   );
 }
 
@@ -85,14 +101,15 @@ const emptyThread: PullThread = {
 };
 
 describe("PullOverview", () => {
-  it("reads the description and the facts beside it", () => {
+  it("reads the description and the facts beside it", async () => {
     renderOverview(emptyThread);
     expect(screen.getByText("does the thing")).toBeInTheDocument();
     expect(screen.getByText("Open")).toBeInTheDocument();
     expect(screen.getByText("gemini-code-assist")).toBeInTheDocument();
-    // No check run travels on the wire yet, and the rail says so rather than
-    // implying everything passed.
-    expect(screen.getByText("Status checks aren't read yet.")).toBeInTheDocument();
+    expect(await screen.findByText("CI / test")).toBeInTheDocument();
+    expect(screen.queryByText("CI / lint")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "1 passed" }));
+    expect(screen.getByText("CI / lint")).toBeInTheDocument();
   });
 
   it("groups the changed files by code and prose, with each group's total", async () => {

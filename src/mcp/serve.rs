@@ -6,13 +6,17 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::daemon_client::DaemonClient;
-use super::{browser_tool_defs, handle, tool_defs, MCP_VERSION};
+use super::identity::BridgeMode;
+use super::{
+    advisor_tool_defs, browser_tool_defs, handle, tool_defs, MCP_VERSION, READ_ONLY_TOOLS,
+};
 
 /// The session a server's tools act for.
 pub(crate) struct Session {
     pub(crate) parent_task: String,
     pub(crate) project: String,
     pub(crate) is_orchestrator: bool,
+    pub(crate) mode: BridgeMode,
 }
 
 /// The MCP stdio loop: newline-delimited JSON-RPC 2.0 with the agent.
@@ -78,20 +82,64 @@ where
 
 fn session_tools(session: &Session) -> Value {
     let mut tools = tool_defs(session.is_orchestrator);
-    if let (Value::Array(list), false) = (&mut tools, session.project.is_empty()) {
+    let Value::Array(list) = &mut tools else {
+        return tools;
+    };
+    match session.mode {
+        BridgeMode::Advisor => {
+            list.retain(|tool| {
+                tool["name"]
+                    .as_str()
+                    .is_some_and(|name| READ_ONLY_TOOLS.contains(&name))
+            });
+            return tools;
+        }
+        BridgeMode::Advised => list.extend(advisor_tool_defs()),
+        BridgeMode::Single | BridgeMode::Orchestrator => {}
+    }
+    if !session.project.is_empty() {
         list.extend(browser_tool_defs());
     }
     tools
 }
 
-async fn call_tool(client: &mut DaemonClient, session: &Session, params: Option<&Value>) -> Value {
-    let call = handle::tool_content(
+/// Route a call by the session's mode: an advisor gets the read-only tools
+/// only, and `ask_advisor` exists only where the task has an advisor.
+async fn session_call(
+    client: &mut DaemonClient,
+    session: &Session,
+    params: Option<&Value>,
+) -> anyhow::Result<Vec<Value>> {
+    let name = params
+        .and_then(|p| p.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if session.mode == BridgeMode::Advisor && !READ_ONLY_TOOLS.contains(&name) {
+        anyhow::bail!("the advisor is read-only: '{name}' is not available to it");
+    }
+    if name == "ask_advisor" {
+        if session.mode != BridgeMode::Advised {
+            anyhow::bail!("this task has no advisor");
+        }
+        let args = params
+            .and_then(|p| p.get("arguments"))
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        let text = handle::ask_advisor(client, &session.parent_task, &args).await?;
+        return Ok(vec![json!({ "type": "text", "text": text })]);
+    }
+    handle::tool_content(
         client,
         &session.parent_task,
         &session.project,
         session.is_orchestrator,
         params,
-    );
+    )
+    .await
+}
+
+async fn call_tool(client: &mut DaemonClient, session: &Session, params: Option<&Value>) -> Value {
+    let call = session_call(client, session, params);
     let error = match AssertUnwindSafe(call).catch_unwind().await {
         Ok(Ok(content)) => return json!({ "content": content }),
         Ok(Err(error)) => format!("Error: {error:#}"),
@@ -112,6 +160,11 @@ mod tests {
             parent_task: "t_orch".into(),
             project: "demo".into(),
             is_orchestrator,
+            mode: if is_orchestrator {
+                BridgeMode::Orchestrator
+            } else {
+                BridgeMode::Single
+            },
         };
         let mut output = Vec::new();
         serve(input, &mut output, &mut client, &session)
@@ -200,6 +253,7 @@ mod tests {
                 parent_task: "t_1".into(),
                 project: project.into(),
                 is_orchestrator: false,
+                mode: BridgeMode::Single,
             };
             let tools = session_tools(&session);
             let names: Vec<&str> = tools
@@ -210,6 +264,62 @@ mod tests {
                 .collect();
             assert_eq!(names.contains(&"browser_snapshot"), listed, "{project:?}");
             assert!(names.contains(&"list_runtime"));
+        }
+    }
+
+    fn tool_names(mode: BridgeMode) -> Vec<String> {
+        let session = Session {
+            parent_task: "t_1".into(),
+            project: "demo".into(),
+            is_orchestrator: false,
+            mode,
+        };
+        session_tools(&session)
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|tool| tool["name"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    #[test]
+    fn ask_advisor_is_listed_only_where_the_task_has_an_advisor() {
+        assert!(tool_names(BridgeMode::Advised).contains(&"ask_advisor".to_string()));
+        assert!(!tool_names(BridgeMode::Single).contains(&"ask_advisor".to_string()));
+        let advisor = tool_names(BridgeMode::Advisor);
+        assert!(advisor
+            .iter()
+            .all(|name| READ_ONLY_TOOLS.contains(&name.as_str())));
+        assert!(advisor.contains(&"read_service_logs".to_string()));
+    }
+
+    #[tokio::test]
+    async fn an_advisor_cannot_call_a_tool_that_changes_anything() {
+        let mut client = DaemonClient::new(Box::new(FakeDaemon::at("ws://a")));
+        let session = Session {
+            parent_task: "t_adv".into(),
+            project: "demo".into(),
+            is_orchestrator: false,
+            mode: BridgeMode::Advisor,
+        };
+        let mut output = Vec::new();
+        let input = format!(
+            "{}\n{}\n",
+            call(1, "service_restart"),
+            call(2, "ask_advisor")
+        );
+        serve(input.as_bytes(), &mut output, &mut client, &session)
+            .await
+            .unwrap();
+        let replies: Vec<Value> = String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        for reply in &replies {
+            assert_eq!(reply["result"]["isError"], true);
+            let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+            assert!(text.contains("the advisor is read-only"), "{text}");
         }
     }
 

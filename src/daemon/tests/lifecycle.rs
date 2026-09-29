@@ -25,6 +25,7 @@ async fn successful_update_safety_check_stops_commands_queued_behind_it() {
             backlog_item_id: None,
             origin: None,
             start: true,
+            advisor: None,
             reply: task_tx,
         })
         .await;

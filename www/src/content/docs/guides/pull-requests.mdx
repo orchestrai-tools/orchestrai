@@ -33,7 +33,9 @@ The header is two rows and nothing more: state, review decision, `repo#number`, 
 
 **The left column is the change as a document** — the description, then every review and comment as a card underneath it, in the order they happened. Reply to a review thread inline; it posts to GitHub straight away. Bot reviews render properly: GitHub's `> [!WARNING]` callouts become callouts, collapsible sections stay collapsible, and a Mermaid diagram in a review body renders as a diagram.
 
-**The rail beside it answers "where does this stand"** — status, each reviewer with their latest verdict, branch, labels, assignees, and the changed files.
+**The rail beside it answers "where does this stand"** — status, each reviewer with their latest verdict, checks, branch, labels, assignees, and the changed files.
+
+**Checks** lists what ran on the latest commit: failures first, then anything still running, each with a link to its run. Passed checks fold into one line — click it to see them. While a check is still running the section looks again every minute.
 
 Files are grouped by how much attention they are worth, not by folder: **Migrations**, **Implementation**, **Tests**, **Config & CI**, **Generated**, **Documentation**, in that order. Migrations lead because a handful of lines that touch data is the expensive thing to skim past; lockfiles, `dist/`, snapshots and generated clients sit at the tail, dimmed. Each heading carries its file count and its own `+`/`−`. Every group starts collapsed — a 64-file change reads as six headings until you pick a block — unless there is only one, which opens because there is nothing to choose between. Click any file to jump straight to its diff.
 
@@ -96,9 +98,12 @@ The agent reads the change by fetching and diffing `origin` refs. It never switc
 
 The first two check the pull request's branch out before they start. That is the line between the two doors: Explain and Review answer inside the pull request, everything in this menu leaves it.
 
+<Aside type="tip" title="Opened the pull request from a task?">
+  Then you don't need this menu for its feedback. When checks fail or a reviewer leaves a comment, the task that opened the pull request shows a notice, and **Send to agent** there hands everything to the same agent, in the same conversation — see [Git in Warpforge](/guides/git-in-warpforge/#when-the-pull-request-comes-back).
+</Aside>
+
 ## What isn't here yet
 
-- **Status checks.** The rail says "Status checks aren't read yet" instead of showing you a green tick it has not verified.
 - **Merge state.** Merged and closed both read as *Closed*; no merge timestamp travels yet.
 - **Pull requests with more than 100 commits** list their most recent 100 in the commit picker.
 

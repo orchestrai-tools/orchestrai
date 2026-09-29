@@ -15,9 +15,11 @@ import { WorkflowPicker } from "../../components/TaskComposeBar";
 import type { GitBranchList, ProjectFile, Snapshot, WorktreeBase } from "../../protocol";
 import { daemonQuery } from "../../query";
 import { useUi } from "../../store/ui";
+import { AdvisorPicker } from "./AdvisorPicker";
 import { BasePicker } from "./BasePicker";
 import { ChipDivider, HarnessChip, ProjectChip, ToggleChip } from "./chips";
 import { ModeSelector } from "./ModeSelector";
+import { useAdvisorPick } from "./useAdvisorPick";
 import { useTaskCreation } from "./useTaskCreation";
 import { useTaskSelection } from "./useTaskSelection";
 
@@ -67,6 +69,7 @@ export default function NewTaskDialog({
     workflows,
   } = useTaskSelection({ defaultProject, snapshot });
 
+  const advisor = useAdvisorPick(agentChoices, agent);
   const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const useWorktree = useUi((s) => s.newTaskWorktree);
   const setUseWorktree = useUi((s) => s.setNewTaskWorktree);
@@ -109,6 +112,7 @@ export default function NewTaskDialog({
 
   const { create, setShareContext, setTags, shareContext, tags } = useTaskCreation({
     agent,
+    advisor: advisor.pick,
     agentOptions,
     backlogItemId,
     close,
@@ -232,6 +236,12 @@ export default function NewTaskDialog({
                     onSelect={(option, value) =>
                       setConfigPicks((previous) => ({ ...previous, [option.id]: value }))
                     }
+                  />
+                  <ChipDivider />
+                  <AdvisorPicker
+                    agents={agentChoices}
+                    available={mode === "single"}
+                    state={advisor}
                   />
                   <ChipDivider />
                   <ToggleChip
