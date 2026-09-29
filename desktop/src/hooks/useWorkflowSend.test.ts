@@ -7,9 +7,11 @@ import { useWorkflowSend } from "./useWorkflowSend";
 const workflowReply = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
 const workflowResume = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
 const workflowDecide = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+const request = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
 
 vi.mock("../daemon", () => ({
   daemon: {
+    request: (...args: unknown[]) => request(...(args as [])),
     workflowDecide: (...args: unknown[]) => workflowDecide(...(args as [])),
     workflowReply: (...args: unknown[]) => workflowReply(...(args as [])),
     workflowResume: (...args: unknown[]) => workflowResume(...(args as [])),
@@ -91,18 +93,54 @@ describe("useWorkflowSend", () => {
     });
   });
 
-  it("swallows messages for a session-less parent rather than failing an RPC", async () => {
-    // A running or finished pipeline has no addressee; prompting the parent
-    // would surface a raw "no live or resumable agent session" error.
-    const handled = await Promise.all(
-      (["review", "done", "failed"] as const).map((stage) =>
-        send(task({ stage, waiting: null })).send(submission("hi")),
-      ),
-    );
-    expect(handled).toEqual([true, true, true]);
+  it("refuses a message a running pipeline has no addressee for", async () => {
+    // Reporting it as handled would let a caller mark undelivered feedback sent.
+    const box = send(task({ stage: "review", waiting: null }));
+    expect(box.handoff).toBeNull();
+    expect(box.undeliverable).toMatch(/running on its own/);
+    await expect(box.send(submission("hi"))).rejects.toThrow(/running on its own/);
+    expect(request).not.toHaveBeenCalled();
     expect(workflowReply).not.toHaveBeenCalled();
     expect(workflowResume).not.toHaveBeenCalled();
     expect(workflowDecide).not.toHaveBeenCalled();
+  });
+
+  it("hands a finished pipeline's feedback to its last code-changing stage", async () => {
+    const finished = {
+      ...task({ stage: "done", waiting: null }),
+      orchestrationGraph: {
+        goal: "Loop",
+        id: "t_1",
+        nodes: [
+          {
+            agent: "claude",
+            id: "implement",
+            kind: "implement",
+            status: "complete",
+            taskId: "t_impl",
+          },
+          { agent: "codex", id: "fix (round 1)", kind: "fix", status: "complete", taskId: "t_fix" },
+          { agent: "gemini", id: "review", kind: "review", status: "complete", taskId: "t_rev" },
+        ],
+      },
+    } satisfies TaskInfo;
+    const box = send(finished);
+    expect(box.handoff).toEqual({ agent: "codex", label: "fix (round 1)", taskId: "t_fix" });
+    expect(box.undeliverable).toBeNull();
+    expect(await box.send(submission("CI failed"))).toBe(true);
+    expect(request).toHaveBeenCalledWith("session.prompt", {
+      attachments: [],
+      task_id: "t_fix",
+      text: "CI failed",
+    });
+  });
+
+  it("refuses a finished pipeline whose stages never changed the code", async () => {
+    const box = send(task({ stage: "failed", waiting: null }));
+    expect(box.handoff).toBeNull();
+    expect(box.undeliverable).toMatch(/ended before any stage changed the code/);
+    await expect(box.send(submission("hi"))).rejects.toThrow(/ended before/);
+    expect(request).not.toHaveBeenCalled();
   });
 
   it("explains why the box is disabled, differently for running vs finished", () => {

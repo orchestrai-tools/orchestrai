@@ -19,6 +19,7 @@ impl Daemon {
                 include_runtime_context,
                 config_overrides,
                 parent_task_id,
+                backlog_item_id,
                 reply,
             } => {
                 let result = self
@@ -35,6 +36,7 @@ impl Daemon {
                         include_runtime_context,
                         config_overrides,
                         parent_task_id,
+                        backlog_item_id,
                     )
                     .await;
                 let _ = reply.send(result);

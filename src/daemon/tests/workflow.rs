@@ -312,6 +312,7 @@ async fn workflow_spawned_with_a_parent_reports_to_its_inbox() {
             include_runtime_context: false,
             config_overrides: std::collections::HashMap::new(),
             parent_task_id: Some(orch_id.clone()),
+            backlog_item_id: None,
             reply: tx,
         })
         .await;
@@ -399,6 +400,7 @@ async fn archiving_the_orchestrator_stops_a_running_child_workflow() {
             include_runtime_context: false,
             config_overrides: std::collections::HashMap::new(),
             parent_task_id: Some(orch_id.clone()),
+            backlog_item_id: None,
             reply: tx,
         })
         .await;
@@ -549,7 +551,7 @@ async fn workflow_lost_stage_agent_pauses_instead_of_failing() {
         t.workflow_run
             .as_ref()
             .and_then(|w| w.waiting.as_ref())
-            .is_some_and(|w| w.kind == wire::WorkflowWaitKind::Paused)
+            .is_some_and(|w| w.pause_reason == Some(wire::WorkflowPauseReason::AgentLost))
     })
     .await;
     assert_eq!(paused.status, TaskStatus::Waiting);

@@ -233,3 +233,47 @@ async fn a_checked_out_branch_is_refused_before_the_task_is_created() {
     assert!(handle.tasks().await.is_empty(), "no task is created");
     handle.shutdown().await;
 }
+
+/// A pipeline started from a backlog item is linked to it like a single-agent
+/// task. The lead is out of quota, so the run parks and no agent starts.
+#[tokio::test]
+async fn a_workflow_task_keeps_its_backlog_item() {
+    let dir = tempfile::tempdir().unwrap();
+    let projects = vec![ProjectEntry {
+        name: "demo".into(),
+        path: dir.path().to_string_lossy().into_owned(),
+        added_at: "0".into(),
+        port_range: None,
+        port_range_override: None,
+    }];
+    let store = Store::open_at(std::path::Path::new(":memory:")).ok();
+    let handle = Daemon::spawn(projects, store);
+    handle
+        .send(crate::daemon::Command::AgentLimitsUpdated {
+            accounts: vec![crate::daemon::limits::gate::exhausted_row("mock-agent")],
+        })
+        .await;
+
+    let lifecycle = Arc::new(ServerLifecycle::new(wire::DaemonOwner::External));
+    let method: wire::Method = serde_json::from_value(json!({
+        "method": "task.create",
+        "params": {
+            "project": "demo",
+            "prompt": "fix it",
+            "agent": "mock-agent",
+            "workflow": "review-loop",
+            "backlog_item_id": "b_42",
+        }
+    }))
+    .unwrap();
+    let reply = dispatch(&handle, method, &lifecycle)
+        .await
+        .expect("the pipeline is created");
+    let id = reply["taskId"].as_str().expect("a task id").to_string();
+
+    let tasks = handle.tasks().await;
+    let parent = tasks.iter().find(|task| task.id == id).expect("the parent");
+    assert!(parent.workflow_run.is_some(), "it is a pipeline parent");
+    assert_eq!(parent.backlog_item_id.as_deref(), Some("b_42"));
+    handle.shutdown().await;
+}

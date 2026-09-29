@@ -22,7 +22,7 @@ fn paused_at(task: &Task, stage: wire::WorkflowStage) -> bool {
         w.stage == stage
             && w.waiting
                 .as_ref()
-                .is_some_and(|w| w.kind == wire::WorkflowWaitKind::Paused)
+                .is_some_and(|w| w.pause_reason == Some(wire::WorkflowPauseReason::Quota))
     })
 }
 
@@ -63,6 +63,8 @@ async fn an_exhausted_stage_agent_parks_the_pipeline_until_resumed() {
     })
     .await;
     assert_eq!(parked.status, TaskStatus::Waiting);
+    let why = parked.workflow_run.and_then(|w| w.waiting?.question);
+    assert!(why.is_some_and(|why| why.contains("out of quota")));
     assert_eq!(
         children(&daemon, &parent_id).await,
         0,

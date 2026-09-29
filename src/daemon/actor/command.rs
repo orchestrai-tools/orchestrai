@@ -216,6 +216,8 @@ pub enum Command {
         /// Set when this pipeline is a sub-agent of an orchestrator task —
         /// its final outcome is delivered to that task's inbox.
         parent_task_id: Option<String>,
+        /// The backlog item the pipeline was started from; set on the parent.
+        backlog_item_id: Option<String>,
         reply: oneshot::Sender<Result<String, String>>,
     },
     /// Soft-pause a workflow pipeline at its next stage barrier.

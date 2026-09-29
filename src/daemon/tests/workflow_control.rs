@@ -235,7 +235,7 @@ async fn workflow_pause_takes_effect_at_barrier_and_resumes() {
         t.workflow_run
             .as_ref()
             .and_then(|w| w.waiting.as_ref())
-            .is_some_and(|w| w.kind == wire::WorkflowWaitKind::Paused)
+            .is_some_and(|w| w.pause_reason == Some(wire::WorkflowPauseReason::User))
     })
     .await;
     assert_eq!(paused.status, TaskStatus::Waiting);
@@ -352,7 +352,7 @@ async fn workflow_restart_converts_midstage_to_paused_and_resumes() {
                     .workflow_run
                     .as_ref()
                     .and_then(|w| w.waiting.as_ref())
-                    .is_some_and(|w| w.kind == wire::WorkflowWaitKind::Paused)
+                    .is_some_and(|w| w.pause_reason == Some(wire::WorkflowPauseReason::Restart))
                 {
                     break task.clone();
                 }

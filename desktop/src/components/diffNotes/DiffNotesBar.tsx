@@ -26,11 +26,13 @@ export function DiffNotesBar({ onJump }: { onJump: (path: string) => void }) {
   const label = `${resending ? "Resend" : "Send"} ${plural(api.batch.length)}`;
   const title =
     api.blocked ??
-    (api.busy
-      ? "The agent is working — the notes wait in its queue and go out as one message when it finishes"
-      : resending
-        ? "Send the notes you have not resolved again, as one message"
-        : "Send the unsent notes to the agent as one message");
+    (api.recipient
+      ? `Send the notes as one message to the ${api.recipient} stage, the last to change the code. The pipeline does not review it again.`
+      : api.busy
+        ? "The agent is working — the notes wait in its queue and go out as one message when it finishes"
+        : resending
+          ? "Send the notes you have not resolved again, as one message"
+          : "Send the unsent notes to the agent as one message");
 
   return (
     <div className="border-b border-border bg-secondary/40 text-[13px]">

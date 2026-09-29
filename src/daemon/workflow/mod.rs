@@ -126,6 +126,11 @@ pub enum RunState {
     /// Soft-paused at a stage barrier; `next` starts on `workflow.resume`.
     Paused {
         next: StageKind,
+        #[serde(default)]
+        reason: wire::WorkflowPauseReason,
+        /// Why the daemon parked the run; empty for a user pause.
+        #[serde(default)]
+        detail: String,
     },
     Done,
     Failed,

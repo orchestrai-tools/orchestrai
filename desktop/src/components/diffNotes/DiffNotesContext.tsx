@@ -39,6 +39,8 @@ export interface DiffNotesApi {
   blocked: string | null;
   /** The agent is mid-turn, so a send waits in its queue. */
   busy: boolean;
+  /** For a finished pipeline, the stage the notes go to; null for this task's own agent. */
+  recipient: string | null;
 }
 
 const DiffNotesContext = createContext<DiffNotesApi | null>(null);
@@ -67,16 +69,11 @@ export function DiffNotesProvider({ task, children }: { task: TaskInfo; children
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { disabled: workflowDisabled, send: sendToWorkflow } = useWorkflowSend(task);
+  const { handoff, send: sendToWorkflow, undeliverable } = useWorkflowSend(task);
   const api = useMemo<DiffNotesApi>(() => {
     const drafts = notes.filter((note) => !note.sentAt);
     const batch = drafts.length > 0 ? drafts : notes;
-    const blocked =
-      task.status === "done"
-        ? "This task is finished"
-        : workflowDisabled
-          ? "The pipeline is running on its own"
-          : null;
+    const blocked = task.status === "done" ? "This task is finished" : undeliverable;
 
     const saveDraft = () => {
       if (!draft) return;
@@ -133,6 +130,7 @@ export function DiffNotesProvider({ task, children }: { task: TaskInfo; children
       error,
       notes,
       reanchor: (anchors) => update(task.id, anchors),
+      recipient: handoff ? `${handoff.label} (${handoff.agent})` : null,
       remove: (ids) => {
         removeNotes(task.id, ids);
         if (draft?.noteId && ids.includes(draft.noteId)) setDraft(null);
@@ -153,9 +151,10 @@ export function DiffNotesProvider({ task, children }: { task: TaskInfo; children
     sendToWorkflow,
     sending,
     task.id,
+    handoff,
     task.status,
+    undeliverable,
     update,
-    workflowDisabled,
   ]);
 
   return <DiffNotesContext.Provider value={api}>{children}</DiffNotesContext.Provider>;

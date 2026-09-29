@@ -203,6 +203,7 @@ impl Daemon {
         include_runtime_context: bool,
         config_overrides: HashMap<String, String>,
         parent_task_id: Option<String>,
+        backlog_item_id: Option<String>,
     ) -> Result<String, String> {
         let path = self
             .project_path(&project)
@@ -228,6 +229,7 @@ impl Daemon {
         tags.push(format!("workflow:{workflow_id}"));
         let mut task = Task::new(&project, &prompt, &agent, tags);
         task.parent_task_id = parent_task_id;
+        task.backlog_item_id = backlog_item_id;
         // An explicit lead model from the dialog is the task's model intent.
         task.model = default_model.clone();
         // The parent is "running" for the whole life of the pipeline.
@@ -351,7 +353,11 @@ impl Daemon {
                     if stage == StageKind::Review {
                         run.round = run.round.saturating_sub(1);
                     }
-                    run.state = RunState::Paused { next: stage };
+                    run.state = RunState::Paused {
+                        next: stage,
+                        reason: wire::WorkflowPauseReason::Restart,
+                        detail: String::new(),
+                    };
                     // The working copy may hold half-applied edits from the
                     // killed attempt; the re-run has to know that.
                     run.pending_guidance = Some(

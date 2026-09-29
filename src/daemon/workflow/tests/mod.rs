@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use super::*;
 use crate::workflow_config::{parse_workflow, WorkflowSpec};
 
+mod pause;
+
 fn spec(yaml: &str) -> WorkflowSpec {
     parse_workflow("test", yaml).0.expect("valid spec")
 }
@@ -447,13 +449,6 @@ fn wire_info_reflects_state() {
     assert_eq!(waiting.kind, wire::WorkflowWaitKind::Limit);
     assert_eq!(waiting.question.as_deref(), Some("open findings: 1 high"));
     assert_eq!(waiting.barrier_id.as_deref(), Some("b_2"));
-
-    run.state = RunState::Paused {
-        next: StageKind::Fix,
-    };
-    let info = run.wire_info();
-    assert_eq!(info.stage, wire::WorkflowStage::Fix);
-    assert_eq!(info.waiting.unwrap().kind, wire::WorkflowWaitKind::Paused);
 }
 
 #[test]
@@ -481,6 +476,8 @@ fn run_serialization_roundtrip() {
     let mut run = run_for("name: X\nplan: {}\n");
     run.state = RunState::Paused {
         next: StageKind::Review,
+        reason: wire::WorkflowPauseReason::AgentLost,
+        detail: "the agent process exited".into(),
     };
     run.round = 2;
     run.open_findings = vec![Finding {

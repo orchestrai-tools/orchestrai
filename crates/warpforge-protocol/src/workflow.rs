@@ -182,8 +182,8 @@ pub struct WorkflowWaiting {
     /// Which stage asked (for `question`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stage: Option<WorkflowStage>,
-    /// The question text (for `question`), or a short findings summary (for
-    /// `limit`).
+    /// The question text (for `question`), a short findings summary (for
+    /// `limit`), or why the daemon parked the run (for `paused`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question: Option<String>,
     /// Stable id for this barrier. Pass it back with `workflow.reply` /
@@ -191,6 +191,24 @@ pub struct WorkflowWaiting {
     /// later one. Absent on older daemons.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub barrier_id: Option<String>,
+    /// Who paused the run (for `paused`). Absent on older daemons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pause_reason: Option<WorkflowPauseReason>,
+}
+
+/// Why a pipeline sits at the pause barrier.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowPauseReason {
+    /// The user asked for the pause.
+    #[default]
+    User,
+    /// The next stage's agent account is out of quota (ADR 0019).
+    Quota,
+    /// The running stage lost its agent (ADR 0003).
+    AgentLost,
+    /// The daemon restarted while a stage was running.
+    Restart,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

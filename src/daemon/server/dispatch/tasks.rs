@@ -65,6 +65,7 @@ pub(super) async fn task_create(
                 include_runtime_context,
                 config_overrides,
                 parent_task_id,
+                backlog_item_id,
                 reply: tx,
             })
             .await;

@@ -78,14 +78,19 @@ export interface WorkflowWaiting {
   kind: WorkflowWaitKind;
   /** Which stage asked (for `question`). */
   stage?: WorkflowStage | null;
-  /** The question text, or a findings summary for `limit`. */
+  /** The question text, a findings summary for `limit`, or why the daemon
+   *  parked the run for `paused`. */
   question?: string | null;
   /** Stable id for this barrier; pass it back with the reply/decision so a
    *  stale answer cannot land on a newer barrier. Absent on older daemons. */
   barrierId?: string | null;
+  /** Who paused the run (for `paused`). Absent on older daemons. */
+  pauseReason?: WorkflowPauseReason | null;
 }
 
 export type WorkflowWaitKind = "question" | "limit" | "paused";
+
+export type WorkflowPauseReason = "user" | "quota" | "agent_lost" | "restart";
 
 export type WorkflowDecision = "extend" | "finish" | "stop";
 

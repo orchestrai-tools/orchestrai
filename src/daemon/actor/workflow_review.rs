@@ -35,7 +35,11 @@ impl Daemon {
             run.round = run.round.saturating_sub(1);
         }
         run.pause_requested = false;
-        run.state = RunState::Paused { next: stage };
+        run.state = RunState::Paused {
+            next: stage,
+            reason: wire::WorkflowPauseReason::AgentLost,
+            detail: reason.to_string(),
+        };
         run.pending_guidance = Some(format!(
             "The previous attempt of this stage ended before it finished: {reason}. The working \
              copy may already contain its partial changes — inspect the current diff before \

@@ -29,7 +29,11 @@ impl Daemon {
             };
             if run.pause_requested {
                 run.pause_requested = false;
-                run.state = RunState::Paused { next };
+                run.state = RunState::Paused {
+                    next,
+                    reason: wire::WorkflowPauseReason::User,
+                    detail: String::new(),
+                };
                 true
             } else {
                 false
@@ -235,7 +239,7 @@ impl Daemon {
             let Some(run) = self.workflow_runs.get_mut(parent_id) else {
                 return Err("no workflow pipeline on this task".to_string());
             };
-            let RunState::Paused { next } = run.state else {
+            let RunState::Paused { next, .. } = run.state else {
                 return Err("the pipeline is not paused".to_string());
             };
             run.pause_requested = false;

@@ -253,6 +253,7 @@ impl WorkflowRun {
                     stage: Some(stage.wire()),
                     question: Some(question.clone()),
                     barrier_id: (!barrier_id.is_empty()).then(|| barrier_id.clone()),
+                    pause_reason: None,
                 }),
             ),
             RunState::AwaitingLimitDecision { barrier_id } => (
@@ -262,15 +263,21 @@ impl WorkflowRun {
                     stage: Some(wire::WorkflowStage::Review),
                     question: Some(format::summarize_findings(&self.open_findings)),
                     barrier_id: (!barrier_id.is_empty()).then(|| barrier_id.clone()),
+                    pause_reason: None,
                 }),
             ),
-            RunState::Paused { next } => (
+            RunState::Paused {
+                next,
+                reason,
+                detail,
+            } => (
                 next.wire(),
                 Some(wire::WorkflowWaiting {
                     kind: wire::WorkflowWaitKind::Paused,
                     stage: Some(next.wire()),
-                    question: None,
+                    question: (!detail.is_empty()).then(|| detail.clone()),
                     barrier_id: None,
+                    pause_reason: Some(*reason),
                 }),
             ),
             RunState::Done => (wire::WorkflowStage::Done, None),

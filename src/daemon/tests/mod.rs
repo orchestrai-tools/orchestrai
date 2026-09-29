@@ -61,6 +61,7 @@ async fn create_workflow_task(daemon: &DaemonHandle, agent: &str) -> String {
             include_runtime_context: false,
             config_overrides: std::collections::HashMap::new(),
             parent_task_id: None,
+            backlog_item_id: None,
             reply: tx,
         })
         .await;

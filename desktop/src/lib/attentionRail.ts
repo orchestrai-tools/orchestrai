@@ -4,7 +4,8 @@ import {
   type PermissionUpdate,
 } from "@/lib/sessionPermissions";
 import { awaitsReview } from "@/lib/taskGroups";
-import type { SessionUpdate } from "@/protocol";
+import { workflowStageLabel } from "@/lib/workflow";
+import type { SessionUpdate, WorkflowRunInfo } from "@/protocol";
 import type { TaskInfo, TaskStatus } from "@/protocol";
 
 export interface AttentionItem {
@@ -68,8 +69,29 @@ export function taskStatusRank(task: TaskInfo, permission?: PermissionUpdate): n
 }
 
 /**
+ * Why the daemon parked a pipeline at the pause barrier, or null when nothing
+ * did: a pause the user asked for, or a daemon too old to say.
+ */
+function parkReason(run: WorkflowRunInfo): string | null {
+  const waiting = run.waiting;
+  if (waiting?.kind !== "paused") return null;
+  const stage = workflowStageLabel(run.stage);
+  switch (waiting.pauseReason) {
+    case "quota":
+      return `paused — ${waiting.question ?? "the next stage's account is out of quota"}`;
+    case "agent_lost":
+      return `paused — the agent was lost while ${stage}${waiting.question ? `: ${waiting.question}` : ""}`;
+    case "restart":
+      return `paused — the daemon restarted while ${stage}`;
+    default:
+      return null;
+  }
+}
+
+/**
  * Work that cannot move without a human: a permission prompt, a pipeline that
- * suspended itself to ask, a blocked task, a session lost to a restart.
+ * suspended itself to ask or that the daemon parked, a blocked task, a session
+ * lost to a restart.
  *
  * A finished turn that left a diff is deliberately *not* here. It used to be,
  * and it made the queue meaningless — nearly every task an agent touches ends
@@ -88,12 +110,13 @@ export function buildAttentionQueue(
     const perm =
       latestPendingPermission(task.id, sessionUpdates[task.id]) ?? syntheticPendingPermission(task);
     const waiting = task.workflowRun?.waiting ?? null;
+    const parked = task.workflowRun ? parkReason(task.workflowRun) : null;
     if (perm) {
       items.push({ permission: perm, priority: 0, reason: perm.title, task });
     } else if (waiting && waiting.kind !== "paused") {
       // A pipeline that suspended itself is asking directly, so it ranks just
-      // under a permission prompt. A pause is user-initiated — the user knows
-      // it is waiting, so it stays out of the queue.
+      // under a permission prompt. A pause the user asked for stays out of
+      // the queue: they know it is waiting.
       items.push({
         priority: 0.5,
         reason:
@@ -102,6 +125,8 @@ export function buildAttentionQueue(
             : `review limit reached${waiting.question ? ` — ${waiting.question}` : ""}`,
         task,
       });
+    } else if (parked) {
+      items.push({ priority: 1, reason: parked, task });
     } else if (task.status === "blocked") {
       items.push({ priority: 2, reason: task.blockedReason ?? "blocked", task });
     } else if (task.status === "interrupted") {

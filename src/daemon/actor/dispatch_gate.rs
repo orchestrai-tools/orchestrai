@@ -60,7 +60,11 @@ impl Daemon {
         reason: &str,
     ) {
         run.pause_requested = false;
-        run.state = RunState::Paused { next: stage };
+        run.state = RunState::Paused {
+            next: stage,
+            reason: warpforge_protocol::WorkflowPauseReason::Quota,
+            detail: reason.to_string(),
+        };
         self.workflow_sync(&run);
         self.workflow_runs.insert(parent_id.to_string(), run);
         self.workflow_timeline(

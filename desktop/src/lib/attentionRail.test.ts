@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { SessionUpdate } from "@/protocol";
+import type { SessionUpdate, WorkflowPauseReason } from "@/protocol";
 import type { TaskInfo, TaskStatus } from "@/protocol";
 
 import {
@@ -62,12 +62,13 @@ describe("taskStatusRank", () => {
 function waitingRun(
   kind: "question" | "limit" | "paused",
   question?: string,
+  pauseReason?: WorkflowPauseReason,
 ): NonNullable<TaskInfo["workflowRun"]> {
   return {
     maxRounds: 2,
     round: 1,
     stage: "review",
-    waiting: { kind, question },
+    waiting: { kind, pauseReason, question },
     workflowId: "wf",
     workflowName: "Review loop",
   };
@@ -172,8 +173,51 @@ describe("buildAttentionQueue — workflow pipelines", () => {
   });
 
   it("leaves a user-initiated pause out of the queue", () => {
-    const t = task("wf", { status: "running", workflowRun: waitingRun("paused") });
-    expect(buildAttentionQueue([t], {})).toEqual([]);
+    const user = task("wf", {
+      status: "running",
+      workflowRun: waitingRun("paused", undefined, "user"),
+    });
+    const legacy = task("old", { status: "running", workflowRun: waitingRun("paused") });
+    expect(buildAttentionQueue([user, legacy], {})).toEqual([]);
+  });
+
+  it("queues a pipeline the daemon parked, with why", () => {
+    const quota = task("quota", {
+      status: "waiting",
+      workflowRun: waitingRun(
+        "paused",
+        'codex account "work" is out of quota until 14:00',
+        "quota",
+      ),
+    });
+    const lost = task("lost", {
+      status: "waiting",
+      workflowRun: waitingRun("paused", "agent session ended unexpectedly", "agent_lost"),
+    });
+    const restart = task("restart", {
+      status: "waiting",
+      workflowRun: waitingRun("paused", undefined, "restart"),
+    });
+    const reasons = new Map(
+      buildAttentionQueue([quota, lost, restart], {}).map((item) => [item.task.id, item.reason]),
+    );
+    expect(reasons).toEqual(
+      new Map([
+        ["quota", 'paused — codex account "work" is out of quota until 14:00'],
+        ["lost", "paused — the agent was lost while reviewing: agent session ended unexpectedly"],
+        ["restart", "paused — the daemon restarted while reviewing"],
+      ]),
+    );
+  });
+
+  it("ranks a parked pipeline under a question but above a blocked task", () => {
+    const tasks = [
+      task("blocked", { status: "blocked" }),
+      task("parked", { status: "waiting", workflowRun: waitingRun("paused", "x", "quota") }),
+      task("asks", { status: "running", workflowRun: waitingRun("question", "?") }),
+    ];
+    const queue = buildAttentionQueue(tasks, {});
+    expect(queue.map((i) => i.task.id)).toEqual(["asks", "parked", "blocked"]);
   });
 
   it("ranks a waiting pipeline under a permission but above a blocked task", () => {

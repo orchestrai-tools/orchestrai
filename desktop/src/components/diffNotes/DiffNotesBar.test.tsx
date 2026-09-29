@@ -103,6 +103,49 @@ describe("DiffNotesBar", () => {
     expect((request.mock.calls[1][1] as { text: string }).text).toContain("Fix a.");
   });
 
+  it("sends a finished pipeline's notes to its last code-changing stage", async () => {
+    useDiffNotesStore.setState({ byTask: { t_1: [note("a")] } });
+    render(
+      <DiffNotesProvider
+        task={{
+          ...task("waiting"),
+          orchestrationGraph: {
+            goal: "Loop",
+            id: "t_1",
+            nodes: [
+              {
+                agent: "codex",
+                id: "fix (round 1)",
+                kind: "fix",
+                status: "complete",
+                taskId: "t_fix",
+              },
+            ],
+          },
+          workflowRun: {
+            maxRounds: 2,
+            round: 1,
+            stage: "done",
+            workflowId: "wf",
+            workflowName: "Loop",
+          },
+        }}
+      >
+        <DiffNotesBar onJump={vi.fn<(path: string) => void>()} />
+      </DiffNotesProvider>,
+    );
+    const button = screen.getByRole("button", { name: /Send 1 note/ });
+    expect(button).toHaveAttribute("title", expect.stringContaining("fix (round 1) (codex)"));
+
+    await userEvent.click(button);
+
+    expect(request).toHaveBeenCalledWith(
+      "session.prompt",
+      expect.objectContaining({ task_id: "t_fix" }),
+    );
+    expect(useDiffNotesStore.getState().byTask.t_1[0].sentAt).toEqual(expect.any(Number));
+  });
+
   it("will not send into a finished task", () => {
     useDiffNotesStore.setState({ byTask: { t_1: [note("a")] } });
     renderBar("done");
