@@ -172,6 +172,7 @@ impl Daemon {
                                 // range, not from a live process.
                                 port_pinned: self.port_pin_for(&project.name, service)
                                     == crate::ports::PortPin::Strict,
+                                port_warning: None,
                                 log_seq: 0,
                             },
                         )
@@ -184,6 +185,7 @@ impl Daemon {
                 declared.status = wireconv::service_status(&service.status);
                 declared.allocated_port = service.allocated_port;
                 declared.port_pinned = service.port_pinned;
+                declared.port_warning = wireconv::port_warning(&service.port_warning);
                 declared.log_seq = self.services.newest_seq(&project.name, &service.name);
                 if matches!(
                     service.status,

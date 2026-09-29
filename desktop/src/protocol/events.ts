@@ -12,6 +12,7 @@ import type {
   PortForwardInfo,
   PortForwardStatus,
   PortRangeSource,
+  PortWarning,
   ProjectConfigState,
   ServiceInfo,
   ServiceStatus,
@@ -35,6 +36,10 @@ export type DaemonEvent =
         status: ServiceStatus;
         allocated_port: number;
       };
+    }
+  | {
+      event: "service.portWarning";
+      data: { project: string; service: string; port_warning: PortWarning | null };
     }
   | {
       event: "service.log";

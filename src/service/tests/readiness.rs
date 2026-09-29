@@ -19,6 +19,7 @@ fn starting(mgr: &mut ServiceManager, key: &str, run_id: u64) {
             original_port: 0,
             allocated_port: 0,
             port_pinned: false,
+            port_warning: None,
             pgid: None,
             alive: true,
             run_id,

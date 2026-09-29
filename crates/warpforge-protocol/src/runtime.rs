@@ -44,8 +44,21 @@ pub struct ServiceInfo {
     /// True when the service's declared port is a hard pin, not a hint.
     #[serde(default)]
     pub port_pinned: bool,
+    /// Set while the service is up but nothing answers on its allocated port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port_warning: Option<PortWarning>,
     /// Sequence number of the newest retained log line.
     pub log_seq: u64,
+}
+
+/// A running service that ignores the port allocated to it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PortWarning {
+    pub expected: u16,
+    /// A different local port the service printed in its logs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub announced: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

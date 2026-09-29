@@ -32,6 +32,11 @@ pub enum Event {
         status: ServiceStatus,
         allocated_port: u16,
     },
+    ServicePortWarning {
+        project: String,
+        service: String,
+        warning: Option<wire::PortWarning>,
+    },
     ServiceLog {
         project: String,
         service: String,

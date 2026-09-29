@@ -3,6 +3,7 @@
 
 mod deps;
 mod liveness;
+mod port_watch;
 mod readiness;
 
 use super::ready::{spawn_readiness, Probe, RunHandle};
@@ -226,6 +227,7 @@ fn stale_run_events_do_not_overwrite_current_service() {
             original_port: 4000,
             allocated_port: 4000,
             port_pinned: false,
+            port_warning: None,
             pgid: None,
             alive: true,
             run_id: 2,
@@ -282,6 +284,7 @@ fn log_window_cursor_and_lifecycle_markers() {
             original_port: 4000,
             allocated_port: 4000,
             port_pinned: false,
+            port_warning: None,
             pgid: None,
             alive: true,
             run_id: 1,

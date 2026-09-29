@@ -57,7 +57,7 @@ A map of service name → service config. Services start in dependency order, an
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `command` | string | yes | Run via `sh -c "<command>"`, so pipes, `&&`, and `cd` all work. |
+| `command` | string | yes | Run via `sh -c "<command>"`, so pipes, `&&`, and `cd` all work. The command receives the service's port as `$PORT`, and `${<service>.port}` is replaced with that service's port before it runs — so `--port ${web.port}` works. Tools that ignore `$PORT` (`astro dev`, `vite`) need it passed explicitly: `astro dev --port $PORT`. If the service is up but nothing answers on its port, Runtime shows a warning. |
 | `port` | number | no | If the project declares a [`ports.range`](#portsrange), this is the exact port the service must bind — taken or out-of-range, the service fails instead of moving (opt out per service with `portFallback: auto`). Without a declared range, the number is ignored: Warpforge picks the first free port in the project's range, sets `PORT`, and makes `${<service>.port}` available to other services' `env`. See [How ports work](/concepts/ports/). |
 | `env` | map\<string, string\> | no | Environment variables. Values may reference `${<service>.port}` for any service in the same config. |
 | `readyPattern` | string | no | A substring to watch for in the service's stdout/stderr before marking it ready. See [Readiness](#readiness). |

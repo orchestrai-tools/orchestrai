@@ -524,6 +524,7 @@ fn project_config_changed_event_roundtrip() {
             allocated_port: 0,
             checkout: "/tmp/demo".into(),
             port_pinned: false,
+            port_warning: None,
             log_seq: 0,
         }],
         portforwards: Vec::new(),

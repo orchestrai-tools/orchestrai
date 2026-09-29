@@ -148,6 +148,7 @@ impl ServiceManager {
             original_port: claim.port,
             allocated_port,
             port_pinned: claim.pin == ports::PortPin::Strict,
+            port_warning: None,
             // An exited run's group stays reachable so the next start or stop reaps it.
             pgid: existing.and_then(|s| s.pgid),
             alive: false,

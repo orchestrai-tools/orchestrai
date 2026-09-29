@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 mod deps;
+mod port_watch;
 mod query;
 mod ready;
 mod spawn;
@@ -14,6 +15,7 @@ mod stop;
 mod tests;
 
 pub use deps::{dependency_gate, DepState, Gate, PortClaim};
+pub use port_watch::PortWarning;
 pub use ready::Readiness;
 pub use stop::kill_listeners_on_ports;
 
@@ -71,6 +73,8 @@ pub struct ManagedService {
     pub allocated_port: u16,
     /// True when the declared port was pinned strictly (no fallback).
     pub port_pinned: bool,
+    /// Set while the allocated port stays silent although the service is up.
+    pub port_warning: Option<PortWarning>,
     /// Process-group ID — used to kill the entire tree (sh → npm → node)
     pgid: Option<u32>,
     /// True from spawn until the run's exit is applied or the run is killed.
@@ -107,6 +111,14 @@ pub enum ServiceEvent {
         key: String,
         run_id: u64,
         reason: String,
+    },
+    /// Result of one probe of the allocated port; `from_seq` is the first log
+    /// line of this run.
+    PortProbe {
+        key: String,
+        run_id: u64,
+        answered: bool,
+        from_seq: u64,
     },
     /// A run that timed out became ready after all, `after` its spawn.
     LateReady {

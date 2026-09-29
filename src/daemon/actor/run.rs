@@ -305,6 +305,14 @@ impl Daemon {
                     allocated_port,
                 }
             }
+            ServiceEvent::PortProbe { key, .. } => {
+                let (project, service) = split_key(key);
+                Event::ServicePortWarning {
+                    project,
+                    service,
+                    warning: None,
+                }
+            }
             ServiceEvent::NotReady { key, .. } | ServiceEvent::LateReady { key, .. } => {
                 let (project, service) = split_key(key);
                 Event::ServiceStatus {
@@ -315,8 +323,28 @@ impl Daemon {
                 }
             }
         };
+        let warning_before = match &broadcast {
+            Event::ServicePortWarning {
+                project, service, ..
+            } => self
+                .services
+                .get(project, service)
+                .map(|s| s.port_warning.clone()),
+            _ => None,
+        };
         self.services.apply_event(ev);
         match &broadcast {
+            Event::ServicePortWarning {
+                project, service, ..
+            } => {
+                let after = self
+                    .services
+                    .get(project, service)
+                    .map(|s| s.port_warning.clone());
+                if after != warning_before {
+                    self.emit_port_warning(project, service);
+                }
+            }
             Event::ServiceStatus {
                 project, service, ..
             } => {

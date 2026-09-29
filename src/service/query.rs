@@ -1,6 +1,7 @@
 //! Read-only accessors, log windowing, and event application — the state
 //! queries other modules (snapshots, TUI, wire) are built on.
 
+use super::port_watch::assess;
 use super::ready::format_duration;
 use super::{ManagedService, ServiceEvent, ServiceManager, ServiceStatus};
 
@@ -82,6 +83,7 @@ impl ServiceManager {
                         && matches!(status, ServiceStatus::Stopped | ServiceStatus::Failed);
                     if exited {
                         svc.alive = false;
+                        svc.port_warning = None;
                     }
                     let old = svc.status.clone();
                     svc.status = status;
@@ -110,6 +112,30 @@ impl ServiceManager {
                     }
                     svc.status = ServiceStatus::Failed;
                     svc.push_log(format!("[service failed] {reason}"));
+                }
+            }
+            ServiceEvent::PortProbe {
+                key,
+                run_id,
+                answered,
+                from_seq,
+            } => {
+                if let Some(svc) = self.services.get_mut(&key) {
+                    if svc.run_id != run_id || !svc.alive {
+                        return;
+                    }
+                    let lines = svc
+                        .logs
+                        .iter()
+                        .filter(|l| l.seq >= from_seq)
+                        .map(|l| l.line.as_str());
+                    svc.port_warning = assess(
+                        svc.allocated_port,
+                        answered,
+                        svc.status == ServiceStatus::Running,
+                        svc.port_warning.as_ref(),
+                        lines,
+                    );
                 }
             }
             ServiceEvent::LateReady { key, run_id, after } => {

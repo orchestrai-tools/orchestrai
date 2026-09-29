@@ -9,7 +9,9 @@ pub(super) fn defs() -> Vec<Value> {
                 (names, ports, URLs) before reading logs or restarting a service. Each \
                 service's `checkout` names the working tree it runs from: services run \
                 from the project root, so a restart rebuilds that tree, not a task's \
-                worktree. Each entry's logSeq is a log cursor you can pass as `after` to \
+                worktree. A service with a `portWarning` is up but ignores its allocated \
+                port (`announced` is where it actually listens): its allocatedPort is a \
+                dead port, so use `announced` or fix the command to honour $PORT. Each entry's logSeq is a log cursor you can pass as `after` to \
                 read_service_logs / read_portforward_logs.",
             "inputSchema": {
                 "type": "object",

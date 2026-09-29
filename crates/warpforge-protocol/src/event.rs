@@ -6,9 +6,9 @@
 
 use crate::{
     AccountInfo, AgentAccountLimits, AgentBrokenInstall, AgentConfig, Automation, AutomationRun,
-    DetectedAgent, PortForwardInfo, PortForwardStatus, PortRangeSource, ProjectConfigState,
-    ServiceInfo, ServiceStatus, SessionUpdate, TaskInfo, TaskPullRequest, TerminalInfo,
-    TerminalScreen,
+    DetectedAgent, PortForwardInfo, PortForwardStatus, PortRangeSource, PortWarning,
+    ProjectConfigState, ServiceInfo, ServiceStatus, SessionUpdate, TaskInfo, TaskPullRequest,
+    TerminalInfo, TerminalScreen,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -39,6 +39,12 @@ pub enum Event {
         service: String,
         status: ServiceStatus,
         allocated_port: u16,
+    },
+    #[serde(rename = "service.portWarning")]
+    ServicePortWarning {
+        project: String,
+        service: String,
+        port_warning: Option<PortWarning>,
     },
     #[serde(rename = "service.log")]
     ServiceLog {

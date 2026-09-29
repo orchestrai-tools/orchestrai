@@ -318,6 +318,17 @@ impl Daemon {
                 status: svc.status.clone(),
                 allocated_port: svc.allocated_port,
             });
+            self.emit_port_warning(project, service);
+        }
+    }
+
+    pub(crate) fn emit_port_warning(&self, project: &str, service: &str) {
+        if let Some(svc) = self.services.get(project, service) {
+            self.emit(Event::ServicePortWarning {
+                project: project.to_string(),
+                service: service.to_string(),
+                warning: crate::daemon::wire::port_warning(&svc.port_warning),
+            });
         }
     }
 

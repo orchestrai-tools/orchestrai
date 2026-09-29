@@ -148,6 +148,8 @@ pub(super) struct RunHandle {
     pub run_id: u64,
     pub stopping: Arc<AtomicBool>,
     pub settled: Arc<AtomicBool>,
+    /// Set once the process has exited.
+    pub exited: Arc<AtomicBool>,
     timed_out: Arc<AtomicBool>,
     started: std::time::Instant,
 }
@@ -165,6 +167,7 @@ impl RunHandle {
             run_id,
             stopping,
             settled: Arc::new(AtomicBool::new(false)),
+            exited: Arc::new(AtomicBool::new(false)),
             timed_out: Arc::new(AtomicBool::new(false)),
             started: std::time::Instant::now(),
         }

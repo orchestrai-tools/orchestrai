@@ -1,7 +1,8 @@
-import { Loader2, Play, RotateCw, Square } from "lucide-react";
+import { Loader2, Play, RotateCw, Square, TriangleAlert } from "lucide-react";
 import { memo } from "react";
 
 import { PaneHeader } from "@/components/workspace";
+import { portWarningText } from "@/lib/portWarning";
 import { pfBadge, serviceBadge } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -145,6 +146,14 @@ const ServiceRow = memo(function ServiceRow({
       >
         <StatusDot variant={badge.variant} />
         <span className="min-w-0 flex-1 truncate font-medium">{service.name}</span>
+        {service.portWarning && (
+          <span title={portWarningText(service.portWarning)}>
+            <TriangleAlert
+              className="size-3 shrink-0 text-amber-500 dark:text-amber-400"
+              aria-label={`${service.name} ignores its allocated port`}
+            />
+          </span>
+        )}
         <span className="sr-only">{badge.label}</span>
       </button>
       <div className={rowActionsClass(selected)}>

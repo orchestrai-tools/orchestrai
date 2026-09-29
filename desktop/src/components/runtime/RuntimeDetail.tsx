@@ -1,7 +1,8 @@
-import { Pin, PlugZap } from "lucide-react";
+import { Pin, PlugZap, TriangleAlert } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import { openExternalLink } from "@/lib/externalLinks";
+import { portWarningText } from "@/lib/portWarning";
 import { pfBadge, serviceBadge } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -101,6 +102,15 @@ export function ServiceDetailPane({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {service.portWarning && (
+        <div
+          role="alert"
+          className="flex items-center gap-1.5 border-b border-border px-3 py-1.5 text-[12px] text-amber-500 dark:text-amber-400"
+        >
+          <TriangleAlert className="size-3.5 shrink-0" />
+          {portWarningText(service.portWarning)}
+        </div>
+      )}
       <LogViewer
         key={`${project}/${service.name}`}
         logKey={`${project}/${service.name}`}

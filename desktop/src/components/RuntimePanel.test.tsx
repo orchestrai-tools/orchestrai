@@ -662,3 +662,25 @@ describe("RuntimePanel — pinned service ports", () => {
     expect(screen.queryByLabelText(/port is pinned/)).not.toBeInTheDocument();
   });
 });
+
+describe("RuntimePanel — port warning", () => {
+  it("says which port the service listens on and how to fix it", () => {
+    vi.spyOn(daemon, "fetchServiceLogs").mockReturnValue(new Promise(() => {}));
+    const ignoring: ServiceInfo = {
+      ...webService,
+      portWarning: { expected: 4400, announced: 4321 },
+    };
+    render(<RuntimePanel project="warpforge" services={[ignoring]} portforwards={[]} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Listening on 4321, not 4400 — pass $PORT to its command, e.g. `--port $PORT`",
+    );
+    expect(screen.getByLabelText("web ignores its allocated port")).toBeInTheDocument();
+  });
+
+  it("shows nothing for a service on its port", () => {
+    vi.spyOn(daemon, "fetchServiceLogs").mockReturnValue(new Promise(() => {}));
+    render(<RuntimePanel project="warpforge" services={[webService]} portforwards={[]} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});

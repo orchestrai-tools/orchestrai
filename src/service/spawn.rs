@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
+use super::port_watch::spawn_port_watch;
 use super::ready::{spawn_readiness, Probe, Readiness, RunHandle};
 use super::{ManagedService, PortClaim, ServiceEvent, ServiceManager, ServiceStatus};
 use crate::ports;
@@ -134,8 +135,17 @@ impl ServiceManager {
             return Ok(());
         }
 
+        let resolved_command = ports::interpolate(command, &port_map);
+        if let Some(dep) = unresolved_port_ref([&resolved_command], &port_map) {
+            let message = format!(
+                "command references ${{{dep}.port}} but {dep} has no allocated port; declare one for {dep} or start it first"
+            );
+            self.record_start_failure(&key, project_name, service_name, command, message);
+            return Ok(());
+        }
+
         let mut cmd = Command::new("sh");
-        cmd.args(["-c", command])
+        cmd.args(["-c", &resolved_command])
             .current_dir(project_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -201,6 +211,7 @@ impl ServiceManager {
             original_port,
             allocated_port,
             port_pinned: pin == ports::PortPin::Strict,
+            port_warning: None,
             pgid,
             alive: true,
             run_id,
@@ -217,6 +228,7 @@ impl ServiceManager {
             Arc::clone(&stopping),
         );
         let settled = Arc::clone(&run.settled);
+        let exited = Arc::clone(&run.exited);
         // A healthcheck is the only authority when configured; log lines are not.
         let log_pattern = healthcheck_url
             .is_none()
@@ -227,6 +239,9 @@ impl ServiceManager {
             readiness.pattern.as_deref(),
         );
         spawn_readiness(run.clone(), readiness, probe);
+        if allocated_port > 0 {
+            spawn_port_watch(run.clone(), allocated_port, next_seq);
+        }
 
         // Stream stdout
         if let Some(stdout) = stdout {
@@ -284,6 +299,7 @@ impl ServiceManager {
             tokio::spawn(async move {
                 let result = child.wait().await;
                 settled.store(true, Ordering::SeqCst);
+                exited.store(true, Ordering::SeqCst);
                 let exit_code = result.as_ref().ok().and_then(|s| s.code());
                 let clean_exit = result.map(|s| s.success()).unwrap_or(false);
                 let status = if flag.load(Ordering::SeqCst) || clean_exit {
@@ -335,6 +351,7 @@ impl ServiceManager {
             original_port: 0,
             allocated_port: 0,
             port_pinned: false,
+            port_warning: None,
             // An exited run's group stays reachable so the next start or stop reaps it.
             pgid: self.services.get(key).and_then(|s| s.pgid),
             alive: false,

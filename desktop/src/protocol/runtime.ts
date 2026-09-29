@@ -22,7 +22,15 @@ export interface ServiceInfo {
   checkout?: string;
   /** True when the service's declared port is a hard pin, not a hint. */
   portPinned?: boolean;
+  /** Set while the service is up but nothing answers on its allocated port. */
+  portWarning?: PortWarning;
   logSeq: number;
+}
+
+export interface PortWarning {
+  expected: number;
+  /** A different local port the service printed in its logs. */
+  announced?: number;
 }
 
 export type PortForwardStatus = "starting" | "active" | "restarting" | "failed" | "stopped";

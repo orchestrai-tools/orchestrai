@@ -85,6 +85,7 @@ impl ServiceManager {
         if let Some(svc) = self.services.get_mut(key) {
             svc.stopping.store(true, Ordering::SeqCst);
             svc.alive = false;
+            svc.port_warning = None;
             let pgid = svc.pgid.take();
             kill_group(pgid).await;
             svc.status = ServiceStatus::Stopped;

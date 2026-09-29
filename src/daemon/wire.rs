@@ -6,7 +6,7 @@
 use warpforge_protocol as wire;
 
 use crate::portforward::PfStatus;
-use crate::service::ServiceStatus;
+use crate::service::{PortWarning, ServiceStatus};
 
 use super::actor::Event;
 use super::task::{Task, TaskStatus};
@@ -18,6 +18,13 @@ pub fn service_status(s: &ServiceStatus) -> wire::ServiceStatus {
         ServiceStatus::Stopped => wire::ServiceStatus::Stopped,
         ServiceStatus::Failed => wire::ServiceStatus::Failed,
     }
+}
+
+pub fn port_warning(w: &Option<PortWarning>) -> Option<wire::PortWarning> {
+    w.as_ref().map(|w| wire::PortWarning {
+        expected: w.expected,
+        announced: w.announced,
+    })
 }
 
 pub fn pf_status(s: &PfStatus) -> wire::PortForwardStatus {
@@ -166,6 +173,15 @@ pub fn to_wire(ev: &Event) -> Option<wire::Event> {
             service: service.clone(),
             status: service_status(status),
             allocated_port: *allocated_port,
+        }),
+        Event::ServicePortWarning {
+            project,
+            service,
+            warning,
+        } => Some(wire::Event::ServicePortWarning {
+            project: project.clone(),
+            service: service.clone(),
+            port_warning: warning.clone(),
         }),
         Event::ServiceLog {
             project,

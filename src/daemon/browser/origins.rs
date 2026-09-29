@@ -100,6 +100,7 @@ mod tests {
             allocated_port: port,
             checkout: String::new(),
             port_pinned: false,
+            port_warning: None,
             log_seq: 0,
         }
     }

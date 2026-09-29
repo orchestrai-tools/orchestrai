@@ -143,6 +143,18 @@ export class DaemonEvents extends DaemonStore {
         this.setState({ snapshot: { ...snap, services } });
         break;
       }
+      case "service.portWarning":
+        this.setState({
+          snapshot: {
+            ...snap,
+            services: snap.services.map((s) =>
+              s.project === ev.data.project && s.name === ev.data.service
+                ? { ...s, portWarning: ev.data.port_warning ?? undefined }
+                : s,
+            ),
+          },
+        });
+        break;
       case "portforward.status":
         this.setState({
           snapshot: {
