@@ -110,12 +110,18 @@ pub struct Task {
     pub advisor: Option<warpforge_protocol::TaskAdvisor>,
 }
 
+/// A fresh task id, for a caller that has to name the task before it exists.
+/// @returns an id in the form every task has
+pub fn new_task_id() -> String {
+    format!("t_{}", &Uuid::new_v4().to_string()[..8])
+}
+
 impl Task {
     pub fn new(project: &str, prompt: &str, agent: &str, tags: Vec<String>) -> Self {
         let ts = now_secs();
         let title = derive_title(prompt);
         Self {
-            id: format!("t_{}", &Uuid::new_v4().to_string()[..8]),
+            id: new_task_id(),
             session_id: None,
             project: project.to_string(),
             prompt: prompt.to_string(),

@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Factory, Pause, Play, Settings2 } from "lucide-react";
+import { Factory, Pause, Play, Settings2, Square } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { daemon } from "@/daemon";
 import { runnerStatusKey, useRunner } from "@/hooks/useRunner";
@@ -34,6 +35,7 @@ export function FactorySurface({ project, agents, tasks, onOpenTask }: FactorySu
   const queryClient = useQueryClient();
   const { runs, status } = useRunner(project);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [stopOpen, setStopOpen] = useState(false);
   const liveTaskIds = useMemo(() => new Set(tasks.map((task) => task.id)), [tasks]);
   const data = status.data;
 
@@ -46,6 +48,15 @@ export function FactorySurface({ project, agents, tasks, onOpenTask }: FactorySu
   }
   if (!data) return null;
   const { settings } = data;
+  const inCheckout = settings.runLocation === "checkout";
+  const held = data.checkout?.state === "held" ? data.checkout : null;
+  const running = data.entries.filter((entry) => entry.state === "running").length;
+
+  const stop = async () => {
+    const next = await daemon.runnerStop(project);
+    queryClient.setQueryData(runnerStatusKey(project), next);
+    setStopOpen(false);
+  };
 
   const toggle = async () => {
     try {
@@ -81,10 +92,10 @@ export function FactorySurface({ project, agents, tasks, onOpenTask }: FactorySu
               </span>
               <span className="tnum text-[11px] text-muted-foreground">
                 {data.dispatchedToday}/{settings.maxPerDay} started today · workflow{" "}
-                {settings.workflow}
+                {settings.workflow} · {inCheckout ? "project checkout" : "worktrees"}
               </span>
             </div>
-            {data.hold && (
+            {data.hold && !held && (
               <div className="truncate text-[11px] text-muted-foreground" title={data.hold}>
                 Waiting: {data.hold}
               </div>
@@ -99,19 +110,50 @@ export function FactorySurface({ project, agents, tasks, onOpenTask }: FactorySu
             <Settings2 className="size-3.5" />
             Settings
           </Button>
+          {running > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 gap-1.5"
+              onClick={() => setStopOpen(true)}
+            >
+              <Square className="size-3.5" />
+              Stop
+            </Button>
+          )}
           <Button size="sm" className="h-8 gap-1.5" onClick={() => void toggle()}>
             {settings.running ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
             {settings.running ? "Pause" : "Start"}
           </Button>
         </header>
+        {held && (
+          <div
+            role="alert"
+            className="rounded-md border border-warn/35 bg-warn/[0.06] px-3 py-2 text-[12px] text-warn"
+          >
+            {held.heldReason ?? `The Factory left the checkout on ${held.branch}.`}
+          </div>
+        )}
         <p className="text-[12px] leading-relaxed text-muted-foreground">
-          Each item runs through the workflow in a fresh worktree. When its review passes, the
-          Factory commits the change, pushes it and opens a draft pull request for you to review.
-          Merging the pull request marks the item done. Pausing lets running items finish.
+          {inCheckout
+            ? "Items run one at a time in your project checkout, on a new task branch, so the running app serves the change. Afterwards the checkout goes back to the branch it was on."
+            : "Each item runs through the workflow in a fresh worktree."}{" "}
+          When its review passes, the Factory commits the change, pushes it and opens a draft pull
+          request for you to review. Merging the pull request marks the item done. Pausing lets
+          running items finish; Stop ends them and puts them back in the queue.
         </p>
         <FactoryQueue project={project} entries={data.entries} onOpenTask={onOpenTask} />
         <FactoryRuns runs={runs.data ?? []} liveTaskIds={liveTaskIds} onOpenTask={onOpenTask} />
       </div>
+      <ConfirmDialog
+        open={stopOpen}
+        title="Stop the Factory?"
+        description={`This pauses the Factory and stops ${running === 1 ? "the running item" : `${running} running items`}. They go back to the queue, and changes made so far are kept.`}
+        confirmLabel="Stop"
+        busyLabel="Stopping…"
+        onCancel={() => setStopOpen(false)}
+        onConfirm={stop}
+      />
       <FactorySettings
         open={settingsOpen}
         settings={settings}

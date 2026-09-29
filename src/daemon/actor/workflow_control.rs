@@ -127,6 +127,7 @@ impl Daemon {
 
         let mut summary = String::new();
         let rounds_used = run.round;
+        let factory = self.runner_entry_of_task(parent_id).is_some();
         match &outcome {
             WorkflowOutcome::Success { limit_hit } => {
                 run.state = RunState::Done;
@@ -149,7 +150,14 @@ impl Daemon {
                 if let Some(section) = run.verification_section() {
                     summary.push_str(&format!("\n\n{section}"));
                 }
-                summary.push_str("\n\nReview the changes and commit when ready.");
+                summary.push_str("\n\n");
+                summary.push_str(match (factory, limit_hit) {
+                    (false, _) => "Review the changes and commit when ready.",
+                    (true, false) => crate::daemon::runner::DELIVERING_NOTE,
+                    (true, true) => {
+                        "The Factory opens no pull request when the review limit is reached."
+                    }
+                });
             }
             WorkflowOutcome::Stopped => {
                 run.state = RunState::Failed;

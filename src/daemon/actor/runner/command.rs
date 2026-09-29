@@ -2,6 +2,7 @@ use tokio::sync::oneshot;
 
 use warpforge_protocol as wire;
 
+use super::checkout::{GiveBack, ReturnPoint};
 use super::deliver::Delivery;
 
 type Reply<T> = oneshot::Sender<Result<T, String>>;
@@ -35,6 +36,11 @@ pub enum RunnerCommand {
         patch: wire::RunnerSettingsPatch,
         reply: Reply<wire::RunnerStatus>,
     },
+    /// Pause, and stop every pipeline in flight; their items are queued again.
+    Stop {
+        project: String,
+        reply: Reply<wire::RunnerStatus>,
+    },
     Runs {
         project: String,
         limit: Option<u32>,
@@ -51,6 +57,24 @@ pub enum RunnerCommand {
         run_id: String,
         cost_usd: Option<f64>,
         delivery: Option<Delivery>,
+    },
+    /// The project checkout was inspected before a checkout-mode run.
+    CheckoutInspected {
+        project: String,
+        task_id: String,
+        result: Result<ReturnPoint, String>,
+    },
+    /// The project checkout was switched to the task branch, or refused.
+    CheckoutSwitched {
+        project: String,
+        task_id: String,
+        result: Result<String, String>,
+    },
+    /// Giving the project checkout back after a checkout-mode run.
+    CheckoutReturned {
+        project: String,
+        task_id: String,
+        result: GiveBack,
     },
     /// A watched task's pull request merged or closed.
     PullSettled {

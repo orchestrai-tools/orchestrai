@@ -4,7 +4,7 @@ pub(super) fn defs() -> Vec<Value> {
     vec![
         json!({
             "name": "runner_enqueue",
-            "description": "Queue backlog items for the project's Factory: each runs through the configured workflow in its own worktree, and a successful run is committed, pushed and opened as a draft pull request for a person to review. Queuing does not start anything while the Factory is paused. A Factory run cannot queue items itself.",
+            "description": "Queue backlog items for the project's Factory: each runs through the configured workflow in its own worktree (or, when the Factory is set to, one at a time in the project checkout), and a successful run is committed, pushed and opened as a draft pull request for a person to review. Queuing does not start anything while the Factory is paused. A Factory run cannot queue items itself.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

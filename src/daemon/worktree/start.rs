@@ -75,12 +75,20 @@ pub async fn create_started(
         StartPoint::Head => create_detached(base_repo, task_id, None).await,
         StartPoint::Branch(branch) => create_detached(base_repo, task_id, Some(branch)).await,
         StartPoint::Origin => {
-            let default = origin_default_branch(base_repo).await?;
-            fetch_branch(base_repo, "origin", &default).await?;
+            let default = fetch_origin_default(base_repo).await?;
             fork_detached(base_repo, task_id, &format!("origin/{default}"), &default).await
         }
         StartPoint::Existing(existing) => checkout_existing(base_repo, task_id, existing).await,
     }
+}
+
+/// Fetch origin's default branch.
+/// @param repo any checkout of the repository
+/// @returns the default branch's name (`main`), whose `origin/<name>` is now current
+pub async fn fetch_origin_default(repo: &Path) -> Result<String> {
+    let default = origin_default_branch(repo).await?;
+    fetch_branch(repo, "origin", &default).await?;
+    Ok(default)
 }
 
 async fn checkout_existing(

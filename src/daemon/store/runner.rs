@@ -48,6 +48,10 @@ pub(super) fn init(conn: &Connection) -> Result<()> {
             pr_number     INTEGER
         );
         CREATE INDEX IF NOT EXISTS item_runs_project_idx ON item_runs(project, dispatched_at);
+        CREATE TABLE IF NOT EXISTS runner_checkout (
+            project     TEXT PRIMARY KEY,
+            lease_json  TEXT NOT NULL
+        );
         "#,
     )?;
     Ok(())
@@ -150,6 +154,34 @@ impl Store {
         self.conn.execute(
             "DELETE FROM runner_queue WHERE item_id = ?1",
             rusqlite::params![item_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_checkout_leases(&self) -> Result<Vec<wire::CheckoutLease>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT lease_json FROM runner_checkout")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        Ok(rows
+            .filter_map(|r| r.ok())
+            .filter_map(|json| serde_json::from_str(&json).ok())
+            .collect())
+    }
+
+    pub fn save_checkout_lease(&self, lease: &wire::CheckoutLease) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO runner_checkout (project, lease_json) VALUES (?1, ?2)
+             ON CONFLICT(project) DO UPDATE SET lease_json=excluded.lease_json",
+            rusqlite::params![lease.project, serde_json::to_string(lease)?],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_checkout_lease(&self, project: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM runner_checkout WHERE project = ?1",
+            rusqlite::params![project],
         )?;
         Ok(())
     }

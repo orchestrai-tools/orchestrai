@@ -85,10 +85,20 @@ impl Daemon {
         };
         let job = match ended {
             Some((result, detail)) => {
-                self.runner_end_entry(&item_id);
+                let by_you = result == wire::ItemRunOutcome::Stopped
+                    && self.runner.stopping.contains(&item_id);
+                if by_you {
+                    self.runner_requeue(&item_id);
+                } else {
+                    self.runner_end_entry(&item_id);
+                }
                 if let Some(mut run) = run.clone() {
                     run.outcome = result;
-                    run.detail = Some(detail);
+                    run.detail = Some(if by_you {
+                        super::stop::STOPPED_BY_YOU.to_string()
+                    } else {
+                        detail
+                    });
                     self.runner_put_run(run, true);
                 }
                 None
@@ -135,6 +145,7 @@ impl Daemon {
         let worktree = task
             .worktree
             .clone()
+            .or_else(|| self.runner_checkout_dir(task_id))
             .ok_or_else(|| "the pipeline ran without an isolated checkout".to_string())?;
         let item = self
             .runner_read_item(&entry.project, &entry.item_id)
@@ -224,6 +235,9 @@ impl Daemon {
             .get(item_id)
             .filter(|e| e.run_id.as_deref() == Some(run_id))
             .cloned();
+        if let (Some(delivery), Some(task_id)) = (delivery.as_ref(), run.task_id.as_deref()) {
+            self.runner_report_delivery(task_id, delivery);
+        }
         match (delivery, entry) {
             (None, _) => {}
             (Some(Delivery::Opened { url, number }), Some(mut entry)) => {
@@ -346,6 +360,7 @@ impl Daemon {
 
     pub(super) async fn runner_tick(&mut self) {
         self.runner_sweep();
+        self.runner.checkout_blocks.clear();
         let since = now_secs() - DAY_SECS;
         self.runner.dispatches.retain(|(_, at)| *at > since);
         let mut projects: Vec<String> = self

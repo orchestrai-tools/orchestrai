@@ -174,7 +174,7 @@ How it fits the pipeline:
 - **Evidence.** Every screenshot the tester takes is kept with the pipeline and shown on its verify stage in the **Pipeline** view. The verdict, the checklist and the screenshots are part of the pipeline's final summary.
 
 <Aside type="caution">
-  Verification needs the Warpforge desktop app open, because the browser lives there. A task that runs in its **own worktree** cannot be verified yet: the project's dev services run from the main checkout, so they would test the wrong code. The stage says so and stops at the same decision point instead of reporting a pass it cannot back up.
+  Verification needs the Warpforge desktop app open, because the browser lives there. A task that runs in its **own worktree** cannot be verified yet: the project's dev services run from the main checkout, so they would test the wrong code. The stage says so and stops at the same decision point instead of reporting a pass it cannot back up. The [Factory](/guides/factory/#run-location) can still verify its items: set its **Run location** to **Project checkout**, and each item runs in the project checkout that your dev services serve.
 </Aside>
 
 ## Placeholders

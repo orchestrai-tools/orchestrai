@@ -9,7 +9,8 @@
 #
 # Needs the Warpforge desktop app open (the browser lives there). Tasks in
 # their own worktree cannot be verified yet: the dev services run from the
-# project's main checkout, so they would test the wrong code.
+# project's main checkout, so they would test the wrong code. A Factory set to
+# run in the project checkout can verify its items.
 version: 1
 name: Implement + verify + review loop
 description: Implement the task, test it in the running app, then loop reviews and fixes until approved.

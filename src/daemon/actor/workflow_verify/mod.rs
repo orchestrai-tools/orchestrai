@@ -15,7 +15,7 @@ use fix_base::changes;
 /// Why a verify stage refuses a task in its own worktree (ADR 0024).
 const WORKTREE_UNSUPPORTED: &str = "This task runs in its own worktree, but the project's dev \
 services run from the main checkout, so they would not serve this change. Per-worktree services \
-are not supported yet.";
+are not supported yet; a Factory set to run in the project checkout can verify its items.";
 
 impl Daemon {
     /// Start a verify stage, or refuse it when the task's change cannot be

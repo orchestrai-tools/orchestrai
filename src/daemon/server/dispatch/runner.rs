@@ -75,6 +75,9 @@ pub(super) async fn runner(
             })
             .await
         }
+        wire::Method::RunnerStop { project } => {
+            ask(handle, |reply| RunnerCommand::Stop { project, reply }).await
+        }
         wire::Method::RunnerRuns { project, limit } => {
             let runs = ask(handle, |reply| RunnerCommand::Runs {
                 project,

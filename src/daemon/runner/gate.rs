@@ -25,10 +25,11 @@ pub(crate) fn slot_refusal(settings: &wire::RunnerSettings, slots: Slots) -> Opt
     if !settings.running {
         return Some("The Factory is paused".to_string());
     }
-    if slots.in_flight >= settings.max_concurrent {
+    let max_concurrent = settings.effective_max_concurrent();
+    if slots.in_flight >= max_concurrent {
         return Some(format!(
-            "{} of {} run slot(s) in use",
-            slots.in_flight, settings.max_concurrent
+            "{} of {max_concurrent} run slot(s) in use",
+            slots.in_flight
         ));
     }
     if slots.open_prs >= settings.max_open_prs {

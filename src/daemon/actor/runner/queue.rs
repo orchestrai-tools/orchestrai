@@ -170,6 +170,7 @@ impl Daemon {
             max_per_day,
             headroom_pct,
             min_free_gb,
+            run_location,
         } = patch;
         if let Some(workflow) = workflow {
             let workflow = workflow.trim().to_string();
@@ -212,6 +213,9 @@ impl Daemon {
         settings.max_per_day = bounded(max_per_day, settings.max_per_day, 1, 200, "items per day")?;
         settings.headroom_pct = bounded(headroom_pct, settings.headroom_pct, 1, 100, "headroom")?;
         settings.min_free_gb = bounded(min_free_gb, settings.min_free_gb, 0, 10_000, "free disk")?;
+        if let Some(run_location) = run_location {
+            settings.run_location = run_location;
+        }
         if let Some(running) = running {
             settings.running = running;
         }
@@ -221,5 +225,18 @@ impl Daemon {
         self.runner.settings.insert(project.to_string(), settings);
         self.runner_emit(project);
         Ok(())
+    }
+
+    /// Stop starting items in `project`; runs in flight go on.
+    pub(super) fn runner_pause(&mut self, project: &str) {
+        let mut settings = self.runner_settings(project);
+        if !settings.running {
+            return;
+        }
+        settings.running = false;
+        settings.updated_at = now_secs();
+        self.persist
+            .write(PersistWrite::RunnerSettings(Box::new(settings.clone())));
+        self.runner.settings.insert(project.to_string(), settings);
     }
 }

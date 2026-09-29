@@ -1,5 +1,11 @@
 // ── Backlog runner ("Factory", ADR 0023) ──────────────────────────────────────
 
+/**
+ * Where items run: a fresh worktree each (parallel), or the project checkout
+ * one at a time, so the running dev services serve the change.
+ */
+export type RunLocation = "worktree" | "checkout";
+
 export interface RunnerSettings {
   project: string;
   /** Whether queued items start. Pausing never stops a run in flight. */
@@ -14,6 +20,7 @@ export interface RunnerSettings {
   maxPerDay: number;
   headroomPct: number;
   minFreeGb: number;
+  runLocation: RunLocation;
   updatedAt: number;
 }
 
@@ -84,6 +91,25 @@ export interface ItemRun {
   prNumber?: number | null;
 }
 
+export type CheckoutLeaseState = "preparing" | "running" | "returning" | "held";
+
+/** The Factory's hold on the project checkout in `checkout` run location. */
+export interface CheckoutLease {
+  project: string;
+  itemId: string;
+  itemNumber: number;
+  taskId: string;
+  /** `warpforge/task/<taskId>`. */
+  branch: string;
+  /** The branch the checkout returns to; null for a detached HEAD. */
+  returnBranch?: string | null;
+  returnCommit?: string | null;
+  state: CheckoutLeaseState;
+  /** What the person has to do before the checkout can be given back. */
+  heldReason?: string | null;
+  updatedAt: number;
+}
+
 export interface RunnerStatus {
   settings: RunnerSettings;
   /** Queued entries in start order, then the ones in flight or in review. */
@@ -91,4 +117,5 @@ export interface RunnerStatus {
   dispatchedToday: number;
   /** Why no queued item starts right now. */
   hold?: string | null;
+  checkout?: CheckoutLease | null;
 }

@@ -3,6 +3,7 @@
 //! outcome that closes the item. Pure logic lives in `daemon/runner/`.
 
 mod boot;
+mod checkout;
 mod command;
 mod deliver;
 mod dispatch;
@@ -10,6 +11,8 @@ mod finish;
 mod items;
 mod pulls;
 mod queue;
+mod report;
+mod stop;
 
 use std::collections::{HashMap, HashSet};
 
@@ -44,6 +47,13 @@ pub(crate) struct RunnerState {
     holds: HashMap<String, String>,
     /// Items whose off-loop wrap-up is in flight.
     finishing: HashSet<String>,
+    /// The Factory's hold on each project checkout, by project.
+    leases: HashMap<String, wire::CheckoutLease>,
+    /// Why the last checkout-mode start was refused, by project; cleared by
+    /// the tick and by every request, so the check runs again.
+    checkout_blocks: HashMap<String, String>,
+    /// Items whose pipeline Stop is ending; they are queued again.
+    stopping: HashSet<String>,
     /// Task ids for the pull request bridge to watch.
     watch_tx: Option<mpsc::UnboundedSender<String>>,
     open_pr: deliver::PrOpener,
@@ -55,6 +65,7 @@ impl RunnerState {
         entries: Vec<wire::RunnerEntry>,
         runs: Vec<wire::ItemRun>,
         dispatches: Vec<(String, i64)>,
+        leases: Vec<wire::CheckoutLease>,
     ) -> Self {
         Self {
             settings: settings
@@ -69,6 +80,9 @@ impl RunnerState {
             dispatches,
             holds: HashMap::new(),
             finishing: HashSet::new(),
+            leases: leases.into_iter().map(|l| (l.project.clone(), l)).collect(),
+            checkout_blocks: HashMap::new(),
+            stopping: HashSet::new(),
             watch_tx: None,
             open_pr: deliver::default_opener(),
         }
@@ -107,6 +121,7 @@ impl Daemon {
                 let result =
                     self.runner_enqueue(&project, &item_ids, overrides, origin_task.as_deref());
                 if result.is_ok() {
+                    self.runner.checkout_blocks.remove(&project);
                     self.runner_dispatch(&project).await;
                 }
                 let _ = reply.send(result.map(|()| self.runner_status(&project)));
@@ -132,11 +147,44 @@ impl Daemon {
                 patch,
                 reply,
             } => {
+                let start = patch.running == Some(true);
                 let result = self.runner_update_settings(&project, patch);
                 if result.is_ok() {
+                    self.runner.checkout_blocks.remove(&project);
+                    if start {
+                        self.runner_checkout_retry(&project);
+                    }
                     self.runner_dispatch(&project).await;
                 }
                 let _ = reply.send(result.map(|()| self.runner_status(&project)));
+            }
+            RunnerCommand::Stop { project, reply } => {
+                let result = self.runner_stop(&project).await;
+                let _ = reply.send(result.map(|()| self.runner_status(&project)));
+            }
+            RunnerCommand::CheckoutInspected {
+                project,
+                task_id,
+                result,
+            } => {
+                self.runner_checkout_inspected(&project, &task_id, result)
+                    .await
+            }
+            RunnerCommand::CheckoutSwitched {
+                project,
+                task_id,
+                result,
+            } => {
+                self.runner_checkout_switched(&project, &task_id, result)
+                    .await
+            }
+            RunnerCommand::CheckoutReturned {
+                project,
+                task_id,
+                result,
+            } => {
+                self.runner_checkout_returned(&project, &task_id, result)
+                    .await
             }
             RunnerCommand::Runs {
                 project,
@@ -201,7 +249,10 @@ impl Daemon {
             settings: self.runner_settings(project),
             entries: queued.into_iter().chain(active).cloned().collect(),
             dispatched_today: self.runner_dispatched_today(project, now_secs()),
-            hold: self.runner.holds.get(project).cloned(),
+            hold: self
+                .runner_lease_hold(project)
+                .or_else(|| self.runner.holds.get(project).cloned()),
+            checkout: self.runner.leases.get(project).cloned(),
         }
     }
 
@@ -209,18 +260,28 @@ impl Daemon {
         self.emit(Event::RunnerUpdated(Box::new(self.runner_status(project))));
     }
 
-    /// Write an entry through: mirror first, then the store queue.
+    /// Write an entry through: mirror first, then the store queue. An entry
+    /// leaving its run gives back the project checkout it held.
     fn runner_put_entry(&mut self, mut entry: wire::RunnerEntry) {
         entry.updated_at = now_secs();
         self.persist
             .write(PersistWrite::RunnerEntry(Box::new(entry.clone())));
-        self.runner.entries.insert(entry.item_id.clone(), entry);
+        let item_id = entry.item_id.clone();
+        let in_run = matches!(
+            entry.state,
+            wire::RunnerEntryState::Running | wire::RunnerEntryState::Delivering
+        );
+        self.runner.entries.insert(item_id.clone(), entry);
+        if !in_run {
+            self.runner_checkout_entry_left(&item_id);
+        }
     }
 
     fn runner_drop_entry(&mut self, item_id: &str) {
         self.runner.entries.remove(item_id);
         self.persist
             .write(PersistWrite::RunnerDequeue(item_id.to_string()));
+        self.runner_checkout_entry_left(item_id);
     }
 
     /// Write an attempt through and tell clients. A final attempt leaves the
@@ -236,8 +297,19 @@ impl Daemon {
         }
     }
 
+    /// Items the runner has started and not yet let go of. A tracker sync
+    /// keeps their local status, which the runner writes (ADR 0023).
+    pub(crate) fn runner_active_items(&self) -> HashSet<String> {
+        self.runner
+            .entries
+            .values()
+            .filter(|e| e.state != wire::RunnerEntryState::Queued)
+            .map(|e| e.item_id.clone())
+            .collect()
+    }
+
     /// The entry whose pipeline is `task_id`.
-    fn runner_entry_of_task(&self, task_id: &str) -> Option<String> {
+    pub(crate) fn runner_entry_of_task(&self, task_id: &str) -> Option<String> {
         self.runner
             .entries
             .values()

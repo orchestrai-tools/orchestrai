@@ -14,3 +14,8 @@ pub(crate) use order::{dispatch_order, next_position};
 
 /// Tag on every pipeline task the runner starts.
 pub(crate) const RUNNER_TAG: &str = "runner";
+
+/// The last line of a runner pipeline's summary until its delivery reports;
+/// then replaced by what the delivery did.
+pub(crate) const DELIVERING_NOTE: &str =
+    "The Factory is committing this change and opening a draft pull request.";

@@ -18,11 +18,15 @@ use super::super::{make_link, RemoteIssue};
 /// `…/.warpforge/backlog/*.yaml` (project-local) instead of the SQLite
 /// `backlog_items` table; tracker links always live in SQLite because they are
 /// daemon-owned. Passing `None` persists to SQLite.
+///
+/// `keep_status` names items whose local status the Factory owns while it
+/// runs them; a sync refreshes everything else about them.
 pub fn adopt_imported(
     store: &Store,
     project: &str,
     yaml_project_path: Option<&str>,
     fetched: Vec<(String, Vec<RemoteIssue>)>,
+    keep_status: &std::collections::HashSet<String>,
 ) -> Result<(Vec<wire::ImportedWorkItem>, Vec<wire::SyncedExternalItem>)> {
     // The same listing answers both questions, so one pass does both: an issue
     // we have never seen becomes a new item, and one we already track has its
@@ -59,6 +63,14 @@ pub fn adopt_imported(
             store.upsert_backlog_item(item)
         }
     };
+    let local_status = |item_id: &str, issue: &RemoteIssue| -> Result<String> {
+        if !keep_status.contains(item_id) {
+            return Ok(issue.status.clone());
+        }
+        Ok(load_item(item_id)?
+            .map(|item| item.status)
+            .unwrap_or_else(|| issue.status.clone()))
+    };
     // The row mirrors the issue, so it carries the *tracker's* timestamps, not
     // the moment this sync ran: stamping `now` here made every synced item look
     // freshly touched and re-sorted the board on each refresh. The assignee is
@@ -66,9 +78,10 @@ pub fn adopt_imported(
     // for have none.
     let update_remote = |item_id: &str, issue: &RemoteIssue| {
         let created_at = issue.created_or_updated();
+        let status = local_status(item_id, issue)?;
         if let Some(dir) = yaml_project_path {
             crate::daemon::backlog::update(dir, project, item_id, |item| {
-                item.status = issue.status.clone();
+                item.status = status;
                 item.remote_status = Some(issue.remote_status.clone());
                 item.url = Some(issue.url.clone());
                 item.assignee = issue.assignee.clone();
@@ -78,7 +91,7 @@ pub fn adopt_imported(
         } else {
             store.update_backlog_remote(
                 item_id,
-                &issue.status,
+                &status,
                 Some(issue.remote_status.as_str()),
                 &issue.url,
                 issue.updated_at,
@@ -163,9 +176,9 @@ pub fn adopt_imported(
                 store.upsert_tracker_link(&link)?;
                 update_remote(&link.item_id, &issue)?;
                 synced.push(wire::SyncedExternalItem {
+                    status: local_status(&link.item_id, &issue)?,
                     id: link.item_id,
                     url: link.url,
-                    status: issue.status,
                     remote_status: link.remote_status,
                 });
                 continue;

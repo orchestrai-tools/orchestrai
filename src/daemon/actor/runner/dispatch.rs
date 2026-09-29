@@ -1,5 +1,6 @@
 //! Starting queued items: the gates in front of each dispatch, then a
-//! workflow pipeline in a fresh worktree forked from origin's default branch.
+//! workflow pipeline in a fresh worktree forked from origin's default branch,
+//! or in the project checkout on a task branch (`checkout/`).
 
 use std::collections::HashMap;
 
@@ -21,6 +22,15 @@ fn free_gb(path: &str) -> Option<u64> {
         return None;
     }
     Some((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64) / 1_000_000_000)
+}
+
+/// A queued item and what it runs with, judged ready to start.
+pub(super) struct Choice {
+    pub entry: wire::RunnerEntry,
+    pub item: wire::BacklogItem,
+    pub workflow: String,
+    pub agent: String,
+    pub model: Option<String>,
 }
 
 impl Daemon {
@@ -104,6 +114,7 @@ impl Daemon {
             let settings = self.runner_settings(project);
             let has_queued =
                 !logic::dispatch_order(self.runner.entries.values(), project).is_empty();
+            let leased = self.runner.leases.contains_key(project);
             let mut hold =
                 logic::slot_refusal(&settings, self.runner_slots(project)).filter(|_| has_queued);
             if hold.is_none() && has_queued && settings.min_free_gb > 0 {
@@ -115,8 +126,12 @@ impl Daemon {
                     ));
                 }
             }
+            let checkout = settings.run_location == wire::RunLocation::Checkout;
+            if hold.is_none() && has_queued && checkout && !leased {
+                hold = self.runner_checkout_refusal(project);
+            }
             changed |= self.runner_set_hold(project, hold.clone());
-            if hold.is_some() || !has_queued {
+            if hold.is_some() || !has_queued || leased {
                 break;
             }
             let (started, touched) = self.runner_start_next(project, &settings).await;
@@ -131,7 +146,8 @@ impl Daemon {
     }
 
     /// Start the first queued entry whose item and agents allow it. Returns
-    /// whether one started and whether any entry changed.
+    /// whether one started and whether any entry changed. In the project
+    /// checkout, "started" means the checkout is being prepared for it.
     async fn runner_start_next(
         &mut self,
         project: &str,
@@ -144,70 +160,95 @@ impl Daemon {
         let path = self.project_path(project).unwrap_or_default();
         let mut touched = false;
         for item_id in order {
-            let item = match self.runner_read_item(project, &item_id) {
-                Ok(Some(item)) if !matches!(item.status.as_str(), "done" | "cancelled") => item,
-                Ok(_) => {
-                    self.runner_drop_entry(&item_id);
-                    touched = true;
-                    continue;
+            match self.runner_pick(project, &item_id, settings, &path) {
+                Ok(choice) if settings.run_location == wire::RunLocation::Checkout => {
+                    self.runner_checkout_begin(&choice.entry);
+                    return (true, true);
                 }
-                Err(error) => {
-                    touched |= self.runner_set_waiting(&item_id, Some(format!("{error:#}")));
-                    continue;
+                Ok(choice) => {
+                    self.runner_start(choice, None).await;
+                    return (true, true);
                 }
-            };
-            let Some(entry) = self.runner.entries.get(&item_id).cloned() else {
-                continue;
-            };
-            let workflow = entry
-                .workflow
-                .clone()
-                .unwrap_or_else(|| settings.workflow.clone());
-            let agent = entry
-                .agent
-                .clone()
-                .or_else(|| Some(settings.agent.clone()).filter(|a| !a.is_empty()))
-                .unwrap_or_else(|| self.runner_default_agent());
-            let model = entry.model.clone().or_else(|| settings.model.clone());
-            let spec =
-                match crate::workflow_config::load_workflow(std::path::Path::new(&path), &workflow)
-                    .map(|loaded| loaded.spec)
-                {
-                    Some(Ok(spec)) => spec,
-                    Some(Err(error)) => {
-                        let reason = format!("workflow `{workflow}` is invalid: {error}");
-                        touched |= self.runner_set_waiting(&item_id, Some(reason));
-                        continue;
-                    }
-                    None => {
-                        let reason = format!("unknown workflow `{workflow}`");
-                        touched |= self.runner_set_waiting(&item_id, Some(reason));
-                        continue;
-                    }
-                };
-            if agent.is_empty() {
-                touched |=
-                    self.runner_set_waiting(&item_id, Some("no agent is set up".to_string()));
-                continue;
+                Err(changed) => touched |= changed,
             }
-            if let Some(reason) = self.runner_agent_refusal(&spec, &agent, settings.headroom_pct) {
-                touched |= self.runner_set_waiting(&item_id, Some(reason));
-                continue;
-            }
-            self.runner_start(entry, item, workflow, agent, model).await;
-            return (true, true);
         }
         (false, touched)
     }
 
-    async fn runner_start(
+    /// What queued `item_id` would run with, or whether judging it changed
+    /// its entry (dropped, or a new waiting reason).
+    pub(super) fn runner_pick(
         &mut self,
-        mut entry: wire::RunnerEntry,
-        item: wire::BacklogItem,
-        workflow: String,
-        agent: String,
-        model: Option<String>,
+        project: &str,
+        item_id: &str,
+        settings: &wire::RunnerSettings,
+        path: &str,
+    ) -> Result<Choice, bool> {
+        let item = match self.runner_read_item(project, item_id) {
+            Ok(Some(item)) if !matches!(item.status.as_str(), "done" | "cancelled") => item,
+            Ok(_) => {
+                self.runner_drop_entry(item_id);
+                return Err(true);
+            }
+            Err(error) => return Err(self.runner_set_waiting(item_id, Some(format!("{error:#}")))),
+        };
+        let Some(entry) = self.runner.entries.get(item_id).cloned() else {
+            return Err(false);
+        };
+        let workflow = entry
+            .workflow
+            .clone()
+            .unwrap_or_else(|| settings.workflow.clone());
+        let agent = entry
+            .agent
+            .clone()
+            .or_else(|| Some(settings.agent.clone()).filter(|a| !a.is_empty()))
+            .unwrap_or_else(|| self.runner_default_agent());
+        let model = entry.model.clone().or_else(|| settings.model.clone());
+        let spec =
+            match crate::workflow_config::load_workflow(std::path::Path::new(path), &workflow)
+                .map(|loaded| loaded.spec)
+            {
+                Some(Ok(spec)) => spec,
+                Some(Err(error)) => {
+                    let reason = format!("workflow `{workflow}` is invalid: {error}");
+                    return Err(self.runner_set_waiting(item_id, Some(reason)));
+                }
+                None => {
+                    let reason = format!("unknown workflow `{workflow}`");
+                    return Err(self.runner_set_waiting(item_id, Some(reason)));
+                }
+            };
+        if agent.is_empty() {
+            return Err(self.runner_set_waiting(item_id, Some("no agent is set up".to_string())));
+        }
+        if let Some(reason) = self.runner_agent_refusal(&spec, &agent, settings.headroom_pct) {
+            return Err(self.runner_set_waiting(item_id, Some(reason)));
+        }
+        Ok(Choice {
+            entry,
+            item,
+            workflow,
+            agent,
+            model,
+        })
+    }
+
+    /// Start `choice`'s pipeline: in a fresh worktree, or with `checkout` =
+    /// `(task id, origin's default branch)` in the project checkout, which is
+    /// already on that task's branch.
+    pub(super) async fn runner_start(
+        &mut self,
+        choice: Choice,
+        checkout: Option<(String, String)>,
     ) {
+        let Choice {
+            mut entry,
+            item,
+            workflow,
+            agent,
+            model,
+        } = choice;
         let now = now_secs();
         let project = entry.project.clone();
         entry.number = item.number;
@@ -238,13 +279,14 @@ impl Daemon {
             pr_number: None,
         };
         self.runner.dispatches.push((project.clone(), now));
+        let (preset_id, base) = checkout.unzip();
         let created = self
             .workflow_create(
                 project.clone(),
                 logic::brief(&item),
                 agent,
                 vec![logic::RUNNER_TAG.to_string()],
-                true,
+                preset_id.is_none(),
                 StartPoint::Origin,
                 workflow,
                 Vec::new(),
@@ -253,10 +295,16 @@ impl Daemon {
                 HashMap::new(),
                 None,
                 Some(item.id.clone()),
+                preset_id,
             )
             .await;
         match created {
             Ok(task_id) => {
+                if let Some(task) = self.tasks.get_mut(&task_id).filter(|_| base.is_some()) {
+                    task.base_branch = base;
+                    let updated = task.clone();
+                    self.persist(&updated);
+                }
                 run.task_id = Some(task_id.clone());
                 entry.state = wire::RunnerEntryState::Running;
                 entry.task_id = Some(task_id.clone());

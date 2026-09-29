@@ -23,12 +23,14 @@ export function normalizeRunnerStatus(project: string, raw: unknown): RunnerStat
       maxPerDay: 10,
       headroomPct: 80,
       minFreeGb: 25,
+      runLocation: "worktree",
       updatedAt: 0,
       ...status.settings,
     },
     entries: Array.isArray(status.entries) ? status.entries : [],
     dispatchedToday: status.dispatchedToday ?? 0,
     hold: status.hold ?? null,
+    checkout: status.checkout ?? null,
   };
 }
 
@@ -62,6 +64,12 @@ export function RunnerMethods<TBase extends Constructor<CoreClient>>(Base: TBase
     /** Change settings, including Start (`running: true`) and Pause. */
     async runnerUpdateSettings(project: string, patch: RunnerSettingsPatch): Promise<RunnerStatus> {
       const result = await this.request("runner.updateSettings", { patch, project });
+      return normalizeRunnerStatus(project, result);
+    }
+
+    /** Pause and stop every running item; they go back to the queue. */
+    async runnerStop(project: string): Promise<RunnerStatus> {
+      const result = await this.request("runner.stop", { project });
       return normalizeRunnerStatus(project, result);
     }
 

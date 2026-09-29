@@ -112,6 +112,53 @@ describe("FactorySurface", () => {
     expect(dequeue).toHaveBeenCalledWith("warpforge", "b-3");
   });
 
+  it("stops running items after asking, and shows a checkout it had to leave", async () => {
+    const leftBehind = normalizeRunnerStatus("warpforge", {
+      checkout: {
+        branch: "warpforge/task/t-5",
+        heldReason: "The Factory left the checkout on warpforge/task/t-5 because it has changes",
+        itemId: "b-5",
+        itemNumber: 5,
+        project: "warpforge",
+        state: "held",
+        taskId: "t-5",
+        updatedAt: 1,
+      },
+      entries: [entry({ itemId: "b-6", number: 6, state: "running", taskId: "t-6" })],
+      hold: "The Factory left the checkout on warpforge/task/t-5 because it has changes",
+      settings: { project: "warpforge", runLocation: "checkout", running: true },
+    });
+    vi.spyOn(daemon, "runnerStatus").mockResolvedValue(leftBehind);
+    const stop = vi.spyOn(daemon, "runnerStop").mockResolvedValue(leftBehind);
+    renderSurface();
+    expect((await screen.findByRole("alert")).textContent).toContain("left the checkout");
+    expect(screen.getByText(/project checkout$/)).toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(stop).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole("button", { name: "Stop" }));
+    expect(stop).toHaveBeenCalledWith("warpforge");
+  });
+
+  it("saves the run location and pins one run at a time in the checkout", async () => {
+    vi.spyOn(daemon, "workflowList").mockResolvedValue([]);
+    const update = vi.spyOn(daemon, "runnerUpdateSettings").mockResolvedValue(status);
+    renderSurface();
+    await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    await userEvent.click(screen.getByRole("radio", { name: /Project checkout/ }));
+    expect(
+      screen.getByText("One item at a time; your checkout is used while it runs."),
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole("spinbutton", { name: "Runs at once" }) as HTMLInputElement).value,
+    ).toBe("1");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(update).toHaveBeenCalledWith(
+      "warpforge",
+      expect.objectContaining({ runLocation: "checkout" }),
+    );
+  });
+
   it("keeps the newest runs first when one is updated or added", () => {
     const runs = upsertItemRun(
       [run({ dispatchedAt: 100 })],

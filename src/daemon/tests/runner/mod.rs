@@ -10,6 +10,7 @@ use super::*;
 use crate::daemon::actor::runner::RunnerCommand;
 use crate::daemon::diff::testsupport::git;
 
+mod checkout;
 mod delivery;
 mod dispatch;
 mod recovery;

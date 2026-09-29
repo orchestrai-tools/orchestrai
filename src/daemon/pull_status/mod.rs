@@ -41,6 +41,9 @@ const COMMENTS_MAX_AGE: Duration = Duration::from_secs(15 * 60);
 pub(crate) struct PullTarget {
     pub worktree: String,
     pub base_branch: Option<String>,
+    /// The pull request's head branch when it is not what `worktree` has
+    /// checked out: a Factory run in the project checkout, given back since.
+    pub head: Option<String>,
 }
 
 type FetchFuture = Pin<Box<dyn Future<Output = Result<Option<Listed>>> + Send>>;
@@ -308,9 +311,10 @@ impl PullWatch {
                     continue;
                 }
                 let tasks = list_tasks(&cmd_tx).await;
+                let paths = list_project_paths(&cmd_tx).await;
                 drop(cmd_tx);
                 let max_age = POLL_INTERVAL - Duration::from_secs(30);
-                watch.refresh(targets(&tasks), Some(&open), max_age, &events);
+                watch.refresh(targets(&tasks, &paths), Some(&open), max_age, &events);
             }
         });
     }
@@ -325,35 +329,62 @@ pub(crate) async fn refresh(
     handle.pulls.ensure_polling(handle);
     let max_age = max_age_secs.map_or(DEFAULT_MAX_AGE, Duration::from_secs);
     let tasks = handle.tasks().await;
+    let paths = project_paths(handle.projects().await);
     handle
         .pulls
-        .refresh(targets(&tasks), only, max_age, &handle.event_tx)
+        .refresh(targets(&tasks, &paths), only, max_age, &handle.event_tx)
 }
 
-/// Every live task with an isolated checkout, keyed by task id. Archived
-/// tasks sit folded on the sidebar's done shelf and are not worth a `gh` call,
-/// except a Factory task, whose merge is what closes its backlog item.
-pub(crate) fn targets(tasks: &[Task]) -> HashMap<String, PullTarget> {
+/// Every live task with an isolated checkout, keyed by task id, plus every
+/// Factory task that ran in its project checkout (`paths`, by project name).
+/// Archived tasks sit folded on the sidebar's done shelf and are not worth a
+/// `gh` call, except a Factory task, whose merge is what closes its backlog item.
+pub(crate) fn targets(
+    tasks: &[Task],
+    paths: &HashMap<String, String>,
+) -> HashMap<String, PullTarget> {
     tasks
         .iter()
-        .filter(|task| {
-            task.status != crate::daemon::task::TaskStatus::Done
-                || task
-                    .tags
-                    .iter()
-                    .any(|tag| tag == crate::daemon::runner::RUNNER_TAG)
-        })
+        .filter(|task| task.status != crate::daemon::task::TaskStatus::Done || is_factory(task))
         .filter_map(|task| {
-            let worktree = task.worktree.clone()?;
-            Some((
-                task.id.clone(),
-                PullTarget {
+            let target = match task.worktree.clone() {
+                Some(worktree) => PullTarget {
                     worktree,
                     base_branch: task.base_branch.clone(),
+                    head: None,
                 },
-            ))
+                None if is_factory(task) && task.base_branch.is_some() => PullTarget {
+                    worktree: paths.get(&task.project)?.clone(),
+                    base_branch: task.base_branch.clone(),
+                    head: Some(format!(
+                        "{}{}",
+                        crate::daemon::worktree::TASK_BRANCH_PREFIX,
+                        task.id
+                    )),
+                },
+                None => return None,
+            };
+            Some((task.id.clone(), target))
         })
         .collect()
+}
+
+fn is_factory(task: &Task) -> bool {
+    task.tags
+        .iter()
+        .any(|tag| tag == crate::daemon::runner::RUNNER_TAG)
+}
+
+fn project_paths(projects: Vec<crate::registry::ProjectEntry>) -> HashMap<String, String> {
+    projects.into_iter().map(|p| (p.name, p.path)).collect()
+}
+
+async fn list_project_paths(cmd_tx: &mpsc::Sender<Command>) -> HashMap<String, String> {
+    let (tx, rx) = oneshot::channel();
+    if cmd_tx.send(Command::Projects(tx)).await.is_err() {
+        return HashMap::new();
+    }
+    project_paths(rx.await.unwrap_or_default())
 }
 
 async fn list_tasks(cmd_tx: &mpsc::Sender<Command>) -> Vec<Task> {

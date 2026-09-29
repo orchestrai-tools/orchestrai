@@ -29,6 +29,18 @@ fn default_min_free_gb() -> u32 {
     DEFAULT_RUNNER_MIN_FREE_GB
 }
 
+/// Where the Factory runs an item's pipeline.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunLocation {
+    /// A fresh worktree per item; several items can run at once.
+    #[default]
+    Worktree,
+    /// The project checkout itself, one item at a time, so the running dev
+    /// services serve the change and a verify stage can test it.
+    Checkout,
+}
+
 /// How one project's runner works. Stored per project; a project that never
 /// saved any gets [`RunnerSettings::defaults`], paused.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,6 +74,8 @@ pub struct RunnerSettings {
     #[serde(default = "default_min_free_gb")]
     pub min_free_gb: u32,
     #[serde(default)]
+    pub run_location: RunLocation,
+    #[serde(default)]
     pub updated_at: i64,
 }
 
@@ -81,7 +95,17 @@ impl RunnerSettings {
             max_per_day: DEFAULT_RUNNER_MAX_PER_DAY,
             headroom_pct: DEFAULT_RUNNER_HEADROOM_PCT,
             min_free_gb: DEFAULT_RUNNER_MIN_FREE_GB,
+            run_location: RunLocation::Worktree,
             updated_at: 0,
+        }
+    }
+
+    /// Items that may run at once: always one in the project checkout.
+    /// @returns the concurrency the runner applies
+    pub fn effective_max_concurrent(&self) -> u32 {
+        match self.run_location {
+            RunLocation::Worktree => self.max_concurrent,
+            RunLocation::Checkout => 1,
         }
     }
 }
@@ -108,6 +132,8 @@ pub struct RunnerSettingsPatch {
     pub headroom_pct: Option<u32>,
     #[serde(default)]
     pub min_free_gb: Option<u32>,
+    #[serde(default)]
+    pub run_location: Option<RunLocation>,
 }
 
 /// Where a queued item is. An entry leaves the queue when its run ends or its
@@ -240,6 +266,49 @@ pub struct ItemRun {
     pub pr_number: Option<u64>,
 }
 
+/// Where the Factory's hold on the project checkout is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckoutLeaseState {
+    /// Checking the checkout is clean, then switching it to the task branch.
+    Preparing,
+    /// The item's pipeline runs, or delivers, in the checkout.
+    Running,
+    /// Switching the checkout back to the branch it was on.
+    Returning,
+    /// The checkout cannot be switched back without losing work; a person
+    /// has to act, then start the Factory again.
+    Held,
+}
+
+/// The Factory's use of a project checkout in `checkout` run location,
+/// persisted so a restarted daemon still knows where to return it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutLease {
+    pub project: String,
+    /// The backlog item whose run holds the checkout.
+    pub item_id: String,
+    #[serde(default)]
+    pub item_number: u64,
+    /// The pipeline task, id chosen before the task exists.
+    pub task_id: String,
+    /// `warpforge/task/<task_id>`, created from origin's default branch.
+    pub branch: String,
+    /// The branch the checkout was on before, `None` for a detached HEAD.
+    #[serde(default)]
+    pub return_branch: Option<String>,
+    /// The commit HEAD was on before; what a detached HEAD returns to.
+    #[serde(default)]
+    pub return_commit: Option<String>,
+    pub state: CheckoutLeaseState,
+    /// Why the checkout is held, in words for the person who has to act.
+    #[serde(default)]
+    pub held_reason: Option<String>,
+    #[serde(default)]
+    pub updated_at: i64,
+}
+
 /// One project's runner as the Factory surface shows it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -252,6 +321,9 @@ pub struct RunnerStatus {
     /// Why no queued item starts right now, when something holds them all.
     #[serde(default)]
     pub hold: Option<String>,
+    /// The Factory's hold on the project checkout, in `checkout` run location.
+    #[serde(default)]
+    pub checkout: Option<CheckoutLease>,
 }
 
 #[cfg(test)]
@@ -287,6 +359,7 @@ mod tests {
             entries: Vec::new(),
             dispatched_today: 0,
             hold: None,
+            checkout: None,
         };
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["settings"]["maxOpenPrs"], 3);

@@ -1450,6 +1450,10 @@ pub enum Method {
         project: String,
         patch: RunnerSettingsPatch,
     },
+    /// Pause the runner and stop every pipeline it is running; their items go
+    /// back to the queue. Returns [`crate::RunnerStatus`].
+    #[serde(rename = "runner.stop")]
+    RunnerStop { project: String },
     /// Recent attempts, newest first.
     #[serde(rename = "runner.runs")]
     RunnerRuns {

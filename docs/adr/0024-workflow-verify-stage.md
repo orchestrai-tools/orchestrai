@@ -85,6 +85,8 @@ starting an agent, and a required verify parks for the user.
 - One more agent session per implement/fix, with a browser and services: slow,
   and it needs the desktop app connected (no app means `blocked`).
 - Until per-worktree services exist, the runner's worktree tasks cannot use
-  verify; the stage says so instead of pretending.
+  verify; the stage says so instead of pretending. The runner's `checkout`
+  run location (ADR 0023 amendment) runs its pipelines in the project
+  checkout, where verify works.
 - A custom `fix.prompt` written for reviewers receives verification findings
   in `{{findings}}` too.

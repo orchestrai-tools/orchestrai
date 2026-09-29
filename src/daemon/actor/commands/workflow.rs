@@ -37,6 +37,7 @@ impl Daemon {
                         config_overrides,
                         parent_task_id,
                         backlog_item_id,
+                        None,
                     )
                     .await;
                 let _ = reply.send(result);

@@ -205,6 +205,7 @@ impl Daemon {
         config_overrides: HashMap<String, String>,
         parent_task_id: Option<String>,
         backlog_item_id: Option<String>,
+        task_id: Option<String>,
     ) -> Result<String, String> {
         let path = self
             .project_path(&project)
@@ -229,6 +230,9 @@ impl Daemon {
         let mut tags = tags;
         tags.push(format!("workflow:{workflow_id}"));
         let mut task = Task::new(&project, &prompt, &agent, tags);
+        if let Some(id) = task_id {
+            task.id = id;
+        }
         task.parent_task_id = parent_task_id;
         task.backlog_item_id = backlog_item_id;
         // An explicit lead model from the dialog is the task's model intent.

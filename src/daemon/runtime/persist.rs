@@ -57,6 +57,9 @@ pub enum Write {
     RunnerEntry(Box<wire::RunnerEntry>),
     RunnerDequeue(String),
     ItemRun(Box<wire::ItemRun>),
+    CheckoutLease(Box<wire::CheckoutLease>),
+    /// The project whose checkout lease ended.
+    CheckoutLeaseDrop(String),
 }
 
 impl Write {
@@ -88,6 +91,8 @@ impl Write {
             Write::RunnerEntry(entry) => store.upsert_runner_entry(&entry),
             Write::RunnerDequeue(item_id) => store.delete_runner_entry(&item_id),
             Write::ItemRun(run) => store.upsert_item_run(&run),
+            Write::CheckoutLease(lease) => store.save_checkout_lease(&lease),
+            Write::CheckoutLeaseDrop(project) => store.delete_checkout_lease(&project),
         }
     }
 }

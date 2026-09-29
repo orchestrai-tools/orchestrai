@@ -14,7 +14,7 @@ import {
 import { daemon } from "@/daemon";
 import { runnerStatusKey } from "@/hooks/useRunner";
 import { agentDisplayName } from "@/lib/agentNames";
-import type { AgentConfig, RunnerSettings } from "@/protocol";
+import type { AgentConfig, RunLocation, RunnerSettings } from "@/protocol";
 
 import { modelOptionOf } from "../../automations/labels";
 
@@ -66,6 +66,19 @@ const LIMITS: {
   },
 ];
 
+const LOCATIONS: { value: RunLocation; label: string; hint: string }[] = [
+  {
+    hint: "Each item gets a fresh worktree, so several can run at once. A verify stage cannot test the running app.",
+    label: "Worktree",
+    value: "worktree",
+  },
+  {
+    hint: "Items run in your checkout on a task branch, so the running app serves the change and a verify stage can test it.",
+    label: "Project checkout",
+    value: "checkout",
+  },
+];
+
 /**
  * The project's Factory settings: which workflow and agents items run on, and
  * the limits that keep unattended work bounded.
@@ -91,6 +104,7 @@ export function FactorySettings({ open, settings, agents, onClose }: FactorySett
   });
   const enabledAgents = agents.filter((agent) => agent.enabled);
   const modelOption = draft.agent ? modelOptionOf(agents, draft.agent) : null;
+  const inCheckout = draft.runLocation === "checkout";
 
   const save = async () => {
     setSaving(true);
@@ -103,6 +117,7 @@ export function FactorySettings({ open, settings, agents, onClose }: FactorySett
         maxPerDay: draft.maxPerDay,
         minFreeGb: draft.minFreeGb,
         model: draft.model ?? "",
+        runLocation: draft.runLocation,
         workflow: draft.workflow,
       });
       queryClient.setQueryData(runnerStatusKey(settings.project), status);
@@ -122,11 +137,36 @@ export function FactorySettings({ open, settings, agents, onClose }: FactorySett
         <DialogHeader>
           <DialogTitle>Factory settings</DialogTitle>
           <DialogDescription>
-            Every queued item runs through this workflow in its own worktree. Stages the workflow
-            does not pin to an agent run on the lead agent.
+            Every queued item runs through this workflow. Stages the workflow does not pin to an
+            agent run on the lead agent.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
+          <fieldset className="flex flex-col gap-1.5 sm:col-span-2">
+            <legend className="mb-1 text-[11px] font-medium text-muted-foreground">
+              Run location
+            </legend>
+            {LOCATIONS.map((location) => (
+              <label key={location.value} className="flex items-start gap-2 text-[13px]">
+                <input
+                  type="radio"
+                  name="run-location"
+                  className="mt-1"
+                  checked={draft.runLocation === location.value}
+                  onChange={() => setDraft({ ...draft, runLocation: location.value })}
+                />
+                <span className="flex flex-col">
+                  <span>{location.label}</span>
+                  <span className="text-[11px] text-muted-foreground/70">{location.hint}</span>
+                </span>
+              </label>
+            ))}
+            {inCheckout && (
+              <p className="text-[11px] text-warn">
+                One item at a time; your checkout is used while it runs.
+              </p>
+            )}
+          </fieldset>
           <label className="flex flex-col gap-1 sm:col-span-2">
             <span className="text-[11px] font-medium text-muted-foreground">Workflow</span>
             <select
@@ -187,13 +227,20 @@ export function FactorySettings({ open, settings, agents, onClose }: FactorySett
                 aria-label={limit.label}
                 min={limit.min}
                 max={limit.max}
-                value={draft[limit.key] as number}
+                value={
+                  inCheckout && limit.key === "maxConcurrent" ? 1 : (draft[limit.key] as number)
+                }
+                disabled={inCheckout && limit.key === "maxConcurrent"}
                 onChange={(event) =>
                   setDraft({ ...draft, [limit.key]: Number(event.target.value) || limit.min })
                 }
                 className={FIELD}
               />
-              <span className="text-[11px] text-muted-foreground/70">{limit.hint}</span>
+              <span className="text-[11px] text-muted-foreground/70">
+                {inCheckout && limit.key === "maxConcurrent"
+                  ? "Always one in the project checkout."
+                  : limit.hint}
+              </span>
             </label>
           ))}
         </div>

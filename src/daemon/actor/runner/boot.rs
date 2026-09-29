@@ -15,7 +15,7 @@ use crate::daemon::store::Store;
 /// @returns the mirror the actor starts with
 pub(crate) fn load_state(store: Option<&Arc<Mutex<Store>>>) -> RunnerState {
     let Some(Ok(store)) = store.map(|s| s.lock()) else {
-        return RunnerState::new(Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        return RunnerState::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
     };
     let settings = store.load_runner_settings().unwrap_or_default();
     let entries: Vec<wire::RunnerEntry> = store.load_runner_queue().unwrap_or_default();
@@ -28,14 +28,16 @@ pub(crate) fn load_state(store: Option<&Arc<Mutex<Store>>>) -> RunnerState {
     let dispatches = store
         .item_run_dispatches_since(now_secs() - DAY_SECS)
         .unwrap_or_default();
-    RunnerState::new(settings, entries, runs, dispatches)
+    let leases = store.load_checkout_leases().unwrap_or_default();
+    RunnerState::new(settings, entries, runs, dispatches, leases)
 }
 
 impl Daemon {
-    /// After the workflow runs are restored: finish what ended while the
-    /// daemon was down, resume interrupted deliveries, and follow every open
-    /// pull request again.
+    /// After the workflow runs are restored: reconcile the checkout leases,
+    /// finish what ended while the daemon was down, resume interrupted
+    /// deliveries, and follow every open pull request again.
     pub(crate) fn runner_restore(&mut self) {
+        self.runner_checkout_restore();
         self.runner_sweep();
         let delivered: Vec<String> = self
             .runner

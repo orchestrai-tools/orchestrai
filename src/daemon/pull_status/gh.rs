@@ -31,8 +31,12 @@ pub(crate) struct Listed {
 /// The pull request whose head is the worktree's current branch, or `None`
 /// when there is none, the checkout is detached, or it sits on its base branch.
 pub(super) async fn fetch(target: PullTarget) -> Result<Option<Listed>> {
-    let Some(branch) = crate::daemon::diff::current_branch(&target.worktree).await else {
-        return Ok(None);
+    let branch = match target.head.clone() {
+        Some(head) => head,
+        None => match crate::daemon::diff::current_branch(&target.worktree).await {
+            Some(branch) => branch,
+            None => return Ok(None),
+        },
     };
     if target.base_branch.as_deref() == Some(branch.as_str()) {
         return Ok(None);

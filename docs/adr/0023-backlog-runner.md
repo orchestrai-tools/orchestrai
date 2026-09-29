@@ -200,7 +200,8 @@ is soft (ADR 0001). **Stop runner** pauses and cancels every in-flight run,
 after a confirmation. Per-entry: dequeue (before dispatch), cancel (cancels the
 pipeline), retry (a new attempt — never automatic). Phase 1 ships Pause,
 dequeue and retry-by-queuing-again; one run is cancelled by stopping its
-pipeline from its task, and Stop runner is deferred.
+pipeline from its task. Stop runner is built (see the *Run location*
+amendment): stopped entries go back to the queue rather than out of it.
 
 ### Quality gates (Phase 2)
 
@@ -365,6 +366,18 @@ queue. That needs #83's content-carrying proposal kind.
     cannot re-enter the workflow engine from its own finalize.
 14. **Test daemons never run `gh`.** The PR opener is injected
     (`RunnerCommand::SetPrOpener`); under `cfg(test)` the default refuses.
+15. **The Factory never destroys user work in the project checkout.** It
+    switches branches only on a clean tree and never stashes, resets, cleans
+    or discards. A checkout it cannot give back cleanly stays where it is,
+    held, with a reason a person can act on.
+16. **The return point is on disk before the checkout moves.** The lease is
+    persisted and flushed before the switch, so a crash at any point leaves a
+    record of where to return.
+17. **Give back only from the task branch.** A checkout that is no longer on
+    the lease's branch belongs to the user again; the lease is released
+    without a switch.
+18. **A tracker sync never overwrites the status of an item with an active
+    entry.** Sync resumes for that item once its entry ends.
 
 ## Risks
 
@@ -414,9 +427,12 @@ Built to the file plan above. Where it differs, or where Phase 1 draws a line:
   accepts per-item workflow/agent/model overrides at enqueue; the desktop does
   not offer them yet.
 - **Tracker-synced items.** The runner writes `in_progress`, `waiting`, `done`
-  and `todo` to the item, but a sync may overwrite the status of an imported
-  item from its tracker. The queue entry, not the item status, is what the
-  runner acts on, and `Closes #N` makes the tracker agree after a merge.
+  and `todo` to the item. While the item has an entry past `queued`
+  (running, delivering, delivered), a tracker sync keeps that local status and
+  refreshes the rest (`runner_active_items`, passed to `adopt_imported` and
+  applied in `TrackerPersistSynced`); once the entry ends, sync owns the
+  status again. The queue entry, not the item status, is what the runner acts
+  on, and `Closes #N` makes the tracker agree after a merge.
 - **A pipeline that ended while the daemon was down** is reconciled at boot and
   on every tick from the restored workflow run; an interrupted delivery is run
   again (commit, push and `gh pr create` are each safe to repeat).
@@ -424,6 +440,62 @@ Built to the file plan above. Where it differs, or where Phase 1 draws a line:
   keeps `runner`-tagged tasks), so archiving a pipeline task does not leak an
   open-PR slot. Merge detection still needs the task: one deleted before its
   PR merges ends the attempt as `task_deleted` and sends the item to `todo`.
+
+## Amendment — Run location, Stop, delivery in the summary (2026-09-29)
+
+**Run location** is a per-project setting: `worktree` (default, as above) or
+`checkout`. Worktree tasks cannot use a verify stage (ADR 0024: services run
+from the project checkout), so the Factory could not browser-test anything.
+`checkout` runs one item at a time in the project checkout itself:
+`effective_max_concurrent` is 1 whatever `max_concurrent` says.
+
+- **Before an item starts** (`actor/runner/checkout/`), on the loop: no lease
+  is held, the backlog is not YAML (a YAML backlog is part of the checkout
+  being switched, and status writes would dirty it), no task outside the
+  runner is `Running` in the project checkout. Off the loop: no tracked or
+  untracked change and no merge, rebase, cherry-pick, revert or bisect in
+  progress. A refusal holds the queue with its reason and is re-checked on
+  the tick, on Start and on enqueue.
+- **The lease** (`runner_checkout` table, one row per project) records the
+  item, the pre-chosen task id, the task branch `warpforge/task/<task id>`,
+  and where to return: the branch, or the commit for a detached HEAD. It is
+  written, and the persistence queue flushed, before the checkout moves.
+- **Switch:** fetch origin's default branch, then `git switch --no-track -c
+  <task branch> origin/<default>`, only if HEAD is still where inspection saw
+  it. The pipeline is created with no worktree and the pre-chosen id;
+  `base_branch` is the default branch, so delivery and `PullWatch` work as in
+  a worktree (`PullTarget.head` names the task branch, because by the time
+  the PR is polled the checkout is back on the user's branch).
+- **Services** are not restarted. The running dev services serve the task
+  branch through their own reload; a verify agent can restart one with the
+  runtime tools. Restarting on the Factory's behalf would guess which services
+  a workflow needs and interrupt the user's session for nothing on
+  hot-reloading stacks.
+- **Give back** runs whenever the entry leaves `running`/`delivering` —
+  delivered, requeued by Stop, ended for any reason, task deleted — hooked in
+  `runner_put_entry`/`runner_drop_entry` so no terminal path can miss it.
+  Delivery commits first, so a successful run leaves a clean tree. The give
+  back switches only from the task branch and only on a clean tree, then
+  deletes the task branch when it has no commits of its own. HEAD elsewhere
+  means the user took over: the lease is released and nothing moves.
+  Otherwise the lease is **held**: the runner pauses, the reason is the
+  project's hold, and the pipeline task is `Blocked` with it, which puts it
+  in Needs you. Start retries the give back.
+- **Restart:** leases are reconciled before the entry sweep. A lease whose
+  entry is still running or delivering is kept; a held one stays held; any
+  other is given back (a lease caught preparing either never switched —
+  released — or did — switched back).
+
+**Stop** (`runner.stop`): pause, then stop every running pipeline. Those
+entries are requeued with `waiting_reason: "stopped by you"`, their item goes
+to `todo`, and the attempt records `stopped`. Delivering entries finish.
+
+**Delivery in the summary.** For a runner pipeline, `workflow_finalize` ends
+the summary with a delivering note instead of "commit when ready"; when the
+wrap-up reports, `runner_report_delivery` replaces the note in
+`WorkflowRunInfo.report` with the outcome (draft PR number and URL, no
+changes, or the failure) and posts it to the timeline. Manual pipelines keep
+their text.
 
 ## Phased plan
 

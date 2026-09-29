@@ -122,9 +122,11 @@ impl Daemon {
                 let _ = reply.send((links, repo_dirs, linear_teams));
             }
             Command::TrackerPersistSynced { links, reply } => {
+                let active = self.runner_active_items();
                 if let Some(store) = &self.store {
                     let store = store.lock().unwrap_or_else(|e| e.into_inner());
                     for link in &links {
+                        let keep = active.contains(&link.item_id);
                         if let Err(e) = store.upsert_tracker_link(link) {
                             eprintln!("[tracker] failed to persist sync for {}: {e}", link.item_id);
                         }
@@ -136,7 +138,9 @@ impl Daemon {
                                     &link.project,
                                     &link.item_id,
                                     |item| {
-                                        item.status = link.status.clone();
+                                        if !keep {
+                                            item.status = link.status.clone();
+                                        }
                                         item.remote_status = link.remote_status.clone();
                                         item.url = Some(link.url.clone());
                                         item.updated_at = crate::daemon::task::now_secs();
@@ -153,9 +157,14 @@ impl Daemon {
                         if store.backlog_storage_mode().ok()
                             == Some(wire::BacklogStorageMode::Sqlite)
                         {
+                            let kept = keep
+                                .then(|| store.get_backlog_item(&link.item_id).ok().flatten())
+                                .flatten()
+                                .map(|item| item.status);
+                            let status = kept.unwrap_or_else(|| link.status.clone());
                             if let Err(e) = store.update_backlog_remote(
                                 &link.item_id,
-                                &link.status,
+                                &status,
                                 link.remote_status.as_deref(),
                                 &link.url,
                                 crate::daemon::task::now_secs(),
@@ -219,6 +228,7 @@ impl Daemon {
                             &project,
                             yaml_path.as_deref(),
                             fetched,
+                            &self.runner_active_items(),
                         )
                         .map_err(|e: anyhow::Error| format!("{e:#}"))
                     }

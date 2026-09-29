@@ -27,8 +27,14 @@ fn missing_backlog_rows_can_be_recovered_from_tracker_links() {
         created_at: 1,
         updated_at: 1,
     };
-    let (imported, _) =
-        adopt_imported(&store, "demo", None, vec![("github".into(), vec![issue])]).unwrap();
+    let (imported, _) = adopt_imported(
+        &store,
+        "demo",
+        None,
+        vec![("github".into(), vec![issue])],
+        &Default::default(),
+    )
+    .unwrap();
     assert_eq!(imported.len(), 1);
     assert_eq!(
         store.get_backlog_item("item-1").unwrap().unwrap().title,
@@ -51,8 +57,14 @@ fn imported_rows_carry_the_issue_creation_time_and_repair_older_rows() {
         updated_at: 500,
     };
 
-    let (imported, _) =
-        adopt_imported(&store, "demo", None, vec![("github".into(), vec![issue()])]).unwrap();
+    let (imported, _) = adopt_imported(
+        &store,
+        "demo",
+        None,
+        vec![("github".into(), vec![issue()])],
+        &Default::default(),
+    )
+    .unwrap();
     let item_id = imported[0].item_id.clone();
     let item = store.get_backlog_item(&item_id).unwrap().unwrap();
     assert_eq!(item.created_at, 100, "created is the issue's own open time");
@@ -62,8 +74,14 @@ fn imported_rows_carry_the_issue_creation_time_and_repair_older_rows() {
     // as its creation time. The next sync repairs it, even though the
     // issue's status has not moved.
     store.set_backlog_created_at(&item_id, 500).unwrap();
-    let (again, synced) =
-        adopt_imported(&store, "demo", None, vec![("github".into(), vec![issue()])]).unwrap();
+    let (again, synced) = adopt_imported(
+        &store,
+        "demo",
+        None,
+        vec![("github".into(), vec![issue()])],
+        &Default::default(),
+    )
+    .unwrap();
     assert!(again.is_empty(), "a known issue is not imported twice");
     assert!(
         synced.is_empty(),
@@ -100,6 +118,7 @@ fn a_row_imported_without_an_assignee_picks_one_up_on_the_next_sync() {
         "demo",
         None,
         vec![("linear".into(), vec![issue(None)])],
+        &Default::default(),
     )
     .unwrap();
     let item_id = imported[0].item_id.clone();
@@ -113,6 +132,7 @@ fn a_row_imported_without_an_assignee_picks_one_up_on_the_next_sync() {
         "demo",
         None,
         vec![("linear".into(), vec![issue(Some("Ada Lovelace"))])],
+        &Default::default(),
     )
     .unwrap();
     assert!(again.is_empty(), "a known issue is not imported twice");
@@ -158,6 +178,7 @@ fn imported_rows_are_recovered_into_yaml_backend_not_sqlite() {
         "demo",
         Some(project_path.to_str().unwrap()),
         vec![("github".into(), vec![issue])],
+        &Default::default(),
     )
     .unwrap();
     assert_eq!(imported.len(), 1);
@@ -288,8 +309,14 @@ fn import_dedupe_is_project_scoped() {
         created_at: 1,
         updated_at: 1,
     };
-    let (imported, _) =
-        adopt_imported(&store, "beta", None, vec![("github".into(), vec![issue])]).unwrap();
+    let (imported, _) = adopt_imported(
+        &store,
+        "beta",
+        None,
+        vec![("github".into(), vec![issue])],
+        &Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         imported.len(),
         1,
@@ -308,7 +335,62 @@ fn import_dedupe_is_project_scoped() {
         created_at: 1,
         updated_at: 1,
     };
-    let (second, _) =
-        adopt_imported(&store, "beta", None, vec![("github".into(), vec![again])]).unwrap();
+    let (second, _) = adopt_imported(
+        &store,
+        "beta",
+        None,
+        vec![("github".into(), vec![again])],
+        &Default::default(),
+    )
+    .unwrap();
     assert_eq!(second.len(), 0, "same-project reimport must dedupe");
+}
+
+/// While the Factory runs an item its local status is the Factory's: a sync
+/// that moves the issue refreshes the rest of the row but keeps the status,
+/// and once the item is no longer protected the next change applies again.
+#[test]
+fn a_sync_keeps_the_status_of_an_item_the_factory_runs() {
+    let store = Store::open_at(std::path::Path::new(":memory:")).unwrap();
+    let issue = |status: &str, remote: &str, updated_at: u64| RemoteIssue {
+        external_id: "#5".into(),
+        title: "Imported".into(),
+        body: String::new(),
+        url: "https://github.com/demo/5".into(),
+        status: status.into(),
+        remote_status: remote.into(),
+        assignee: None,
+        created_at: 1,
+        updated_at,
+    };
+    let sync = |issue: RemoteIssue, keep: &std::collections::HashSet<String>| {
+        adopt_imported(
+            &store,
+            "demo",
+            None,
+            vec![("github".into(), vec![issue])],
+            keep,
+        )
+        .unwrap()
+    };
+    let (imported, _) = sync(issue("todo", "OPEN", 10), &Default::default());
+    let item_id = imported[0].item_id.clone();
+    let mut item = store.get_backlog_item(&item_id).unwrap().unwrap();
+    item.status = "in_progress".into();
+    store.upsert_backlog_item(&item).unwrap();
+    let running: std::collections::HashSet<String> = [item_id.clone()].into();
+
+    let (_, synced) = sync(issue("todo", "OPEN_EDITED", 20), &running);
+    let kept = store.get_backlog_item(&item_id).unwrap().unwrap();
+    assert_eq!(kept.status, "in_progress");
+    assert_eq!(kept.remote_status.as_deref(), Some("OPEN_EDITED"));
+    assert_eq!(kept.updated_at, 20);
+    assert_eq!(synced[0].status, "in_progress");
+
+    sync(issue("done", "CLOSED", 30), &Default::default());
+    let after = store.get_backlog_item(&item_id).unwrap().unwrap();
+    assert_eq!(
+        after.status, "done",
+        "normal sync resumes once the run ends"
+    );
 }

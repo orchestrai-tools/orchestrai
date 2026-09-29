@@ -55,7 +55,7 @@ pub use reclaim::reclaim_artifacts;
 pub use resolve::resolve_start;
 pub use setup::{apply_config, setup_log_path};
 pub use size::{cached_size, forget_size};
-pub use start::{create_started, ExistingBranch, RemoteBranch, StartPoint};
+pub use start::{create_started, fetch_origin_default, ExistingBranch, RemoteBranch, StartPoint};
 
 /// Prefix of the branches Warpforge creates for task worktrees.
 pub(crate) const TASK_BRANCH_PREFIX: &str = "warpforge/task/";

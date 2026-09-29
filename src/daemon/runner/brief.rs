@@ -4,8 +4,8 @@ use crate::mcp::untrusted::guard;
 
 const PREAMBLE: &str = "[Factory run — unattended. Warpforge queued this backlog item and will \
 commit your changes, push them and open a draft pull request when the pipeline succeeds. Do not \
-commit, push or open a pull request yourself: reviewers read the working-copy diff. Work only in \
-this checkout.]";
+commit, push, switch branches or open a pull request yourself: reviewers read the working-copy \
+diff. Work only in this checkout.]";
 
 /// Whether the item's words came from a tracker rather than from this machine.
 fn is_imported(item: &wire::BacklogItem) -> bool {
