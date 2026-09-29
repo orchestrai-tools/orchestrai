@@ -37,6 +37,10 @@ fn repo_with_task_commit() -> (tempfile::TempDir, PathBuf) {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().to_path_buf();
     git(&root, &["init", "-q", "-b", "main"]);
+    // The code under test runs its own git commands without the env identity;
+    // CI runners have no global one, so the repo carries it.
+    git(&root, &["config", "user.name", "test"]);
+    git(&root, &["config", "user.email", "t@t"]);
     write(&root, "f", "base\n");
     git(&root, &["add", "."]);
     git(&root, &["commit", "-qm", "init"]);
