@@ -6,6 +6,7 @@ use super::*;
 use crate::workflow_config::{parse_workflow, WorkflowSpec};
 
 mod pause;
+mod stage_agent;
 mod verify;
 
 fn spec(yaml: &str) -> WorkflowSpec {
@@ -165,37 +166,6 @@ fn merge_reviews_requires_unanimous_approve() {
     let (verdict, _) =
         merge_reviews(&[(0, Verdict::Approve, vec![]), (1, Verdict::Approve, vec![])]);
     assert_eq!(verdict, Verdict::Approve);
-}
-
-#[test]
-fn stage_agent_fallback_chain() {
-    let run = run_for(
-        "name: X\nplan: {}\nimplement:\n  agent: codex\n  model: gpt-x\nreview:\n  reviewers:\n    - agent: opencode\n    - {}\n",
-    );
-    // plan has no override → lead agent + lead model.
-    assert_eq!(
-        run.stage_agent(StageKind::Plan, None),
-        ("claude".into(), Some("lead-model".into()))
-    );
-    // implement overrides both.
-    assert_eq!(
-        run.stage_agent(StageKind::Implement, None),
-        ("codex".into(), Some("gpt-x".into()))
-    );
-    // fix falls back to implement's overrides.
-    assert_eq!(
-        run.stage_agent(StageKind::Fix, None),
-        ("codex".into(), Some("gpt-x".into()))
-    );
-    // reviewer 0 overrides agent, inherits lead model; reviewer 1 → lead.
-    assert_eq!(
-        run.stage_agent(StageKind::Review, Some(0)),
-        ("opencode".into(), Some("lead-model".into()))
-    );
-    assert_eq!(
-        run.stage_agent(StageKind::Review, Some(1)),
-        ("claude".into(), Some("lead-model".into()))
-    );
 }
 
 #[test]

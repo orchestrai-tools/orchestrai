@@ -132,15 +132,22 @@ pub(super) fn defs() -> Value {
         },
         {
             "name": "spawn_workflow",
-            "description": "Dispatch a deterministic multi-stage pipeline (plan → implement → \
-                review ⇄ fix) as a child of this orchestrator, instead of a single sub-agent. \
-                Use this for changes that benefit from an independent review pass; for \
+            "description": "Start a Factory pipeline (plan? → implement → verify? → review ⇄ \
+                fix, from a workflow template) for any goal, instead of a single sub-agent. \
+                Use it for changes that benefit from an independent review pass; for \
                 straightforward tasks prefer spawn_agent — a pipeline costs several times the \
-                tokens and wall-clock. Returns immediately with a task id; the pipeline's final \
-                outcome is delivered to your inbox like a sub-agent's, and its live progress \
-                (current stage, review round, whether it is waiting on you) shows up in \
-                list_agents under workflowRun. It has no agent session of its own — do not use \
-                message_agent on it; use answer_workflow / decide_workflow instead.",
+                tokens and wall-clock. Without pull_request (the default) it is your child: it \
+                starts at once, commits nothing, its outcome is delivered to your inbox like a \
+                sub-agent's, its live progress (stage, review round, whether it waits on you) \
+                shows in list_agents under workflowRun, and you answer it with answer_workflow / \
+                decide_workflow (never message_agent: it has no session of its own). Set \
+                pull_request to true when the change should ship: the task then goes through the \
+                Factory like one started from New Task — it waits for the project's Factory \
+                limits, a successful run is committed, pushed and opened as a draft pull request \
+                for a person to review, and merging it marks a linked backlog item done. Such a \
+                task is not your child and reports nothing to your inbox; follow it with \
+                runner_status. To start several backlog items at once with one configuration, \
+                use runner_enqueue instead.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -150,14 +157,31 @@ pub(super) fn defs() -> Value {
                     },
                     "goal": {
                         "type": "string",
-                        "description": "The objective for the pipeline's first stage — what should be planned/implemented."
+                        "description": "What the pipeline should implement. May be omitted when backlog_item is given: the item's brief is used."
                     },
                     "agent": {
                         "type": "string",
-                        "description": "Default agent for the pipeline's stages: e.g. \"claude\", \"codex\", \"opencode\"."
+                        "description": "Lead agent: every stage the template does not pin runs on it, e.g. \"claude\", \"codex\", \"opencode\"."
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Lead model; it must be one of the lead agent's models (see list_agent_models). Stages on other agents use their own default. When omitted, the agent's own default is used."
+                    },
+                    "pull_request": {
+                        "type": "boolean",
+                        "description": "Open a draft pull request when the run succeeds, through the Factory queue. Defaults to false."
+                    },
+                    "run_location": {
+                        "type": "string",
+                        "enum": ["auto", "worktree", "checkout"],
+                        "description": "Where it runs: 'worktree' (a background copy of the repository), 'checkout' (the project folder, so a browser check tests the running app), or 'auto' (the project's Factory setting; by default the project folder for a template that tests the app, a background copy otherwise). Defaults to 'auto' with pull_request, and to 'checkout' (your own checkout, as before) without."
+                    },
+                    "backlog_item": {
+                        "type": "integer",
+                        "description": "Backlog item number, as in #87, to link the task to. With pull_request, merging the pull request marks it done."
                     }
                 },
-                "required": ["workflow_id", "goal", "agent"]
+                "required": ["workflow_id", "agent"]
             }
         },
         {

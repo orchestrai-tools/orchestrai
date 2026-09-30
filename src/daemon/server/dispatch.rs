@@ -232,3 +232,14 @@ pub(super) async fn dispatch(
         MemoryResolveCompaction { id, approve, apply } => memory::memory_resolve_compaction(handle, id, approve, apply).await,
     }
 }
+
+/// One request through the dispatcher without a connection, for daemon tests
+/// that run where no socket may be bound.
+#[cfg(test)]
+pub(crate) async fn dispatch_detached(
+    handle: &DaemonHandle,
+    method: wire::Method,
+) -> Result<serde_json::Value, wire::RpcError> {
+    let lifecycle = std::sync::Arc::new(ServerLifecycle::new(wire::DaemonOwner::External));
+    dispatch(handle, method, &lifecycle).await
+}

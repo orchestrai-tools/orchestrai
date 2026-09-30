@@ -153,7 +153,7 @@ Open the project's ⋮ menu and choose **Factory settings…**.
 | **New tasks per 24 hours** | 10 | How many Factory tasks start in any 24 hours. |
 | **Keep at least (GB free)** | 25 GB | New tasks wait while the project's disk has less free space than this. `0` turns it off. |
 | **Pause when quota use passes (%)** | 80% | A new task waits while an agent it needs is above this. An account that is out of quota always waits. |
-| **Template**, **Lead agent** and **Model** | *review-loop*, first enabled agent | What New Task starts with in Factory mode. |
+| **Template**, **Lead agent** and **Model** | *review-loop*, first enabled agent | What New Task starts with in Factory mode, including from the backlog. A harness you pick in the dialog wins, and the default model only goes with the default agent. |
 | **Where it runs** | *Automatic (recommended)* | What New Task starts with in Factory mode. |
 
 The limits apply to Factory tasks that open a pull request and to backlog batches. They only decide when a new task starts — a task that is already running is never stopped between stages.

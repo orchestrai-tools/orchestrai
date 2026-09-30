@@ -17,6 +17,17 @@ import { useUi } from "../../store/ui";
 import type { FactoryOptions } from "./useFactoryOptions";
 
 /**
+ * The option that picks the model, among a harness's config options.
+ * @param agentOptions The harness's config options.
+ * @returns The model option, when the harness has one.
+ */
+export function modelOption(agentOptions: ConfigOption[]): ConfigOption | undefined {
+  return agentOptions.find((option) =>
+    ((option.category ?? "") + " " + option.id + " " + option.name).toLowerCase().includes("model"),
+  );
+}
+
+/**
  * The model pick among an agent's config options, and every other pick as
  * a session override.
  * @param agentOptions The harness's config options.
@@ -27,9 +38,7 @@ export function splitConfigPicks(
   agentOptions: ConfigOption[],
   configPicks: Record<string, string | undefined>,
 ): { model: string | undefined; overrides: Record<string, string> } {
-  const modelOpt = agentOptions.find((option) =>
-    ((option.category ?? "") + " " + option.id + " " + option.name).toLowerCase().includes("model"),
-  );
+  const modelOpt = modelOption(agentOptions);
   const overrides: Record<string, string> = {};
   for (const option of agentOptions) {
     if (option.id === modelOpt?.id) continue;

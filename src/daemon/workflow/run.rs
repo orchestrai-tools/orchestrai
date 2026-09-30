@@ -174,54 +174,58 @@ impl WorkflowRun {
 
     /// Agent + model for a stage, applying the fallback chain:
     /// stage override → (fix falls back to implement) → lead agent/model.
+    /// A model is inherited only by a stage on the same agent.
     pub fn stage_agent(
         &self,
         kind: StageKind,
         reviewer: Option<usize>,
     ) -> (String, Option<String>) {
-        let (agent, model) = match kind {
+        fn inherit(
+            agent: Option<&String>,
+            model: Option<&String>,
+            from: (String, Option<String>),
+        ) -> (String, Option<String>) {
+            match agent {
+                Some(agent) if *agent != from.0 => (agent.clone(), model.cloned()),
+                _ => (from.0, model.cloned().or(from.1)),
+            }
+        }
+        let lead = (self.lead_agent.clone(), self.lead_model.clone());
+        let implement = &self.spec.implement;
+        match kind {
             StageKind::Plan => {
                 let s = self.spec.plan.as_ref();
-                (
-                    s.and_then(|s| s.agent.clone()),
-                    s.and_then(|s| s.model.clone()),
+                inherit(
+                    s.and_then(|s| s.agent.as_ref()),
+                    s.and_then(|s| s.model.as_ref()),
+                    lead,
                 )
             }
-            StageKind::Implement => (
-                self.spec.implement.agent.clone(),
-                self.spec.implement.model.clone(),
-            ),
-            StageKind::Fix => (
-                self.spec
-                    .fix
-                    .agent
-                    .clone()
-                    .or_else(|| self.spec.implement.agent.clone()),
-                self.spec
-                    .fix
-                    .model
-                    .clone()
-                    .or_else(|| self.spec.implement.model.clone()),
+            StageKind::Implement => {
+                inherit(implement.agent.as_ref(), implement.model.as_ref(), lead)
+            }
+            StageKind::Fix => inherit(
+                self.spec.fix.agent.as_ref(),
+                self.spec.fix.model.as_ref(),
+                inherit(implement.agent.as_ref(), implement.model.as_ref(), lead),
             ),
             StageKind::Review => {
                 let r = reviewer.and_then(|i| self.spec.review.reviewers.get(i));
-                (
-                    r.and_then(|r| r.agent.clone()),
-                    r.and_then(|r| r.model.clone()),
+                inherit(
+                    r.and_then(|r| r.agent.as_ref()),
+                    r.and_then(|r| r.model.as_ref()),
+                    lead,
                 )
             }
             StageKind::Verify => {
                 let v = self.spec.verify.as_ref();
-                (
-                    v.and_then(|v| v.agent.clone()),
-                    v.and_then(|v| v.model.clone()),
+                inherit(
+                    v.and_then(|v| v.agent.as_ref()),
+                    v.and_then(|v| v.model.as_ref()),
+                    lead,
                 )
             }
-        };
-        (
-            agent.unwrap_or_else(|| self.lead_agent.clone()),
-            model.or_else(|| self.lead_model.clone()),
-        )
+        }
     }
 
     pub fn reviewer_label(&self, index: usize) -> String {

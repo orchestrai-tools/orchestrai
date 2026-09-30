@@ -141,7 +141,7 @@ Each task appears in the sidebar at once and starts as soon as the project's [Fa
 
 `runner_status` reports the project's Factory limits, why queued tasks are waiting, and every Factory task that is queued, running or in review, with its pull request. With `runs: true` it adds the ten most recent runs with their outcome and cost.
 
-**When:** you ask a chat to start the next few backlog items in the Factory, or to report how the project's Factory work is going. The project's limits, not the agent, decide when each task starts.
+**When:** you ask a chat to start the next few backlog items in the Factory, or to report how the project's Factory work is going. The project's limits, not the agent, decide when each task starts. For one goal that is not a backlog item, an orchestrator uses [`spawn_workflow`](#spawn_workflow) with `pull_request: true`.
 
 **Why a Factory task cannot call it:** a task that started more work would keep the Factory busy on work no person chose. `runner_enqueue` from inside a Factory task is refused.
 
@@ -348,11 +348,24 @@ message_agent(task_id, message)
 
 ### `spawn_workflow`
 
-Dispatches a whole [pipeline](/concepts/orchestration/#workflow-pipelines) — `plan → implement → review ⇄ fix` — as a child, instead of a single sub-agent.
+Starts a [Factory](/guides/factory/) pipeline — a workflow template's `plan → implement → review ⇄ fix`, with an optional check in the running app — for any goal, instead of a single sub-agent.
 
 ```
-spawn_workflow(workflow_id, goal, agent)
+spawn_workflow(workflow_id, agent, goal?, model?, pull_request?, run_location?, backlog_item?)
 ```
+
+| Argument | What it does |
+| --- | --- |
+| `workflow_id` | The workflow template id. |
+| `agent` / `model` | The lead agent and its model, for every stage the template does not give its own agent. The model must be one of the agent's models (`list_agent_models`); a stage on another agent uses that agent's own default. |
+| `goal` | What to build. May be left out when `backlog_item` is given: the item's brief is used. |
+| `pull_request` | `false` (the default): the pipeline is your child, as before — it starts at once, commits nothing, and its outcome arrives in your inbox. `true`: it runs as a Factory task, like one started from **New Task** — see below. |
+| `run_location` | `auto` (the project's Factory setting: your project folder when the template tests the running app, a background copy otherwise), `worktree` (a background copy of the repository) or `checkout` (your project folder). Defaults to `auto` with a pull request, and to your own checkout without. |
+| `backlog_item` | A backlog item number, as in #87, to link the task to. |
+
+**With `pull_request: true`** the task waits for the project's [Factory limits](/guides/factory/#factory-settings), shows *Queued* in the sidebar until then, and a successful run is committed, pushed and opened as a draft pull request for a person to review; merging it marks a linked backlog item done. It is not your child: nothing arrives in your inbox and its questions go to the person, so follow it with `runner_status`. A backlog item that already has a Factory task is refused.
+
+**`spawn_workflow` or `runner_enqueue`?** Use `spawn_workflow` for one goal — your own words, or one backlog item — and when you want the pipeline as your child without a pull request. Use [`runner_enqueue`](#runner_enqueue--runner_status) to start several backlog items at once with one configuration.
 
 <Aside type="caution" title="Not the default choice">
   A pipeline costs several times what one sub-agent costs — multiple sessions, multiple review rounds. Warpforge's own tool description says it plainly: use it for changes that benefit from an independent review pass; for straightforward work, prefer `spawn_agent`.

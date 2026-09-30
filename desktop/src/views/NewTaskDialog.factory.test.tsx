@@ -61,7 +61,9 @@ const item = (id: string, title: string): WorkItem => ({
 
 let github = true;
 
-function renderDialog(props: { factorySeed?: FactorySeed; backlogItemId?: string } = {}) {
+function renderDialog(
+  props: { factorySeed?: FactorySeed; backlogItemId?: string; snapshot?: Snapshot } = {},
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -215,6 +217,103 @@ describe("NewTaskDialog in Factory mode", () => {
     expect(daemon.request).toHaveBeenCalledWith(
       "backlog.list",
       expect.objectContaining({ status: "todo" }),
+    );
+  });
+});
+
+describe("NewTaskDialog Factory lead defaults", () => {
+  const luna = "opencode-go/gpt-6-luna";
+  const withOpencode: Snapshot = {
+    ...snapshot,
+    agents: [
+      ...snapshot.agents!,
+      {
+        acpCommand: "opencode acp",
+        displayName: "OpenCode",
+        enabled: true,
+        id: "opencode",
+        models: [
+          {
+            category: "model",
+            currentValue: "opencode-go/default",
+            id: "model",
+            name: "Model",
+            options: [
+              { name: "Default", value: "opencode-go/default" },
+              { name: "Luna", value: luna },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    const request = daemon.request as unknown as { getMockImplementation: () => unknown };
+    const base = request.getMockImplementation() as (method: string) => Promise<unknown>;
+    vi.spyOn(daemon, "request").mockImplementation(async (method) => {
+      if (method === "runner.status") {
+        return { settings: { agent: "opencode", model: luna, workflow: "review-loop" } };
+      }
+      return base(method);
+    });
+  });
+
+  it("starts a backlog item on the project's Factory lead and model", async () => {
+    renderDialog({ backlogItemId: "b-3", snapshot: withOpencode });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Harness" })).toHaveTextContent("OpenCode"),
+    );
+    await startPrompt(" now");
+
+    await waitFor(() =>
+      expect(daemon.request).toHaveBeenCalledWith(
+        "task.create",
+        expect.objectContaining({
+          agent: "opencode",
+          default_model: luna,
+          workflow: "review-loop",
+        }),
+      ),
+    );
+  });
+
+  it("starts several items on the Factory lead and model", async () => {
+    const enqueue = vi.spyOn(daemon, "runnerEnqueue");
+    const user = userEvent.setup();
+    renderDialog({
+      factorySeed: { items: [item("b-5", "Five")], kind: "items" },
+      snapshot: withOpencode,
+    });
+    await screen.findByText("Five");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Harness" })).toHaveTextContent("OpenCode"),
+    );
+    await user.click(await screen.findByRole("button", { name: "Start 1 in Factory" }));
+
+    await waitFor(() =>
+      expect(enqueue).toHaveBeenCalledWith(
+        "warpforge",
+        ["b-5"],
+        expect.objectContaining({ agent: "opencode", model: luna }),
+      ),
+    );
+  });
+
+  it("keeps the harness the person picks, without the default's model", async () => {
+    const user = userEvent.setup();
+    renderDialog({ backlogItemId: "b-3", snapshot: withOpencode });
+    const harness = screen.getByRole("button", { name: "Harness" });
+    await waitFor(() => expect(harness).toHaveTextContent("OpenCode"));
+    await user.click(harness);
+    await user.click(await screen.findByRole("menuitem", { name: /Claude/ }));
+    await startPrompt(" now");
+
+    await waitFor(() =>
+      expect(daemon.request).toHaveBeenCalledWith(
+        "task.create",
+        expect.objectContaining({ agent: "claude", default_model: undefined }),
+      ),
     );
   });
 });

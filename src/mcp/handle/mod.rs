@@ -14,6 +14,7 @@ mod browser;
 mod memory;
 mod runner;
 mod runtime;
+mod spawn_workflow;
 #[cfg(test)]
 mod tests;
 mod workflows;

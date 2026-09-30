@@ -91,10 +91,10 @@ Omitting `implement`, `review` or `fix` does **not** remove them — it selects 
 | Key | Default |
 | --- | --- |
 | `agent` | The Lead agent picked in the New Task dialog |
-| `model` | The Lead model picked in the New Task dialog |
+| `model` | The Lead model picked in the New Task dialog, when the stage runs on the Lead agent; otherwise that agent's own default |
 | `prompt` | Warpforge's built-in prompt for that stage |
 
-`fix` is the exception to the fallback: an omitted `agent` or `model` there inherits the **implement** stage rather than the Lead, so the same agent that wrote the code repairs it unless you say otherwise.
+`fix` is the exception to the fallback: an omitted `agent` or `model` there inherits the **implement** stage rather than the Lead, so the same agent that wrote the code repairs it unless you say otherwise. A model is only ever inherited by a stage on the same agent — a stage that names a different agent and no `model` runs on that agent's own default, never on another agent's model.
 
 Mixing agents per stage is the point — plan with one, implement with another, review with a third:
 
@@ -148,7 +148,7 @@ The verification stage tests the change the way a QA engineer would. After the i
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `agent` | string | the Lead agent | Who tests. |
-| `model` | string | the Lead model | |
+| `model` | string | the Lead model on the Lead agent, else the agent's default | |
 | `instructions` | string | — | Added to the built-in testing prompt: logins, seed data, the page to start from. |
 | `required` | boolean | `true` | `true`: review never starts without a pass. `false`: a failed or impossible check is noted and review goes on. |
 | `max_attempts` | number | `2` | How many times in a row verification may fail before the pipeline asks you. Must be ≥ 1; values above **5** are clamped with a warning. |

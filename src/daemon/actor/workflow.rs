@@ -246,6 +246,10 @@ impl Daemon {
         task.agent = agent.clone();
         task.parent_task_id = parent_task_id;
         task.backlog_item_id = backlog_item_id;
+        // A model the lead agent does not list would be sent to the wrong
+        // harness; the agent then runs on its own default instead.
+        let default_model = default_model
+            .filter(|m| crate::daemon::acp::model_fits(&self.configured_agents, &agent, m));
         // An explicit lead model from the dialog is the task's model intent.
         task.model = default_model.clone();
         // The parent is "running" for the whole life of the pipeline.

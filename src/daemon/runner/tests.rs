@@ -288,3 +288,35 @@ fn auto_takes_the_checkout_only_for_a_workflow_that_verifies() {
         At::Checkout
     );
 }
+
+#[test]
+fn the_lead_is_the_persons_choice_and_the_default_model_follows_the_default_agent() {
+    let settings = wire::RunnerSettings {
+        agent: "opencode".into(),
+        model: Some("opencode-go/gpt-6-luna".into()),
+        ..wire::RunnerSettings::defaults("demo")
+    };
+    let luna = Some("opencode-go/gpt-6-luna".to_string());
+    assert_eq!(
+        resolve_lead(None, None, &settings, "claude"),
+        ("opencode".to_string(), luna.clone())
+    );
+    assert_eq!(
+        resolve_lead(Some("opencode"), None, &settings, "claude"),
+        ("opencode".to_string(), luna)
+    );
+    assert_eq!(
+        resolve_lead(Some("claude"), None, &settings, "claude"),
+        ("claude".to_string(), None),
+        "another agent never inherits the default agent's model"
+    );
+    assert_eq!(
+        resolve_lead(Some(" codex "), Some("gpt-x"), &settings, "claude"),
+        ("codex".to_string(), Some("gpt-x".to_string()))
+    );
+    let unset = wire::RunnerSettings::defaults("demo");
+    assert_eq!(
+        resolve_lead(Some(""), Some(" "), &unset, "claude"),
+        ("claude".to_string(), None)
+    );
+}

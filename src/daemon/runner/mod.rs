@@ -4,6 +4,7 @@
 
 mod brief;
 mod gate;
+mod lead;
 mod location;
 mod order;
 #[cfg(test)]
@@ -13,6 +14,7 @@ pub(crate) use brief::{
     brief_body, commit_message, pr_body, pr_title, strip_preamble, with_preamble, PrFacts,
 };
 pub(crate) use gate::{headroom_refusal, pipeline_agents, slot_refusal, Slots, DAY_SECS};
+pub(crate) use lead::resolve_lead;
 pub(crate) use location::resolve_location;
 pub(crate) use order::{dispatch_order, next_position};
 

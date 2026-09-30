@@ -117,6 +117,22 @@ impl Daemon {
             .unwrap_or_default()
     }
 
+    /// The lead agent and model of a task in `project`. A model the agent
+    /// does not list is dropped, so the agent runs on its own default.
+    pub(super) fn runner_lead(
+        &self,
+        project: &str,
+        agent: Option<&str>,
+        model: Option<&str>,
+    ) -> (String, Option<String>) {
+        let settings = self.runner_settings(project);
+        let (agent, model) =
+            logic::resolve_lead(agent, model, &settings, &self.runner_default_agent());
+        let model =
+            model.filter(|m| crate::daemon::acp::model_fits(&self.configured_agents, &agent, m));
+        (agent, model)
+    }
+
     /// Why one of `spec`'s agents may not start a new task now. `force`
     /// skips the headroom threshold but never an exhausted account.
     fn runner_agent_refusal(
@@ -305,12 +321,11 @@ impl Daemon {
             .workflow
             .clone()
             .unwrap_or_else(|| settings.workflow.clone());
-        let agent = entry
-            .agent
-            .clone()
-            .or_else(|| Some(settings.agent.clone()).filter(|a| !a.is_empty()))
-            .unwrap_or_else(|| self.runner_default_agent());
-        let model = entry.model.clone().or_else(|| settings.model.clone());
+        let (agent, model) = self.runner_lead(
+            &entry.project,
+            entry.agent.as_deref(),
+            entry.model.as_deref(),
+        );
         let spec =
             match crate::workflow_config::load_workflow(std::path::Path::new(path), &workflow)
                 .map(|loaded| loaded.spec)

@@ -4,7 +4,7 @@ pub(super) fn defs() -> Vec<Value> {
     vec![
         json!({
             "name": "runner_enqueue",
-            "description": "Start Factory tasks for backlog items: one task per item, all with the same configuration. Each task runs the workflow template (implement, optional browser check, review ⇄ fix) and appears in the sidebar at once; it starts as soon as the project's Factory limits allow and waits as Queued until then. With pull_request on (the default) a successful run is committed, pushed and opened as a draft pull request for a person to review; off, the change is left in its checkout. Items that already have a Factory task, and done or cancelled items, are skipped and reported. A Factory run cannot start Factory tasks itself.",
+            "description": "Start Factory tasks for backlog items: one task per item, all with the same configuration. Each task runs the workflow template (implement, optional browser check, review ⇄ fix) and appears in the sidebar at once; it starts as soon as the project's Factory limits allow and waits as Queued until then. With pull_request on (the default) a successful run is committed, pushed and opened as a draft pull request for a person to review; off, the change is left in its checkout. Items that already have a Factory task, and done or cancelled items, are skipped and reported. A Factory run cannot start Factory tasks itself. Use it to start backlog items in bulk; for one goal that is not a backlog item, or to run a pipeline as your own child without a pull request, use spawn_workflow.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

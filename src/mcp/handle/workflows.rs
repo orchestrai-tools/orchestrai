@@ -12,46 +12,7 @@ pub(super) async fn dispatch(
     args: &Value,
 ) -> Result<String> {
     match name {
-        "spawn_workflow" => {
-            let workflow_id = args
-                .get("workflow_id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| anyhow!("'workflow_id' is required"))?;
-            let goal = args
-                .get("goal")
-                .and_then(Value::as_str)
-                .ok_or_else(|| anyhow!("'goal' is required"))?;
-            let agent = args
-                .get("agent")
-                .and_then(Value::as_str)
-                .ok_or_else(|| anyhow!("'agent' is required"))?;
-            let result = client
-                .request(
-                    "task.create",
-                    json!({
-                        "project": project,
-                        "prompt": goal,
-                        "agent": agent,
-                        "tags": ["orchestrator", "workflow-subagent"],
-                        "include_runtime_context": true,
-                        "worktree": false,
-                        "parent_task_id": parent_task,
-                        "workflow": workflow_id,
-                    }),
-                )
-                .await?;
-            let child = result
-                .get("taskId")
-                .and_then(Value::as_str)
-                .unwrap_or("(unknown)");
-            Ok(format!(
-                "Dispatched workflow '{workflow_id}' as task {child}. It runs asynchronously \
-                 through its own plan/implement/review/fix stages; you will be notified when \
-                 its result is waiting — then call read_inbox. Check list_agents for its \
-                 progress and whether it needs an answer (answer_workflow) or a decision \
-                 (decide_workflow)."
-            ))
-        }
+        "spawn_workflow" => super::spawn_workflow::spawn(client, parent_task, project, args).await,
         "pause_workflow" => {
             let task_id = args
                 .get("task_id")

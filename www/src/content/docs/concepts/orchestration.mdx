@@ -45,6 +45,8 @@ See the [workflow file reference](/reference/workflow-files/) for every key, the
 
 An orchestrator can dispatch a whole pipeline instead of a single sub-agent (`spawn_workflow`), and then drive it: `pause_workflow` holds it at the next stage boundary, `resume_workflow` continues with optional extra context, `answer_workflow` answers a stage's question, and `decide_workflow` settles what happens when the review rounds run out with findings still open.
 
+By default that pipeline is the orchestrator's own child: it starts at once, commits nothing, and its outcome comes back to the orchestrator. Asked to ship the change, the orchestrator passes `pull_request: true` instead, and the pipeline runs as a [Factory](/guides/factory/) task like one you start from **New Task**: it waits for the project's Factory limits, opens a draft pull request for you to review when it succeeds, and marks a linked backlog item done when you merge it. The orchestrator can pick the lead agent and model, where it runs, and a backlog item to work from; to start several backlog items at once it uses `runner_enqueue` — see the [MCP tools reference](/reference/mcp-tools/#spawn_workflow).
+
 That combination is how a large task usually gets done well — one lead, mostly single sub-agents, and a full review pipeline on the one piece that warrants it.
 
 ### When quota blocks work

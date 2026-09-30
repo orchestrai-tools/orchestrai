@@ -52,14 +52,15 @@ impl Daemon {
         Ok(())
     }
 
-    /// The workflow and lead agent a new task runs with: its own choice,
-    /// else the project's defaults. Refuses a workflow that cannot load.
+    /// The workflow, lead agent and model a new task runs with: its own
+    /// choice, else the project's defaults. Refuses a workflow that cannot load.
     fn runner_resolve(
         &self,
         project: &str,
         workflow: Option<&str>,
         agent: Option<&str>,
-    ) -> Result<(String, String), String> {
+        model: Option<&str>,
+    ) -> Result<(String, String, Option<String>), String> {
         let path = self
             .project_path(project)
             .ok_or_else(|| format!("unknown project '{project}'"))?;
@@ -73,16 +74,11 @@ impl Daemon {
             .ok_or_else(|| format!("unknown workflow `{workflow}`"))?
             .spec
             .map_err(|e| format!("workflow `{workflow}` is invalid: {e}"))?;
-        let agent = agent
-            .map(str::trim)
-            .filter(|a| !a.is_empty())
-            .map(str::to_string)
-            .or_else(|| Some(settings.agent.clone()).filter(|a| !a.is_empty()))
-            .unwrap_or_else(|| self.runner_default_agent());
+        let (agent, model) = self.runner_lead(project, agent, model);
         if agent.is_empty() {
             return Err("no agent is set up".to_string());
         }
-        Ok((workflow, agent))
+        Ok((workflow, agent, model))
     }
 
     /// The Factory task already working on `item_id`, if any.
@@ -101,8 +97,12 @@ impl Daemon {
         new: NewFactoryTask,
         item: Option<&wire::BacklogItem>,
     ) -> Result<String, String> {
-        let (workflow, agent) =
-            self.runner_resolve(&new.project, new.workflow.as_deref(), new.agent.as_deref())?;
+        let (workflow, agent, model) = self.runner_resolve(
+            &new.project,
+            new.workflow.as_deref(),
+            new.agent.as_deref(),
+            new.model.as_deref(),
+        )?;
         let prompt = if new.deliver {
             logic::with_preamble(&new.prompt)
         } else {
@@ -118,7 +118,7 @@ impl Daemon {
             None => derive_title(&new.prompt),
         };
         task.backlog_item_id = new.item_id.clone();
-        task.model = new.model.clone().filter(|m| !m.trim().is_empty());
+        task.model = model;
         let task_id = task.id.clone();
         self.tasks.insert(task_id.clone(), task.clone());
         self.persist(&task);
@@ -175,7 +175,12 @@ impl Daemon {
         if item_ids.is_empty() {
             return Err("no backlog items given".to_string());
         }
-        self.runner_resolve(project, config.workflow.as_deref(), config.agent.as_deref())?;
+        self.runner_resolve(
+            project,
+            config.workflow.as_deref(),
+            config.agent.as_deref(),
+            config.model.as_deref(),
+        )?;
         let mut created = Vec::new();
         let mut skipped = Vec::new();
         for item_id in item_ids {

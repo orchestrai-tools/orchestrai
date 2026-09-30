@@ -6,7 +6,8 @@ import { useRunnerStatus } from "@/hooks/useRunner";
 
 import type { TaskMode } from "../../components/TaskComposeBar";
 import { daemon } from "../../daemon";
-import type { AgentConfig, Snapshot, WorkflowMeta } from "../../protocol";
+import type { AgentConfig, RunnerSettings, Snapshot, WorkflowMeta } from "../../protocol";
+import { modelOption } from "./useTaskCreation";
 
 /**
  * The New Task dialog's project, harness, mode and workflow template, with
@@ -34,6 +35,9 @@ export function useTaskSelection({
   );
   const [project, setProject] = useState(defaultProject ?? firstProjectName);
   const [selectedAgent, setSelectedAgent] = useState(enabledAgents[0]?.id ?? "claude");
+  /** Whether the person picked the harness; Factory defaults never override that. */
+  const [agentPicked, setAgentPicked] = useState(false);
+  const [defaultsApplied, setDefaultsApplied] = useState<string | null>(null);
   const [configPicks, setConfigPicks] = useState<Record<string, string | undefined>>({});
   const [mode, setMode] = useState<TaskMode>(initialMode);
   const [workflow, setWorkflow] = useState<string | null>(null);
@@ -59,6 +63,26 @@ export function useTaskSelection({
     workflows.find((candidate) => candidate.valid && candidate.id === factorySettings?.workflow) ??
     workflows.find((candidate) => candidate.valid);
 
+  /** Select the project's Factory lead agent and, when it offers it, model. */
+  const applyFactoryDefaults = (settings: RunnerSettings) => {
+    const lead = enabledAgents.find((candidate) => candidate.id === settings.agent);
+    if (!lead) return;
+    setSelectedAgent(lead.id);
+    const option = modelOption(lead.models ?? []);
+    const offered = option?.options.some((choice) => choice.value === settings.model);
+    setConfigPicks(option && settings.model && offered ? { [option.id]: settings.model } : {});
+  };
+
+  // In Factory mode the harness and model start from the project's Factory
+  // defaults, however the dialog was opened, until the person picks one.
+  useEffect(() => {
+    if (mode !== "factory" || agentPicked || !factorySettings) return;
+    if (defaultsApplied === project) return;
+    setDefaultsApplied(project);
+    applyFactoryDefaults(factorySettings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when the settings or mode change
+  }, [mode, agentPicked, factorySettings, project, defaultsApplied]);
+
   // Opening straight into Factory mode waits for the templates to load.
   useEffect(() => {
     if (mode !== "factory" || workflow !== null || workflows.length === 0) return;
@@ -77,6 +101,7 @@ export function useTaskSelection({
   };
 
   const changeAgent = (nextAgent: string) => {
+    setAgentPicked(true);
     setSelectedAgent(nextAgent);
     // Config options are the harness's own selectors, so these cannot survive.
     setConfigPicks({});
@@ -93,8 +118,6 @@ export function useTaskSelection({
       const first = factoryDefault();
       if (!first) return;
       setWorkflow((current) => current ?? first.id);
-      const lead = factorySettings?.agent;
-      if (lead && enabledAgents.some((candidate) => candidate.id === lead)) changeAgent(lead);
     } else {
       setWorkflow(null);
     }

@@ -29,13 +29,17 @@ child sessions and their task history in bulk. By default it removes all \
 inactive/completed children; use `max_age_seconds` to filter by age, `dry_run` \
 to preview candidates, and `include_active` only when you explicitly intend to \
 stop and delete running work.\n\n\
-- spawn_workflow(workflow_id, goal, agent): dispatch a multi-stage pipeline \
+- spawn_workflow(workflow_id, goal, agent, ...): dispatch a multi-stage pipeline \
 (plan/implement/review/fix, with review ⇄ fix rounds) instead of a single \
 sub-agent, for work that benefits from independent review. Runs \
 asynchronously as its own parent task; its final outcome lands in your inbox \
 like a sub-agent's, and its progress shows up in list_agents. Costs several \
 times the tokens of a single sub-agent — prefer spawn_agent for straightforward \
-tasks.\n\
+tasks. Pass pull_request: true (optionally backlog_item, model, \
+run_location) when the change should ship: it then runs in the Factory \
+queue, opens a draft pull request for the user to review, and does not \
+report to your inbox — follow it with runner_status. runner_enqueue starts \
+several backlog items in the Factory at once.\n\
 - pause_workflow(task_id) / resume_workflow(task_id, note?): soft-pause a \
 running pipeline at its next stage boundary, or resume it, optionally with a \
 guidance note for the next stage.\n\

@@ -13,7 +13,9 @@ use crate::daemon::diff::testsupport::git;
 mod checkout;
 mod delivery;
 mod dispatch;
+mod lead;
 mod location;
+mod orchestrator;
 mod recovery;
 mod retry;
 
@@ -276,4 +278,13 @@ fn origin_branches(origin: &Path) -> String {
         .output()
         .unwrap();
     String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// One request through the daemon's RPC dispatcher.
+async fn rpc(daemon: &DaemonHandle, method: &str, params: serde_json::Value) -> serde_json::Value {
+    let method = serde_json::from_value(serde_json::json!({ "method": method, "params": params }))
+        .expect("a known method");
+    crate::daemon::server::dispatch_detached(daemon, method)
+        .await
+        .unwrap_or_else(|e| panic!("{}", e.message))
 }

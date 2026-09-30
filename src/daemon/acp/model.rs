@@ -97,3 +97,28 @@ pub fn parse_config_options(v: Option<&Value>) -> Vec<wire::ConfigOption> {
         })
         .collect()
 }
+
+/// Whether `model` is one of `agent`'s models, by its cached model selector
+/// or its last-used model. An agent with no catalog, or a raw command that
+/// is not configured, cannot be judged and fits.
+/// @param agents the configured agents
+/// @param agent the agent id, display name or raw command
+/// @param model the model id
+/// @returns false only when the agent's catalog lists other models
+pub(crate) fn model_fits(agents: &[wire::AgentConfig], agent: &str, model: &str) -> bool {
+    let Some(config) = agents
+        .iter()
+        .find(|a| a.id == agent || a.display_name == agent)
+    else {
+        return true;
+    };
+    if config.last_model.as_deref() == Some(model) {
+        return true;
+    }
+    match config.models.iter().find(|o| is_model_selector(o)) {
+        Some(selector) if !selector.options.is_empty() => {
+            selector.options.iter().any(|c| c.value == model)
+        }
+        _ => true,
+    }
+}

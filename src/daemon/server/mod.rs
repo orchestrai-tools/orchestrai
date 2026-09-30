@@ -45,6 +45,8 @@ mod util;
 pub(crate) use client_hub::HubConnection;
 pub(crate) use client_hub::{ClientHub, ClientRequestError};
 use dispatch::dispatch;
+#[cfg(test)]
+pub(crate) use dispatch::dispatch_detached;
 use endpoint::{remove_endpoint, write_endpoint};
 use origin::OriginPolicy;
 
