@@ -58,7 +58,10 @@ async fn workflow_list_and_eject_over_websocket() {
     // A fresh project sees exactly the built-in templates.
     let v = rpc(&mut ws, 1, "workflow.list", json!({ "project": "demo" })).await;
     let workflows = v["result"]["workflows"].as_array().unwrap();
-    assert_eq!(workflows.len(), 2);
+    assert_eq!(
+        workflows.len(),
+        crate::workflow_config::BUILTIN_WORKFLOWS.len()
+    );
     assert!(workflows
         .iter()
         .all(|w| w["source"] == "builtin" && w["valid"] == true));
