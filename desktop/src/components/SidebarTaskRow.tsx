@@ -1,4 +1,4 @@
-import { ChevronRight, Users } from "lucide-react";
+import { ChevronRight, Users, Workflow } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 
 import { AgentLogo } from "@/components/AgentLogo";
@@ -94,6 +94,7 @@ export const SidebarTaskRow = memo(function SidebarTaskRow({
   const receded = state === "snoozed" || state === "settled" || state === "done";
   const orchestrator = isOrchestratorTask(task, childCount);
   const factory = isFactoryTask(task);
+  const pipeline = factory && (childCount > 0 || task.workflowRun != null);
 
   return (
     <div className="group/row relative" data-rail-depth={depth}>
@@ -149,13 +150,26 @@ export const SidebarTaskRow = memo(function SidebarTaskRow({
               {label}
             </span>
             {factory && <FactoryStageChip task={task} receded={receded} />}
-            {(task.worktree || factory) && (
+            {task.worktree && !factory && (
               <TaskPullRequestGlyph taskId={task.id} receded={receded} />
             )}
-            {orchestrator && (
-              <span title="Orchestrator lead" className="inline-flex shrink-0">
-                <Users aria-hidden className="size-3 text-muted-foreground/60" />
+            {pipeline ? (
+              <span
+                title={
+                  childCount > 0
+                    ? `Factory pipeline · ${childCount} stage${childCount === 1 ? "" : "s"}`
+                    : "Factory pipeline"
+                }
+                className="inline-flex shrink-0"
+              >
+                <Workflow aria-hidden className="size-3 text-muted-foreground/60" />
               </span>
+            ) : (
+              orchestrator && (
+                <span title="Orchestrator lead" className="inline-flex shrink-0">
+                  <Users aria-hidden className="size-3 text-muted-foreground/60" />
+                </span>
+              )
             )}
             <span
               data-lane="meta"
