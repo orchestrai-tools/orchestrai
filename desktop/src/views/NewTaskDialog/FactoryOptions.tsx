@@ -40,8 +40,12 @@ export function FactoryLocationNote({ options }: { options: Options }) {
             onValueChange={(value) => options.setLocation(value as EntryRunLocation)}
           >
             {LOCATIONS.map((location) => (
-              <DropdownMenuRadioItem key={location} value={location} className="items-start">
-                <span className="flex flex-col gap-0.5">
+              <DropdownMenuRadioItem
+                key={location}
+                value={location}
+                className="items-start whitespace-normal"
+              >
+                <span className="flex min-w-0 flex-col gap-0.5 whitespace-normal">
                   <span>{LOCATION_LABEL[location]}</span>
                   <span className="text-[11px] leading-snug text-muted-foreground">
                     {LOCATION_HINT[location]}
