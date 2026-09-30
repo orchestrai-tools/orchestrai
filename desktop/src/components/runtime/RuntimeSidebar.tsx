@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 import { daemon } from "../../daemon";
 import type { PortForwardInfo, ServiceInfo } from "../../protocol";
+import { LocalBadge } from "./LocalBadge";
 import { StatusDot } from "./StatusDot";
 
 function safeRequest(method: string, params: unknown, onError: (msg: string) => void) {
@@ -146,6 +147,7 @@ const ServiceRow = memo(function ServiceRow({
       >
         <StatusDot variant={badge.variant} />
         <span className="min-w-0 flex-1 truncate font-medium">{service.name}</span>
+        {service.local && <LocalBadge name={service.name} fields={service.localFields} />}
         {service.portWarning && (
           <span title={portWarningText(service.portWarning)}>
             <TriangleAlert
@@ -243,6 +245,7 @@ const PortForwardRow = memo(function PortForwardRow({
             status instead — and the two lists scan as one. */}
         <StatusDot variant={badge.variant} />
         <span className="min-w-0 flex-1 truncate font-medium">{pf.name}</span>
+        {pf.local && <LocalBadge name={pf.name} fields={pf.localFields} />}
         <span className="sr-only">{badge.label}</span>
       </button>
       <div className={rowActionsClass(selected)}>

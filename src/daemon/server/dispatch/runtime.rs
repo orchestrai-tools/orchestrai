@@ -123,6 +123,11 @@ pub(super) async fn runtime_list(
     project: String,
 ) -> Result<serde_json::Value, wire::RpcError> {
     let snapshot = handle.snapshot().await;
+    let local_config_error = snapshot
+        .projects
+        .iter()
+        .find(|p| p.name == project)
+        .and_then(|p| p.local_config_error.clone());
     let services: Vec<_> = snapshot
         .services
         .into_iter()
@@ -133,7 +138,11 @@ pub(super) async fn runtime_list(
         .into_iter()
         .filter(|pf| pf.project == project)
         .collect();
-    Ok(json!({ "services": services, "portforwards": portforwards }))
+    let mut runtime = json!({ "services": services, "portforwards": portforwards });
+    if let Some(error) = local_config_error {
+        runtime["localConfigError"] = json!(error);
+    }
+    Ok(runtime)
 }
 
 pub(super) async fn terminal_spawn(

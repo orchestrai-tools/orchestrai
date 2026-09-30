@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { daemon } from "../../daemon";
 import type { PortForwardInfo, ServiceInfo } from "../../protocol";
 import type { ContextChip } from "../Composer";
+import { LocalBadge } from "./LocalBadge";
 import { LogViewer } from "./LogViewer";
 import { StatusDot } from "./StatusDot";
 
@@ -51,6 +52,7 @@ export function ServiceHeading({ service }: { service: ServiceInfo }) {
     <>
       <StatusDot variant={badge.variant} />
       <span className="text-[13px] font-medium">{service.name}</span>
+      {service.local && <LocalBadge name={service.name} fields={service.localFields} />}
       <span className="rounded border border-border px-1.5 py-px text-[11px] text-muted-foreground">
         {badge.label}
       </span>
@@ -81,6 +83,7 @@ export function PortForwardHeading({ pf }: { pf: PortForwardInfo }) {
     <>
       <PlugZap className="size-3.5 text-muted-foreground" />
       <span className="text-[13px] font-medium">{pf.name}</span>
+      {pf.local && <LocalBadge name={pf.name} fields={pf.localFields} />}
       <span className="rounded border border-border px-1.5 py-px text-[11px] text-muted-foreground">
         {badge.label}
       </span>

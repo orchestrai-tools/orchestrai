@@ -102,6 +102,8 @@ mod tests {
             port_pinned: false,
             port_warning: None,
             log_seq: 0,
+            local: false,
+            local_fields: Vec::new(),
         }
     }
 

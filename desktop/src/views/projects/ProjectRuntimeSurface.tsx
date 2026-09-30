@@ -1,3 +1,4 @@
+import { TriangleAlert } from "lucide-react";
 import { useMemo } from "react";
 
 import type { ContextChip } from "@/components/Composer";
@@ -10,6 +11,8 @@ export interface ProjectRuntimeSurfaceProps {
   /** Declared services included, so a project that has never run still lists them. */
   services: ServiceInfo[];
   portforwards: PortForwardInfo[];
+  /** Set while the personal local config file is broken and being ignored. */
+  localConfigError?: string | null;
   onAppendToChat?: (context: ContextChip) => void;
 }
 
@@ -27,6 +30,7 @@ export function ProjectRuntimeSurface({
   project,
   services,
   portforwards,
+  localConfigError,
   onAppendToChat,
 }: ProjectRuntimeSurfaceProps) {
   const running = useMemo(
@@ -36,6 +40,18 @@ export function ProjectRuntimeSurface({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {localConfigError && (
+        <div
+          role="alert"
+          className="flex shrink-0 items-start gap-1.5 border-b border-border px-3 py-1.5 text-[12px] text-amber-500 dark:text-amber-400"
+        >
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+          <span className="min-w-0 break-words">
+            Your local config (.warpforge/workspace.local.yaml) has an error and is being ignored:{" "}
+            {localConfigError}
+          </span>
+        </div>
+      )}
       {running.length > 0 && (
         <div className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 px-3 py-1.5 font-mono text-xs">
           {running.map((service) => (

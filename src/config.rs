@@ -79,6 +79,12 @@ pub struct WorkspaceConfig {
     pub ports: Option<PortsConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<crate::worktree_config::WorktreeConfig>,
+    /// What the local override file changed; empty when there is none.
+    #[serde(skip)]
+    pub local: crate::config_local::LocalOverrides,
+    /// Why the local override file is being ignored, when it is.
+    #[serde(skip)]
+    pub local_error: Option<String>,
 }
 
 /// Topologically sorted service names respecting `depends_on`.
@@ -119,7 +125,7 @@ pub fn sorted_services(config: &WorkspaceConfig) -> Vec<String> {
 /// Config file names in priority order: new → legacy. `.warpforge/` is the
 /// preferred home for warpforge files (workspace config, workflows); the
 /// root-level names keep working for existing projects.
-const CONFIG_NAMES: &[&str] = &[
+pub(crate) const CONFIG_NAMES: &[&str] = &[
     ".warpforge/workspace.yaml",
     ".warpforge.yaml",
     ".wf.yaml",
@@ -140,13 +146,20 @@ pub fn try_load_workspace_config(project_path: &Path) -> Result<Option<Workspace
             let config = serde_yaml::from_str(&text)
                 .with_context(|| format!("parsing {}", config_path.display()))?;
             validate_worktree(&config, &config_path)?;
-            return Ok(Some(config));
+            return crate::config_local::overlay(project_path, &config_path, Some(&text), config)
+                .map(Some);
         }
     }
-    Ok(auto_detect(project_path))
+    match auto_detect(project_path) {
+        Some(config) => {
+            let default_path = project_path.join(CONFIG_NAMES[0]);
+            crate::config_local::overlay(project_path, &default_path, None, config).map(Some)
+        }
+        None => Ok(None),
+    }
 }
 
-fn validate_worktree(config: &WorkspaceConfig, path: &Path) -> Result<()> {
+pub(crate) fn validate_worktree(config: &WorkspaceConfig, path: &Path) -> Result<()> {
     match &config.worktree {
         Some(wt) => wt
             .validate()
@@ -268,6 +281,8 @@ fn auto_detect(project_path: &Path) -> Option<WorkspaceConfig> {
         portforwards: vec![],
         ports: None,
         worktree: None,
+        local: Default::default(),
+        local_error: None,
     })
 }
 

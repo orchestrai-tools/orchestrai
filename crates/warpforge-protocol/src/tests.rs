@@ -515,6 +515,7 @@ fn project_config_changed_event_roundtrip() {
             port_range_conflict: None,
             declared_services: vec!["web".into()],
             agent_templates: HashMap::new(),
+            local_config_error: None,
         },
         services: vec![ServiceInfo {
             project: "demo".into(),
@@ -527,6 +528,8 @@ fn project_config_changed_event_roundtrip() {
             port_pinned: false,
             port_warning: None,
             log_seq: 0,
+            local: false,
+            local_fields: Vec::new(),
         }],
         portforwards: Vec::new(),
     });

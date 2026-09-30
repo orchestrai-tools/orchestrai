@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use warpforge_protocol as wire;
 
 use crate::config::{find_config_file, sorted_services, WorkspaceConfig};
+use crate::config_local::{ensure_local_ignored, find_local_config_file};
 use crate::registry::ProjectEntry;
 use crate::service::ServiceStatus;
 
@@ -20,7 +21,12 @@ pub(crate) fn split_key(key: &str) -> (String, String) {
     }
 }
 
-pub(crate) type ConfigFingerprint = Option<(PathBuf, Vec<u8>)>;
+/// Contents of the shared config and of the local override file, if present.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ConfigFingerprint {
+    shared: Option<(PathBuf, Vec<u8>)>,
+    local: Option<Vec<u8>>,
+}
 
 pub(crate) const CONFIG_POLL_INTERVAL: Duration = Duration::from_millis(250);
 pub(crate) const CONFIG_CHANGE_DEBOUNCE: Duration = Duration::from_millis(200);
@@ -31,7 +37,10 @@ pub(crate) const HISTORY_PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 
 
 pub(crate) fn config_fingerprint(project_path: &Path) -> ConfigFingerprint {
     let path = find_config_file(project_path);
-    std::fs::read(&path).ok().map(|contents| (path, contents))
+    ConfigFingerprint {
+        shared: std::fs::read(&path).ok().map(|contents| (path, contents)),
+        local: find_local_config_file(project_path).and_then(|path| std::fs::read(path).ok()),
+    }
 }
 
 /// Content-based, debounced observer for registered project configs.
@@ -51,6 +60,7 @@ impl ConfigObserver {
             applied: projects
                 .iter()
                 .map(|project| {
+                    ensure_local_ignored(Path::new(&project.path));
                     (
                         project.name.clone(),
                         config_fingerprint(Path::new(&project.path)),
@@ -62,6 +72,7 @@ impl ConfigObserver {
     }
 
     pub(crate) fn track(&mut self, project: &ProjectEntry) {
+        ensure_local_ignored(Path::new(&project.path));
         self.applied.insert(
             project.name.clone(),
             config_fingerprint(Path::new(&project.path)),
@@ -174,6 +185,13 @@ impl Daemon {
                                     == crate::ports::PortPin::Strict,
                                 port_warning: None,
                                 log_seq: 0,
+                                local: config.local.services.contains_key(name),
+                                local_fields: config
+                                    .local
+                                    .services
+                                    .get(name)
+                                    .cloned()
+                                    .unwrap_or_default(),
                             },
                         )
                     })
@@ -219,13 +237,20 @@ impl Daemon {
                             name.clone(),
                             wire::PortForwardInfo {
                                 project: project.name.clone(),
-                                name,
+                                name: name.clone(),
                                 namespace: pf.namespace.clone(),
                                 pod: pf.pod.clone(),
                                 local_port: pf.local_port,
                                 remote_port: pf.remote_port,
                                 status: wire::PortForwardStatus::Stopped,
                                 log_seq: 0,
+                                local: config.local.portforwards.contains_key(&name),
+                                local_fields: config
+                                    .local
+                                    .portforwards
+                                    .get(&name)
+                                    .cloned()
+                                    .unwrap_or_default(),
                             },
                         )
                     })
@@ -233,7 +258,8 @@ impl Daemon {
             })
             .unwrap_or_default();
         for pf in self.portforwards.list_for_project(&project.name) {
-            if pf_map.contains_key(&pf.name) {
+            if let Some(declared) = pf_map.get(&pf.name) {
+                let (local, local_fields) = (declared.local, declared.local_fields.clone());
                 pf_map.insert(
                     pf.name.clone(),
                     wire::PortForwardInfo {
@@ -245,6 +271,8 @@ impl Daemon {
                         remote_port: pf.remote_port,
                         status: wireconv::pf_status(&pf.status),
                         log_seq: self.portforwards.newest_seq(&project.name, &pf.name),
+                        local,
+                        local_fields,
                     },
                 );
             }
@@ -261,6 +289,7 @@ impl Daemon {
                 port_range_conflict,
                 declared_services,
                 agent_templates,
+                local_config_error: config.and_then(|c| c.local_error.clone()),
             },
             services,
             portforwards,

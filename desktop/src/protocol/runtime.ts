@@ -25,6 +25,10 @@ export interface ServiceInfo {
   /** Set while the service is up but nothing answers on its allocated port. */
   portWarning?: PortWarning;
   logSeq: number;
+  /** True when the personal local config file added or changed this service. */
+  local?: boolean;
+  /** Fields the local config file set on this service. */
+  localFields?: string[];
 }
 
 export interface PortWarning {
@@ -44,6 +48,10 @@ export interface PortForwardInfo {
   remotePort: number;
   status: PortForwardStatus;
   logSeq: number;
+  /** True when the personal local config file added or changed this forward. */
+  local?: boolean;
+  /** Fields the local config file set on this forward. */
+  localFields?: string[];
 }
 
 export interface ConfigChoice {

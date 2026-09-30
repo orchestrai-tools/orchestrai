@@ -233,6 +233,7 @@ impl Daemon {
                 Ok(config) => config,
                 Err(_) => continue,
             };
+            crate::config_local::ensure_local_ignored(Path::new(&project_path));
 
             self.remove_undeclared_runtime(&project_name, config.as_ref())
                 .await;

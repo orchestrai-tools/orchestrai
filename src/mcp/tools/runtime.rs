@@ -12,7 +12,9 @@ pub(super) fn defs() -> Vec<Value> {
                 worktree. A service with a `portWarning` is up but ignores its allocated \
                 port (`listening` lists the ports that actually answer): its allocatedPort is a \
                 dead port, so use one of `listening` or fix the command to honour $PORT. Each entry's logSeq is a log cursor you can pass as `after` to \
-                read_service_logs / read_portforward_logs.",
+                read_service_logs / read_portforward_logs. A `localConfigError` means the \
+                user's personal workspace.local.yaml is broken and being ignored, so the \
+                listing shows the shared config only.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

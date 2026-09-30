@@ -49,6 +49,12 @@ pub struct ServiceInfo {
     pub port_warning: Option<PortWarning>,
     /// Sequence number of the newest retained log line.
     pub log_seq: u64,
+    /// True when the personal local config file added or changed this service.
+    #[serde(default)]
+    pub local: bool,
+    /// Fields the local config file set on this service.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_fields: Vec<String>,
 }
 
 /// A running service that ignores the port allocated to it.
@@ -81,6 +87,12 @@ pub struct PortForwardInfo {
     pub remote_port: u16,
     pub status: PortForwardStatus,
     pub log_seq: u64,
+    /// True when the personal local config file added or changed this forward.
+    #[serde(default)]
+    pub local: bool,
+    /// Fields the local config file set on this forward.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_fields: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

@@ -3,6 +3,7 @@ mod app;
 mod bootstrap;
 mod client;
 mod config;
+mod config_local;
 mod daemon;
 mod mcp;
 #[allow(dead_code)]
