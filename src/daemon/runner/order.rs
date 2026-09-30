@@ -20,7 +20,7 @@ pub(crate) fn dispatch_order<'a>(
             .cmp(&priority_rank(&a.priority))
             .then(a.position.cmp(&b.position))
             .then(a.enqueued_at.cmp(&b.enqueued_at))
-            .then(a.item_id.cmp(&b.item_id))
+            .then(a.task_id.cmp(&b.task_id))
     });
     queued
 }

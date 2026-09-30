@@ -27,6 +27,7 @@ pub(super) async fn task_create(
     origin: Option<String>,
     start: bool,
     advisor: Option<wire::AdvisorPick>,
+    factory: Option<wire::FactoryCreate>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     let orchestrated = workflow.is_some() || tags.iter().any(|tag| tag == "orchestrator-chat");
     if advisor.is_some() && orchestrated {
@@ -49,6 +50,24 @@ pub(super) async fn task_create(
         }
         None => StartPoint::Head,
     };
+    if let (Some(workflow), Some(factory)) = (workflow.as_ref(), factory) {
+        let task = crate::daemon::actor::runner::NewFactoryTask {
+            project,
+            prompt,
+            agent: Some(agent),
+            model: default_model,
+            workflow: Some(workflow.clone()),
+            item_id: backlog_item_id,
+            run_location: factory.run_location,
+            deliver: factory.deliver,
+            config_overrides,
+            include_runtime_context,
+            attachments,
+            tags,
+            origin_task: parent_task_id,
+        };
+        return super::runner::create_factory_task(handle, task).await;
+    }
     if let Some(workflow) = workflow {
         let (tx, rx) = oneshot::channel();
         handle

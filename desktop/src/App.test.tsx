@@ -40,6 +40,10 @@ vi.mock("./hooks/useMediaQuery", () => ({
 vi.mock("./hooks/useFontScaling", () => ({ useFontScaling: vi.fn<() => void>() }));
 vi.mock("./hooks/useTheme", () => ({ useTheme: vi.fn<() => void>() }));
 vi.mock("./hooks/useDaemonEvents", () => ({ useDaemonEvents: vi.fn<() => void>() }));
+vi.mock("./hooks/useRunner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./hooks/useRunner")>()),
+  useRunnerEvents: vi.fn<() => void>(),
+}));
 vi.mock("./hooks/useTauriClose", () => ({ useTauriClose: vi.fn<() => void>() }));
 vi.mock("./hooks/usePullShortcut", () => ({ usePullShortcut: vi.fn<() => void>() }));
 vi.mock("./hooks/usePushShortcut", () => ({ usePushShortcut: vi.fn<() => void>() }));

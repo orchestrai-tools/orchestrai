@@ -39,7 +39,7 @@ export const TaskAgentSwitcher = memo(function TaskAgentSwitcher({
   }, [tree.task.orchestrationGraph?.nodes]);
   const memberLabel = useCallback(
     (member: (typeof members)[number], index: number) => {
-      if (index === 0) return workflow ? "Workflow" : "Lead";
+      if (index === 0) return workflow ? "Factory" : "Lead";
       const stage = stageByTaskId.get(member.id);
       return stage
         ? `${stage} · ${agentDisplayName(member.agent)}`
@@ -86,7 +86,7 @@ export const TaskAgentSwitcher = memo(function TaskAgentSwitcher({
           <span className="text-muted-foreground/50">·</span>
           {currentIndex === 0 ? (
             <span className="max-w-24 truncate rounded-full border border-border bg-secondary/40 px-1.5 py-px text-[11px] font-medium text-foreground">
-              {workflow ? "Workflow" : "Lead"}
+              {workflow ? "Factory" : "Lead"}
             </span>
           ) : (
             <span className="max-w-40 truncate rounded-full border border-border bg-secondary/40 px-1.5 py-px text-[11px] font-medium text-foreground">
@@ -115,7 +115,7 @@ export const TaskAgentSwitcher = memo(function TaskAgentSwitcher({
                 <span className="flex items-center gap-2">
                   {index === 0 ? (
                     <span className="font-medium text-foreground">
-                      {workflow ? "Workflow" : "Lead"}
+                      {workflow ? "Factory" : "Lead"}
                     </span>
                   ) : (
                     <>

@@ -1,5 +1,4 @@
 import {
-  Factory,
   FolderTree,
   GitBranch,
   GitPullRequest,
@@ -16,7 +15,6 @@ import type { ProjectSurface } from "@/store/ui";
  */
 export const PROJECT_SURFACE_TABS: readonly SurfaceTab<ProjectSurface>[] = [
   { id: "backlog", label: "Backlog", icon: ListTodo },
-  { id: "factory", label: "Factory", icon: Factory },
   { id: "pulls", label: "Pull Requests", icon: GitPullRequest },
   { id: "files", label: "Explorer", icon: FolderTree },
   { id: "runtime", label: "Runtime", icon: Server },

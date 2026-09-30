@@ -1,12 +1,12 @@
 ---
 title: Settings
-description: Every setting Warpforge exposes — themes, fonts, agents and accounts, language servers, trackers, memory, dreaming, and generated text.
+description: Every setting Warpforge exposes — themes, fonts, agents and accounts, language servers, trackers, memory, dreaming, generated text, and each project's Factory settings.
 sidebar:
   order: 5
   label: Settings
 ---
 
-Everything Warpforge lets you change, in the order the Settings panel presents it.
+Everything Warpforge lets you change, in the order the Settings panel presents it — plus the [Factory settings](#factory-settings-per-project) each project keeps in its own menu.
 
 ## Appearance
 
@@ -133,6 +133,23 @@ Which agent writes the prose Warpforge drafts for you — [task titles, commit m
 
 - **Auto-name tasks** — on by default. Turn it off to name tasks yourself.
 - **Agent for git text** and **Model** — which harness and model do the drafting. Worth pointing at something small and fast; this work doesn't need your best model.
+
+## Factory settings (per project)
+
+Limits and defaults for a project's [Factory](/guides/factory/) tasks live with the project, not in the Settings panel: open the project's ⋮ menu and choose **Factory settings…**.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Tasks at the same time** | 1 | How many Factory tasks run at once, from 1 to 8. Only one of them runs in your project folder. |
+| **Pause at open draft PRs** | 3 | New tasks wait while this many Factory pull requests are open. |
+| **New tasks per 24 hours** | 10 | How many Factory tasks start in any 24 hours. |
+| **Keep at least (GB free)** | 25 GB | New tasks wait while the disk has less free space than this. `0` turns it off. |
+| **Pause when quota use passes (%)** | 80% | A new task waits while an agent it needs is above this. An account that is out of quota always waits. |
+| **Template** | *review-loop* | The workflow template New Task starts with in Factory mode. |
+| **Lead agent** and **Model** | first enabled agent | The agent and model New Task starts with in Factory mode. |
+| **Where it runs** | *Automatic* | Where New Task runs a Factory task unless you change it. |
+
+The limits apply to Factory tasks that open a pull request and to backlog batches, and they only decide when a new task starts — never a stage of a task that is already running. **Start now** on a queued task starts it past them.
 
 ## Fun
 

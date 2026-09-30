@@ -20,7 +20,7 @@ const workflow: WorkflowMeta = {
 
 describe("RunPreview", () => {
   it("draws the workflow's real stages, reviewer count and round limit", () => {
-    render(<RunPreview agent="claude" agents={agents} mode="workflow" workflow={workflow} />);
+    render(<RunPreview agent="claude" agents={agents} mode="factory" workflow={workflow} />);
 
     expect(screen.getByText("Plan")).toBeInTheDocument();
     expect(screen.getByText("Implement")).toBeInTheDocument();
@@ -35,13 +35,35 @@ describe("RunPreview", () => {
       <RunPreview
         agent="claude"
         agents={agents}
-        mode="workflow"
+        mode="factory"
         workflow={{ ...workflow, stages: ["implement", "review", "fix"] }}
       />,
     );
 
     expect(screen.queryByText("Plan")).not.toBeInTheDocument();
     expect(screen.getByText("checks the diff")).toBeInTheDocument();
+  });
+
+  it("draws the verify stage, a pinned stage agent and the draft PR when it opens one", () => {
+    const { container } = render(
+      <RunPreview
+        agent="claude"
+        agents={agents}
+        mode="factory"
+        deliver
+        workflow={{
+          ...workflow,
+          stageAgents: [null, "codex", null],
+          stages: ["implement", "verify", "review", "fix"],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Verify in browser")).toBeInTheDocument();
+    expect(screen.getByText("Draft PR")).toBeInTheDocument();
+    expect(screen.getByText(/opens a draft PR/)).toBeInTheDocument();
+    const logos = new Set([...container.querySelectorAll("img")].map((img) => img.src));
+    expect(logos.size).toBeGreaterThan(1);
   });
 
   it("labels the orchestrator fan as an example so it is not read as a plan", () => {

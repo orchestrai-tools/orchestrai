@@ -1,6 +1,6 @@
-//! Backlog runner rows (ADR 0023): per-project settings, the queue, and one
-//! `item_runs` row per attempt. The actor's mirror is authoritative; these are
-//! loaded once at spawn and written through the persistence queue.
+//! Factory rows (ADR 0023): per-project settings, the tasks it schedules, and
+//! one `item_runs` row per attempt. The actor's mirror is authoritative; these
+//! are loaded once at spawn and written through the persistence queue.
 
 use anyhow::Result;
 use rusqlite::{Connection, OptionalExtension, Row};
@@ -18,7 +18,7 @@ pub(super) fn init(conn: &Connection) -> Result<()> {
             updated_at    INTEGER NOT NULL
         );
         CREATE TABLE IF NOT EXISTS runner_queue (
-            item_id     TEXT PRIMARY KEY,
+            entry_key   TEXT PRIMARY KEY,
             project     TEXT NOT NULL,
             entry_json  TEXT NOT NULL,
             updated_at  INTEGER NOT NULL
@@ -56,6 +56,16 @@ pub(super) fn init(conn: &Connection) -> Result<()> {
     )?;
     // Migration: where each attempt ran (ADR 0023, per-item run location).
     let _ = conn.execute("ALTER TABLE item_runs ADD COLUMN run_location TEXT", []);
+    // Migration: entries were keyed by backlog item; they are keyed by task
+    // since Factory became a task mode. Old keys are rewritten at boot.
+    let _ = conn.execute(
+        "ALTER TABLE runner_queue RENAME COLUMN item_id TO entry_key",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE item_runs ADD COLUMN deliver INTEGER NOT NULL DEFAULT 1",
+        [],
+    );
     Ok(())
 }
 
@@ -83,7 +93,7 @@ fn parse_location(s: Option<String>) -> Option<wire::RunLocation> {
 
 const RUN_COLUMNS: &str = "id, project, item_id, item_number, item_title, task_id, workflow, \
      agent, model, enqueued_at, dispatched_at, finished_at, pr_opened_at, merged_at, closed_at, \
-     rounds, fix_rounds, cost_usd, outcome, detail, pr_url, pr_number, run_location";
+     rounds, fix_rounds, cost_usd, outcome, detail, pr_url, pr_number, run_location, deliver";
 
 fn run_from_row(row: &Row<'_>) -> rusqlite::Result<wire::ItemRun> {
     Ok(wire::ItemRun {
@@ -110,6 +120,7 @@ fn run_from_row(row: &Row<'_>) -> rusqlite::Result<wire::ItemRun> {
         pr_url: row.get(20)?,
         pr_number: row.get::<_, Option<i64>>(21)?.map(|n| n as u64),
         run_location: parse_location(row.get(22)?),
+        deliver: row.get::<_, i64>(23)? != 0,
     })
 }
 
@@ -139,22 +150,28 @@ impl Store {
         Ok(())
     }
 
-    pub fn load_runner_queue(&self) -> Result<Vec<wire::RunnerEntry>> {
-        let mut stmt = self.conn.prepare("SELECT entry_json FROM runner_queue")?;
-        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    /// Every stored entry with the key its row is stored under: the task id,
+    /// or the backlog item id for a row written before tasks were the key.
+    pub fn load_runner_queue(&self) -> Result<Vec<(String, wire::RunnerEntry)>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT entry_key, entry_json FROM runner_queue")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
         Ok(rows
             .filter_map(|r| r.ok())
-            .filter_map(|json| serde_json::from_str(&json).ok())
+            .filter_map(|(key, json)| Some((key, serde_json::from_str(&json).ok()?)))
             .collect())
     }
 
     pub fn upsert_runner_entry(&self, entry: &wire::RunnerEntry) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO runner_queue (item_id, project, entry_json, updated_at) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(item_id) DO UPDATE SET project=excluded.project,
+            "INSERT INTO runner_queue (entry_key, project, entry_json, updated_at) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(entry_key) DO UPDATE SET project=excluded.project,
              entry_json=excluded.entry_json, updated_at=excluded.updated_at",
             rusqlite::params![
-                entry.item_id,
+                entry.task_id,
                 entry.project,
                 serde_json::to_string(entry)?,
                 entry.updated_at
@@ -163,10 +180,10 @@ impl Store {
         Ok(())
     }
 
-    pub fn delete_runner_entry(&self, item_id: &str) -> Result<()> {
+    pub fn delete_runner_entry(&self, key: &str) -> Result<()> {
         self.conn.execute(
-            "DELETE FROM runner_queue WHERE item_id = ?1",
-            rusqlite::params![item_id],
+            "DELETE FROM runner_queue WHERE entry_key = ?1",
+            rusqlite::params![key],
         )?;
         Ok(())
     }
@@ -204,7 +221,7 @@ impl Store {
             &format!(
                 "INSERT OR REPLACE INTO item_runs ({RUN_COLUMNS}) VALUES \
                  (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                 ?18, ?19, ?20, ?21, ?22, ?23)"
+                 ?18, ?19, ?20, ?21, ?22, ?23, ?24)"
             ),
             rusqlite::params![
                 run.id,
@@ -230,6 +247,7 @@ impl Store {
                 run.pr_url,
                 run.pr_number.map(|n| n as i64),
                 run.run_location.and_then(location_str),
+                run.deliver as i64,
             ],
         )?;
         Ok(())
@@ -241,6 +259,21 @@ impl Store {
             .query_row(
                 &format!("SELECT {RUN_COLUMNS} FROM item_runs WHERE id = ?1"),
                 rusqlite::params![id],
+                run_from_row,
+            )
+            .optional()?)
+    }
+
+    /// The newest attempt of `task_id`, for Run again.
+    pub fn latest_item_run_of_task(&self, task_id: &str) -> Result<Option<wire::ItemRun>> {
+        Ok(self
+            .conn
+            .query_row(
+                &format!(
+                    "SELECT {RUN_COLUMNS} FROM item_runs WHERE task_id = ?1 \
+                     ORDER BY dispatched_at DESC, rowid DESC LIMIT 1"
+                ),
+                rusqlite::params![task_id],
                 run_from_row,
             )
             .optional()?)
@@ -301,6 +334,7 @@ mod tests {
             pr_url: Some("https://github.com/o/r/pull/3".into()),
             pr_number: Some(3),
             run_location: Some(wire::RunLocation::Checkout),
+            deliver: false,
         }
     }
 
@@ -308,14 +342,14 @@ mod tests {
     fn settings_queue_and_runs_round_trip() {
         let store = store();
         let mut settings = wire::RunnerSettings::defaults("demo");
-        settings.running = true;
         store.save_runner_settings(&settings).unwrap();
         settings.max_concurrent = 2;
         store.save_runner_settings(&settings).unwrap();
         assert_eq!(store.load_runner_settings().unwrap(), vec![settings]);
 
         let entry = wire::RunnerEntry {
-            item_id: "b_1".into(),
+            task_id: "t_1".into(),
+            item_id: Some("b_1".into()),
             project: "demo".into(),
             number: 1,
             title: "One".into(),
@@ -327,17 +361,23 @@ mod tests {
             agent: None,
             model: None,
             run_location: wire::EntryRunLocation::Worktree,
+            deliver: true,
+            config_overrides: Default::default(),
+            include_runtime_context: false,
+            attachments: Vec::new(),
             resolved_location: Some(wire::RunLocation::Worktree),
-            task_id: Some("t_1".into()),
             run_id: Some("r1".into()),
             pr_url: None,
             pr_number: Some(3),
-            waiting_reason: None,
+            wait: None,
             updated_at: 2,
         };
         store.upsert_runner_entry(&entry).unwrap();
-        assert_eq!(store.load_runner_queue().unwrap(), vec![entry]);
-        store.delete_runner_entry("b_1").unwrap();
+        assert_eq!(
+            store.load_runner_queue().unwrap(),
+            vec![("t_1".to_string(), entry)]
+        );
+        store.delete_runner_entry("t_1").unwrap();
         assert!(store.load_runner_queue().unwrap().is_empty());
 
         let first = run("r1", 100, wire::ItemRunOutcome::Merged);
@@ -346,6 +386,10 @@ mod tests {
         store.upsert_item_run(&second).unwrap();
         assert_eq!(store.load_item_run("r1").unwrap(), Some(first.clone()));
         assert_eq!(
+            store.latest_item_run_of_task("t_1").unwrap(),
+            Some(second.clone())
+        );
+        assert_eq!(
             store.load_item_runs("demo", 10).unwrap(),
             vec![second, first]
         );
@@ -353,5 +397,21 @@ mod tests {
             store.item_run_dispatches_since(150).unwrap(),
             vec![("demo".to_string(), 200)]
         );
+    }
+
+    #[test]
+    fn a_queue_keyed_by_item_is_renamed_in_place() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE runner_queue (item_id TEXT PRIMARY KEY, project TEXT NOT NULL,
+             entry_json TEXT NOT NULL, updated_at INTEGER NOT NULL);
+             INSERT INTO runner_queue VALUES ('b_1', 'demo', '{}', 0);",
+        )
+        .unwrap();
+        init(&conn).unwrap();
+        let key: String = conn
+            .query_row("SELECT entry_key FROM runner_queue", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(key, "b_1");
     }
 }

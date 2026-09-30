@@ -237,6 +237,7 @@ fn request_wire_shape() {
             origin: None,
             start: true,
             advisor: None,
+            factory: None,
         },
     };
     let json = serde_json::to_value(&req).unwrap();

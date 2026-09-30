@@ -1,4 +1,4 @@
-//! Server dispatcher topic: the backlog runner (`runner.*`, ADR 0023).
+//! Server dispatcher topic: the Factory (`runner.*`, ADR 0023).
 
 use serde_json::json;
 use tokio::sync::oneshot;
@@ -39,48 +39,67 @@ pub(super) async fn runner(
             agent,
             model,
             run_location,
+            deliver,
             origin_task,
         } => {
-            ask(handle, |reply| RunnerCommand::Enqueue {
-                project,
-                item_ids,
+            let config = wire::FactoryConfig {
                 workflow,
                 agent,
                 model,
                 run_location,
+                deliver: deliver.unwrap_or(true),
+            };
+            ask(handle, |reply| RunnerCommand::Enqueue {
+                project,
+                item_ids,
+                config,
                 origin_task,
                 reply,
             })
             .await
         }
-        wire::Method::RunnerSetEntryLocation {
-            project,
-            item_id,
-            run_location,
-        } => {
-            ask(handle, |reply| RunnerCommand::SetLocation {
-                project,
-                item_id,
-                run_location,
-                reply,
-            })
-            .await
-        }
-        wire::Method::RunnerDequeue { project, item_id } => {
+        wire::Method::RunnerDequeue { project, task_id } => {
             ask(handle, |reply| RunnerCommand::Dequeue {
                 project,
-                item_id,
+                task_id,
                 reply,
             })
             .await
         }
-        wire::Method::RunnerReorder { project, item_ids } => {
+        wire::Method::RunnerReorder { project, task_ids } => {
             ask(handle, |reply| RunnerCommand::Reorder {
                 project,
-                item_ids,
+                task_ids,
                 reply,
             })
             .await
+        }
+        wire::Method::RunnerStartNow { project, task_id } => {
+            ask(handle, |reply| RunnerCommand::StartNow {
+                project,
+                task_id,
+                reply,
+            })
+            .await
+        }
+        wire::Method::RunnerRetry { task_id } => {
+            ask(handle, |reply| RunnerCommand::Retry { task_id, reply }).await
+        }
+        wire::Method::RunnerRetryCheckout { project } => {
+            ask(handle, |reply| RunnerCommand::RetryCheckout {
+                project,
+                reply,
+            })
+            .await
+        }
+        wire::Method::RunnerBrief { project, item_id } => {
+            let prompt = ask(handle, |reply| RunnerCommand::Brief {
+                project,
+                item_id,
+                reply,
+            })
+            .await?;
+            Ok(json!({ "prompt": prompt }))
         }
         wire::Method::RunnerUpdateSettings { project, patch } => {
             ask(handle, |reply| RunnerCommand::UpdateSettings {
@@ -104,7 +123,24 @@ pub(super) async fn runner(
         }
         _ => Err(wire::RpcError {
             code: wire::ErrorCode::InvalidRequest,
-            message: "not a runner method".into(),
+            message: "not a Factory method".into(),
         }),
     }
+}
+
+/// `task.create` in Factory mode: the Factory creates the task queued and
+/// starts it when the project's limits allow.
+/// @param handle the daemon
+/// @param task what to create
+/// @returns `{ taskId, started }`
+pub(super) async fn create_factory_task(
+    handle: &DaemonHandle,
+    task: crate::daemon::actor::runner::NewFactoryTask,
+) -> Result<serde_json::Value, wire::RpcError> {
+    let created = ask(handle, |reply| RunnerCommand::CreateTask {
+        task: Box::new(task),
+        reply,
+    })
+    .await?;
+    Ok(json!({ "taskId": created["taskId"], "started": created["started"] }))
 }

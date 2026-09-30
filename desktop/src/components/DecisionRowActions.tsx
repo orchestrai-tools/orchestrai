@@ -5,6 +5,7 @@ import type { AttentionItem } from "@/lib/attentionRail";
 import { decisionActionKinds } from "@/lib/decisionActions";
 import { approvePermissionOption } from "@/lib/permissionApproval";
 import { verifyBarrier } from "@/lib/workflow";
+import { useUi } from "@/store/ui";
 
 import { daemon } from "../daemon";
 
@@ -24,7 +25,7 @@ function RowActions({
   kind,
 }: {
   item: AttentionItem;
-  kind: "permission" | "question" | "limit";
+  kind: "permission" | "question" | "limit" | "checkout_held";
 }) {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +72,42 @@ function RowActions({
               {busyAction === `answer "${opt}"` ? "…" : opt}
             </Button>
           ))}
+        </div>
+        <ErrorLine error={error} />
+      </div>
+    );
+  }
+
+  if (kind === "checkout_held") {
+    const project = item.task.project;
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            className="gap-1 px-2.5"
+            disabled={busy}
+            title="Switch your project folder back once it is clean"
+            onClick={() =>
+              void act("try again", async () => {
+                await daemon.runnerRetryCheckout(project);
+              })
+            }
+          >
+            {busyAction === "try again" ? "Trying…" : "Try again"}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="gap-1 px-2.5"
+            onClick={() => {
+              const ui = useUi.getState();
+              ui.openProject(project);
+              ui.setProjectSurface(project, "terminal");
+            }}
+          >
+            Open terminal
+          </Button>
         </div>
         <ErrorLine error={error} />
       </div>

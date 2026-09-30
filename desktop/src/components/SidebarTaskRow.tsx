@@ -1,40 +1,17 @@
-import {
-  AlarmClockOff,
-  Archive,
-  Check,
-  ChevronRight,
-  Clock,
-  MoreHorizontal,
-  Pin,
-  Trash2,
-  Undo2,
-  Users,
-} from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { ChevronRight, Users } from "lucide-react";
+import { memo, useEffect, useState } from "react";
 
 import { AgentLogo } from "@/components/AgentLogo";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { ArchiveMergedTaskDialog } from "@/components/pullRequest/ArchiveMergedTaskDialog";
 import { TaskPullRequestGlyph } from "@/components/pullRequest/TaskPullRequestGlyph";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuPortal,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { daemon } from "@/daemon";
-import { useTaskPullRequest } from "@/hooks/useTaskPullRequest";
-import { buildSnoozePresets } from "@/lib/snooze";
+import { isFactoryTask } from "@/lib/factory";
 import { elapsed } from "@/lib/status";
 import { isOrchestratorTask } from "@/lib/taskGroups";
 import { taskLabel } from "@/lib/taskLabel";
 import { cn } from "@/lib/utils";
 import type { TaskInfo } from "@/protocol";
 
+import { FactoryStageChip } from "./Sidebar/FactoryStageChip";
 import {
   LANE_GLYPH_PX,
   LANE_META_PX,
@@ -48,6 +25,7 @@ import {
 import { RowGutter } from "./Sidebar/RowGutter";
 import { SidebarTaskTooltipBody } from "./Sidebar/SidebarTaskTooltip";
 import { STATE_ICON } from "./Sidebar/stateIcons";
+import { RowActions } from "./Sidebar/TaskRowActions";
 
 /**
  * One task row. Anatomy, left to right:
@@ -75,183 +53,6 @@ function LiveElapsed({ since }: { since: number }) {
     return () => window.clearInterval(id);
   }, []);
   return <>{elapsed(since)}</>;
-}
-
-const ACTION_BUTTON =
-  "grid size-[22px] shrink-0 place-items-center rounded text-muted-foreground/70 transition-[color,background-color,transform] duration-100 ease-[var(--ease-out)] active:scale-[0.97] hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
-
-function RowActions({
-  task,
-  state,
-  pinned,
-  onPin,
-}: {
-  task: TaskInfo;
-  state: SidebarTaskState;
-  pinned: boolean;
-  onPin: (id: string) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [snoozeOpen, setSnoozeOpen] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [confirmingArchive, setConfirmingArchive] = useState(false);
-  const pr = useTaskPullRequest(task.id);
-  const mergedWorktree = pr?.state === "merged" && task.worktree ? pr : null;
-  const label = taskLabel(task);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- reopening must recompute "1 hour from now"
-  const presets = useMemo(() => buildSnoozePresets(Date.now()), [snoozeOpen]);
-
-  const run = useCallback(
-    async (method: string, params: Record<string, unknown>) => {
-      if (busy) return;
-      setBusy(true);
-      try {
-        await daemon.request(method, params);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : String(error));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy],
-  );
-
-  return (
-    <div
-      className={cn(
-        "absolute inset-y-0 right-1 flex items-center gap-px opacity-0 transition-opacity",
-        "pointer-events-none group-hover/row:pointer-events-auto group-hover/row:opacity-100",
-        "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
-      )}
-    >
-      {state === "snoozed" ? (
-        <button
-          type="button"
-          disabled={busy}
-          aria-label={`Wake now: ${label}`}
-          title="Wake now"
-          className={ACTION_BUTTON}
-          onClick={() => void run("task.unsnooze", { task_id: task.id })}
-        >
-          <AlarmClockOff className="size-3.5" />
-        </button>
-      ) : state === "settled" ? (
-        <button
-          type="button"
-          disabled={busy}
-          aria-label={`Return to active: ${label}`}
-          title="Return to active"
-          className={ACTION_BUTTON}
-          onClick={() => void run("task.unsettle", { task_id: task.id })}
-        >
-          <Undo2 className="size-3.5" />
-        </button>
-      ) : (
-        <>
-          <DropdownMenu modal={false} open={snoozeOpen} onOpenChange={setSnoozeOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={busy}
-                aria-label={`Remind later: ${label}`}
-                title="Remind later"
-                className={ACTION_BUTTON}
-              >
-                <Clock className="size-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuContent align="end" className="w-44">
-                {presets.map((preset) => (
-                  <DropdownMenuItem
-                    key={preset.id}
-                    data-snooze-preset={preset.id}
-                    onSelect={() =>
-                      void run("task.snooze", { task_id: task.id, until: preset.until })
-                    }
-                  >
-                    <span className="flex-1">{preset.label}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenuPortal>
-          </DropdownMenu>
-          {task.status !== "running" && (
-            <button
-              type="button"
-              disabled={busy}
-              aria-label={`Mark handled: ${label}`}
-              title="Mark handled"
-              className={ACTION_BUTTON}
-              onClick={() => void run("task.settle", { task_id: task.id })}
-            >
-              <Check className="size-3.5" />
-            </button>
-          )}
-        </>
-      )}
-      <DropdownMenu modal={false}>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-label={`Task actions: ${label}`}
-            title="More"
-            className={ACTION_BUTTON}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuPortal>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem onSelect={() => onPin(task.id)}>
-              <Pin className="size-3.5 opacity-70" />
-              {pinned ? "Unpin from Mission Control" : "Pin to Mission Control"}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => void daemon.archiveTask(task.id)}>
-              <Archive className="size-3.5 opacity-70" />
-              Archive task
-            </DropdownMenuItem>
-            {mergedWorktree && (
-              <DropdownMenuItem onSelect={() => setConfirmingArchive(true)}>
-                <Archive className="size-3.5 opacity-70" />
-                Archive and remove worktree
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onSelect={() => setConfirmingDelete(true)}
-            >
-              <Trash2 className="size-3.5 opacity-70" />
-              Delete task
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenuPortal>
-      </DropdownMenu>
-
-      {mergedWorktree && (
-        <ArchiveMergedTaskDialog
-          task={task}
-          pr={mergedWorktree}
-          open={confirmingArchive}
-          onOpenChange={setConfirmingArchive}
-        />
-      )}
-      <ConfirmDialog
-        open={confirmingDelete}
-        title="Delete this task?"
-        description={<>“{label}” and its conversation will be gone. This cannot be undone.</>}
-        confirmLabel="Delete task"
-        busyLabel="Deleting…"
-        onCancel={() => setConfirmingDelete(false)}
-        onConfirm={async () => {
-          await daemon.deleteTask(task.id);
-          setConfirmingDelete(false);
-        }}
-      />
-    </div>
-  );
 }
 
 export interface SidebarTaskRowProps {
@@ -292,6 +93,7 @@ export const SidebarTaskRow = memo(function SidebarTaskRow({
   const StateIcon = STATE_ICON[meta.icon];
   const receded = state === "snoozed" || state === "settled" || state === "done";
   const orchestrator = isOrchestratorTask(task, childCount);
+  const factory = isFactoryTask(task);
 
   return (
     <div className="group/row relative" data-rail-depth={depth}>
@@ -341,7 +143,10 @@ export const SidebarTaskRow = memo(function SidebarTaskRow({
             >
               {label}
             </span>
-            {task.worktree && <TaskPullRequestGlyph taskId={task.id} receded={receded} />}
+            {factory && <FactoryStageChip task={task} receded={receded} />}
+            {(task.worktree || factory) && (
+              <TaskPullRequestGlyph taskId={task.id} receded={receded} />
+            )}
             {orchestrator && (
               <span title="Orchestrator lead" className="inline-flex shrink-0">
                 <Users aria-hidden className="size-3 text-muted-foreground/60" />
@@ -400,7 +205,7 @@ export const SidebarTaskRow = memo(function SidebarTaskRow({
         </button>
       )}
 
-      <RowActions task={task} state={state} pinned={pinned} onPin={onPin} />
+      <RowActions task={task} state={state} pinned={pinned} factory={factory} onPin={onPin} />
     </div>
   );
 });

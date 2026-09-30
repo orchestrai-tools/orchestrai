@@ -376,14 +376,14 @@ describe("WorkItemDrawer", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("queues the item in the Factory, but not once it is done", async () => {
-    const onRunInFactory = vi.fn<(item: WorkItem) => void>();
-    const { unmount } = renderDrawer(localItem, { onRunInFactory });
-    await userEvent.click(screen.getByRole("button", { name: "Run in Factory" }));
-    expect(onRunInFactory).toHaveBeenCalledWith(localItem);
+  it("starts the item in Factory, but not once it is done", async () => {
+    const onStartInFactory = vi.fn<(item: WorkItem) => void>();
+    const { unmount } = renderDrawer(localItem, { onStartInFactory });
+    await userEvent.click(screen.getByRole("button", { name: "Start in Factory" }));
+    expect(onStartInFactory).toHaveBeenCalledWith(localItem);
     unmount();
 
-    renderDrawer({ ...localItem, status: "done" }, { onRunInFactory });
-    expect(screen.queryByRole("button", { name: "Run in Factory" })).toBeNull();
+    renderDrawer({ ...localItem, status: "done" }, { onStartInFactory });
+    expect(screen.queryByRole("button", { name: "Start in Factory" })).toBeNull();
   });
 });

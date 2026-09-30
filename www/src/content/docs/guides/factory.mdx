@@ -1,129 +1,173 @@
 ---
 title: The Factory
-description: Queue backlog items and get draft pull requests back — each item runs through a reviewed pipeline in its own worktree or in your project checkout, and merging the pull request closes the item.
+description: Factory mode runs a task through a reviewed workflow — implement, test, review and fix — and can hand you a draft pull request at the end. Start one from New Task or straight from the backlog.
 sidebar:
   order: 10
   label: Factory
 ---
 
-The **Factory** works through a project's backlog for you. You queue items; each one runs through a [workflow pipeline](/concepts/orchestration/) in a fresh worktree (or in your project checkout, see [Run location](#run-location)), agents review and fix it, and a successful run comes back as a **draft pull request**. You review the pull request. Merging it marks the item done.
+**Factory** is a task mode. A Factory task runs a [workflow template](/reference/workflow-files/) from start to finish: an agent implements the change, other agents review it and send it back for fixes until they approve, and — when the template has a verify stage — an agent tests it in the running app first. Turn on **Open a draft PR when done** and a successful run comes back as a **draft pull request**; merging it marks its backlog item done.
 
-It works with local backlog items and with issues synced from GitHub or Linear. For a GitHub issue, the pull request says `Closes #N`, so merging it closes the issue too.
+Start one from New Task, or straight from the backlog — for one item, a few, or every item that matches a filter. It works with local backlog items and with issues synced from GitHub or Linear. For a GitHub issue, the pull request says `Closes #N`, so merging it closes the issue too.
 
 <Aside type="note">
-  The Factory never merges. Agents review each other inside the pipeline, and people review the finished draft pull request — the same way you review anyone else's work.
+  The Factory never merges. Agents review each other inside the workflow, and people review the finished draft pull request — the same way you review anyone else's work.
 </Aside>
 
-## Queue items
+## Start a Factory task
 
-Open a project's **Backlog**, then:
+In **New Task**, choose **Factory** next to *Single agent* and *Orchestrator*, write the prompt, then set up the run:
 
-- **One item:** hover a row and press the Factory button, or open the item and press **Run in Factory**.
-- **Several:** tick the checkboxes on the left of the rows and press **Run selected in Factory**.
+| Option | What it does |
+| --- | --- |
+| **Workflow template** | The stages the task runs through, shown as chips — for example *Implement → Verify in browser → Review ⇄ Fix*. Any template in the project works, including [your own](/reference/workflow-files/). |
+| **Lead agent** and **Model** | Every stage the template does not give its own agent runs on this one. The preview shows which stage uses which agent. |
+| **Test in the running app** | Shown when the project has a template that tests in the browser. On switches to such a template (the built-in *Implement + verify + review loop*); off switches back to one without. |
+| **Where it runs** | *Automatic (recommended)*, *Background copy* or *Your project folder*. See [Where it runs](#where-it-runs). |
+| **Open a draft PR when done** | On by default when the project has a GitHub remote. See [With or without a draft pull request](#with-or-without-a-draft-pull-request). |
 
-Either way, the Factory asks where the items run: **Project default** (your [Run location](#run-location) setting — the choice names what it means for the current workflow), **Worktree** or **Project checkout**. One choice applies to every selected item; if you cancel, your selection stays. If the workflow verifies the running app and the items would run in a worktree, the dialog warns you; see [Verify needs the checkout](#verify-needs-the-checkout).
+Press **Start in Factory**. The task appears in the sidebar straight away; if it cannot start yet, it shows **Queued** and starts on its own as soon as it can.
 
-Queued items appear on the project's **Factory** tab. They start in backlog priority order; within one priority, use the arrows to change the order, change where an item runs with the location menu on its row, or remove an item that has not started yet. A running item shows where it runs.
+The dialog opens with the project's defaults, which you set in [Factory settings](#factory-settings).
 
-The Factory is **paused** until you start it. Press **Start** on the Factory tab, or **Start** in the notice that appears when you queue something.
+## Start from the backlog
 
-## What happens to an item
+Open a project's **Backlog**:
+
+- **One item:** press **Start in Factory** on its row, or in the item's details. New Task opens in Factory mode with the item's text as the prompt, linked to the item. Text imported from GitHub or Linear is marked as a description, so the agent treats it as the work to do, never as instructions to follow.
+- **Several items:** select the rows and press **Start 3 in Factory** (the button counts what you picked). The same dialog sets up one configuration for all of them, and each item gets its own Factory task.
+- **Everything that matches:** press **Run in Factory…** in the toolbar. Choose which items to include — by status (*To do* by default), source (*All*, *GitHub*, *Linear* or *Local*), a search, or just the selected items — and the dialog shows how many match. Confirm, and every matching item gets a Factory task; they start as slots free up.
+
+**Run in Factory…** is a one-time batch. Items added to the backlog later are not picked up — a person always decides what goes into the Factory.
+
+An item that already has a Factory task is skipped. The notice after you confirm says what happened, for example *3 started · 1 queued · 1 already in Factory*. An item with a Factory task shows **In Factory** in the backlog, with where it is: *In Factory · Queued*, *In Factory · PR #41*.
+
+## Where it runs
+
+| | **Background copy** | **Your project folder** |
+| --- | --- | --- |
+| Where the task runs | A copy of the repository of its own (a git worktree) | The folder you work in |
+| Tasks at once | Several, side by side | One Factory task at a time |
+| Testing in the running app | Not possible — your dev services serve your project folder, not the copy | Works — the running services serve the change |
+| Your folder while it runs | Untouched | In use by the task |
+| Disk | A full copy per task | Nothing extra |
+
+**Automatic** picks for you: your project folder when the task tests the running app, a background copy otherwise. The dialog shows what it picked as one line — *Runs in a background copy of the repository, side by side with other tasks.* — and **Change** next to it lets you choose yourself.
+
+### Running in your project folder
+
+With **Open a draft PR when done** on, Warpforge prepares the folder for each task:
+
+1. **It checks the folder first.** The task waits while the folder has uncommitted changes or untracked files, is in the middle of a merge or rebase, or another task is using it. The sidebar row says why, and the task starts on its own once the folder is ready.
+2. **It switches to a task branch.** It remembers the branch you were on, fetches origin and creates a fresh task branch from origin's default branch, so the pull request carries only this change. Your dev services keep running and pick up the change the way they always do (hot reload). A verify agent can restart a service when the app needs it.
+3. **It switches back.** After the pull request is opened — or the run ends without one — the folder goes back to the branch you were on. A task branch with no commits of its own is deleted; one with commits stays.
+
+With the draft PR off, the task runs in the folder exactly as it is, on your current branch, and nothing is switched.
+
+A backlog stored as YAML files lives inside the project folder, so with the draft PR on, a Factory task runs there only when the backlog is stored in the app. Background copies are not affected.
+
+<Aside type="caution">
+  Leave the folder alone while a Factory task runs there: an edit you make ends up in its change.
+</Aside>
+
+#### What the Factory never does to your folder
+
+- It never stashes, resets, cleans or discards anything. It switches branches only when there are no uncommitted changes.
+- If a run ends with changes left uncommitted — a failed or stopped run, for example — the folder stays on the task branch with your changes in place, and the task shows in **Needs you** with **Try again** and **Open terminal**. Commit, stash or discard the changes, then press **Try again** to switch back. Until then, no new Factory task starts in that project. If you already switched branches yourself, Warpforge leaves your choice alone.
+- It remembers where to return the folder across a restart of the app.
+
+## With or without a draft pull request
+
+### With a draft pull request
 
 <Steps>
 
-1. **It starts.** When a slot is free, the item's pipeline starts on a new branch from the latest origin default branch — never from your local branch, so the pull request carries only this change. The item turns *In progress*.
-2. **Agents do the work and review it.** The pipeline runs the workflow you chose: implement, then review and fix until the reviewers approve (and a verification of the running app, when the workflow has one). Open the pipeline from the Factory tab to watch it or step in.
-3. **You get a draft pull request.** When the reviewers approve, the Factory commits the change on the task's branch, pushes it and opens a draft pull request. The body links the item, and carries the agent's summary, the verification result when there is one, any low-severity review notes that were not fixed, the review rounds used and the reported agent cost. The item turns *Waiting*.
+1. **It starts on a fresh branch** from the latest origin default branch — never from your local branch. The backlog item turns *In progress*.
+2. **Agents do the work and review it.** Implement, test in the running app when the template does, then review and fix until the reviewers approve.
+3. **You get a draft pull request.** Warpforge commits the change on the task's branch, pushes it and opens a draft pull request. The body links the item and carries the agent's summary, the test result when there is one, any low-severity review notes that were not fixed, the review rounds used and the reported agent cost. The task shows **PR #41** and the item turns *Waiting*.
 4. **You review it.** Read it on GitHub or in the task, like any pull request. Merging it marks the item **Done**. Closing it without merging sends the item back to *To do*.
 
 </Steps>
 
-A run that does not succeed ends without a pull request and sends its item back to *To do* with the reason on the Factory tab: the pipeline failed or was stopped, the review rounds ran out with findings open, the change came out empty, or the push or the pull request failed. The pipeline task stays, so you can finish it by hand. **Nothing is retried on its own** — queue the item again when you want another attempt.
-
-When a pipeline needs you — a question from an agent, the review round limit, a quota pause — it waits in **Needs you** and keeps its slot until you answer.
-
-## Settings
-
-Press **Settings** on the Factory tab.
-
-| Setting | Default | What it does |
-| --- | --- | --- |
-| **Run location** | *Worktree* | Where items run unless you choose otherwise when you queue them: a fresh worktree each, your project checkout, or *Auto*. See [Run location](#run-location). |
-| **Workflow** | *review-loop* | The pipeline every item runs through. Any workflow in the project works, including your own. |
-| **Lead agent** and **Model** | first enabled agent | Every stage the workflow does not pin to its own agent runs on this one. |
-| **Runs at once** | 1 | How many items run at the same time. Only one of them runs in the project checkout. |
-| **Open draft PRs** | 3 | New items wait while this many Factory pull requests are open. |
-| **Items per day** | 10 | Items started in any 24 hours. |
-| **Quota headroom** | 80% | A new item waits while any quota window of an agent it needs is above this. |
-| **Free disk floor** | 25 GB | A new item waits while the project's disk has less free space than this. `0` turns it off. |
-
-**Pause** stops new items from starting; items already running finish. **Stop** (shown while an item runs) pauses the Factory and ends every running item, after asking: each goes back to the queue marked *stopped by you*, and its item back to *To do*. Changes made so far are kept. To stop one item, open its pipeline and stop it there.
-
-## Run location
-
-Every item runs in one of two places. The **Run location** setting is the default; you can choose differently for each item when you queue it, and change it on the item's row until it starts.
-
-| | **Worktree** (default) | **Project checkout** |
-| --- | --- | --- |
-| Where an item runs | A fresh worktree of its own | Your project checkout, switched to a new task branch |
-| Items at once | Up to **Runs at once** | One, with worktree items running beside it |
-| Verification of the running app | Not possible — your dev services serve the checkout, not the worktree | Works — the running services serve the item's branch |
-| Your checkout while it runs | Untouched | In use by the Factory |
-| Disk | A full checkout per item | Nothing extra |
-
-The setting has a third value, **Auto**: an item whose workflow has a `verify` stage runs in the project checkout, and every other item gets a worktree.
-
-### A queue with both
-
-Worktree and checkout items share one queue and one **Runs at once** limit, and start in queue order:
-
-- **Only one item runs in the project checkout at a time.** The next checkout item waits on its row until the checkout is given back.
-- **Worktree items never wait for the checkout.** When a checkout item cannot start — your checkout has uncommitted changes, another task is running in it, the backlog is stored in YAML, or another item is using it — its row says why and the Factory starts the next item that can run. The Factory tab shows a reason for the whole queue only when nothing at all can start.
-- A worktree item waits a moment while the checkout is being switched, then starts.
-
-### Verify needs the checkout
-
-Your dev services serve the project checkout, so a `verify` stage can only test an item that runs there. In a worktree, a workflow whose verify stage is required stops at that stage and waits for you in **Needs you**. When you queue such an item into a worktree, the dialog says *This workflow verifies in the browser, which needs Project checkout*. *Auto* puts these items in the checkout for you; if you choose **Worktree** yourself, the Factory keeps your choice.
-
-### Running in the project checkout
-
-Choose **Project checkout** when your workflow has a `verify` stage, or when a worktree per item costs too much disk. For each item the Factory:
-
-1. **Checks the checkout first.** It does not start while the checkout has uncommitted changes or untracked files, is in the middle of a merge or rebase, or another task is running in it. The item's row says why it waits, and the Factory tries again every minute, whenever you press **Start**, and when you queue an item or change where one runs.
-2. **Switches to a task branch.** It remembers the branch you were on, fetches origin and creates the task's branch from origin's default branch. Your dev services keep running and pick up the change the way they always do (hot reload). The Factory does not restart them; a verify agent can restart one with its runtime tools when the app needs it.
-3. **Delivers and switches back.** The draft pull request is made from the checkout exactly as in a worktree, and then the checkout goes back to the branch you were on. A task branch with no commits of its own is deleted; one with commits stays.
-
-<Aside type="caution">
-  Leave the checkout alone while an item runs there: an edit you make ends up in its pull request.
-</Aside>
-
-#### What the Factory never does to your checkout
-
-- It never stashes, resets, cleans or discards anything. It switches branches only when the working tree is clean.
-- If a run ends with changes left uncommitted — a failed or stopped run, for example — the Factory leaves the checkout on the task branch with the changes in place, pauses — worktree items included — and says so on the Factory tab and in **Needs you**: *The Factory left the checkout on warpforge/task/… because it has uncommitted changes — commit, stash or discard them, then start the Factory again.* Once the checkout is clean, press **Start**, and it switches back. If you already switched branches yourself, it leaves your choice alone.
-- It remembers where to return the checkout across a restart of the app, and picks up where it left off.
-
-A YAML backlog lives inside the checkout the Factory switches, so items run in the project checkout only when the backlog is stored in the app. Worktree items are not affected.
-
-## Limits and costs
-
-Unattended work spends real quota, so every start is checked first:
-
-- An item waits while an agent it needs is **out of quota** or above your headroom, and starts when the window resets. An agent that is only rate-limited does not hold it back.
-- The **daily limit**, the **open pull request limit** and the number of **runs at once** cap how much work piles up — the real limit is how many pull requests you can review.
-- Each worktree is a full checkout of the project, so the **disk floor** keeps the Factory from filling your disk.
-- While the Factory runs an item synced from GitHub or Linear, a sync does not overwrite the item's status; the tracker's status applies again once the run is over.
-- The Factory tab shows why the queue is waiting, and each run's cost as reported by the agents. Harnesses that report no cost show *not reported*, never $0.
+A run that does not succeed ends without a pull request and sends its item back to *To do*: the workflow failed or was stopped, the review rounds ran out with findings open, the change came out empty, or the push or the pull request failed. The task stays, with its conversations and changes, so you can finish it by hand.
 
 Opening pull requests needs the [GitHub CLI](https://cli.github.com/) (`gh`) installed and signed in, and a project with a GitHub `origin`.
 
+### Without a draft pull request
+
+The workflow runs the same way, and the finished task lands in **Needs review** with its conversations, timeline and diff. The change is left for you to review and commit — Warpforge commits and pushes nothing.
+
+## Follow a Factory task
+
+A Factory task is a normal task in the sidebar. A chip on its row and in the task header shows where it is:
+
+| Chip | Meaning |
+| --- | --- |
+| **Queued** | Waiting to start, with the reason |
+| **Implementing** | The implement stage is working |
+| **Verifying** | An agent is testing the change in the running app |
+| **Reviewing · round 2/3** | Reviewers are reading the change |
+| **Fixing · round 2/3** | The change is being repaired after review |
+| **Opening PR** | Committing, pushing and opening the pull request |
+| **PR #41** | Delivered — the pull request is ready for a person to review |
+
+Open the task's **Pipeline** view to watch each stage or step in.
+
+### Queued tasks
+
+A task that cannot start yet says why, and starts on its own when it can:
+
+- *waiting for a free slot*
+- *3 draft PRs are open — merge or close one*
+- *10 tasks started in the last 24 hours — next at 09:30*
+- *claude is near its quota — starts after 14:00*
+- *your project folder has uncommitted changes*
+- *another task is using your project folder*
+- *low disk space*
+- *the workflow template can't be used*
+
+A queued task's row menu has:
+
+- **Start now** — starts it past the project's limits. Your project folder's own checks still apply.
+- **Move up** / **Move down** — change the order among queued tasks.
+- **Remove from queue** — cancel it before it starts.
+
+### When it needs you
+
+A Factory task waits in **Needs you** exactly as any workflow does: a question from a stage, the review round limit, a failed test in the running app, or a pause because an agent ran out of quota or quit. **Pause** and **Resume** work as usual.
+
+### Stop, and run again
+
+Stop a Factory task with the task's normal **Stop**. **Stop all Factory tasks** in the project's ⋮ menu stops every running one and removes the queued ones. Changes made so far are kept.
+
+**Nothing is retried on its own.** A failed or stopped Factory task offers **Run again** in its row menu and task header: it starts a new Factory task for the same backlog item or prompt, with the same configuration.
+
+## Factory settings
+
+Open the project's ⋮ menu and choose **Factory settings…**.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Tasks at the same time** | 1 | How many Factory tasks run at once, from 1 to 8. Only one of them runs in your project folder. |
+| **Pause at open draft PRs** | 3 | New tasks wait while this many Factory pull requests are open. |
+| **New tasks per 24 hours** | 10 | How many Factory tasks start in any 24 hours. |
+| **Keep at least (GB free)** | 25 GB | New tasks wait while the project's disk has less free space than this. `0` turns it off. |
+| **Pause when quota use passes (%)** | 80% | A new task waits while an agent it needs is above this. An account that is out of quota always waits. |
+| **Template**, **Lead agent** and **Model** | *review-loop*, first enabled agent | What New Task starts with in Factory mode. |
+| **Where it runs** | *Automatic (recommended)* | What New Task starts with in Factory mode. |
+
+The limits apply to Factory tasks that open a pull request and to backlog batches. They only decide when a new task starts — a task that is already running is never stopped between stages.
+
+Unattended work spends real quota, and the real limit is how many pull requests you can review, so the defaults are low. An agent that is only rate-limited does not keep a task waiting. While a Factory task works on an item synced from GitHub or Linear, a sync does not overwrite the item's status; the tracker's status applies again once the run is over.
+
 ## From an agent
 
-An agent in a session you started can queue items and read the Factory with the [`runner_enqueue` and `runner_status` tools](/reference/mcp-tools/#runner_enqueue--runner_status). A Factory run itself cannot queue more work.
+An agent in a session you started can start Factory tasks for backlog items and read how the project's Factory work is going, with the [`runner_enqueue` and `runner_status` tools](/reference/mcp-tools/#runner_enqueue--runner_status). A Factory task cannot start more Factory tasks itself.
 
 ## See also
 
 - [Tasks and backlog](/guides/tasks-and-backlog/) — where the items come from
-- [Orchestration and workflows](/concepts/orchestration/) — the pipeline each item runs through
-- [Workflow files](/reference/workflow-files/) — write your own pipeline for the Factory
+- [Choosing your mode](/guides/choosing-your-mode/) — when a Factory task is worth its cost
+- [Orchestration and workflows](/concepts/orchestration/) — the stages a Factory task runs through
+- [Workflow files](/reference/workflow-files/) — write your own template
 - [Reviewing pull requests](/guides/pull-requests/) — where the draft lands

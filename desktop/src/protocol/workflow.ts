@@ -52,6 +52,8 @@ export interface WorkflowMeta {
   maxRounds?: number;
   /** Whether the verify stage must pass; absent without a verify stage. */
   verifyRequired?: boolean | null;
+  /** The agent the template pins for each entry of `stages`; null runs on the lead. */
+  stageAgents?: (string | null)[];
 }
 
 export type WorkflowSource = "project" | "builtin";

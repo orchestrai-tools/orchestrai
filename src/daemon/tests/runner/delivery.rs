@@ -34,7 +34,6 @@ async fn a_successful_run_opens_a_draft_pr_and_its_outcome_closes_the_item() {
     let opened = fake_opener(&daemon).await;
     let first = create_item(&daemon, "first change", "high").await;
     let second = create_item(&daemon, "second change", "low").await;
-    enqueue(&daemon, &[&first, &second]).await;
     settings(
         &daemon,
         wire::RunnerSettingsPatch {
@@ -43,6 +42,7 @@ async fn a_successful_run_opens_a_draft_pr_and_its_outcome_closes_the_item() {
         },
     )
     .await;
+    enqueue(&daemon, &[&first, &second]).await;
 
     let delivered = wait_run(&mut events, "first delivered", |run| {
         run.item_id == first.id && run.outcome == wire::ItemRunOutcome::Delivered
@@ -67,9 +67,7 @@ async fn a_successful_run_opens_a_draft_pr_and_its_outcome_closes_the_item() {
     }
     assert!(origin_branches(&repo.origin).contains(&format!("warpforge/task/{task_id}")));
     let held = wait_status(&daemon, "open pull request holds the queue", |s| {
-        s.hold
-            .as_deref()
-            .is_some_and(|h| h.contains("wait for review"))
+        s.hold == Some(wire::RunnerWait::OpenPrs { open: 1, limit: 1 })
     })
     .await;
     assert_eq!(
@@ -134,8 +132,8 @@ async fn failed_and_empty_runs_send_the_item_back_without_a_retry() {
     let opened = fake_opener(&daemon).await;
     let empty = create_item(&daemon, "nothing to do", "high").await;
     let broken = create_item(&daemon, "no verdict", "low").await;
-    enqueue(&daemon, &[&empty, &broken]).await;
     settings(&daemon, running_with(&lead)).await;
+    enqueue(&daemon, &[&empty, &broken]).await;
 
     let no_changes = wait_run(&mut events, "no changes", |run| {
         run.item_id == empty.id && run.outcome == wire::ItemRunOutcome::NoChanges
@@ -170,4 +168,62 @@ async fn failed_and_empty_runs_send_the_item_back_without_a_retry() {
     assert_eq!(runs.len(), 2);
     assert!(runs.iter().all(|run| run.outcome.is_final()));
     daemon.shutdown().await;
+}
+
+/// With the pull request turned off a Factory task is the old workflow: the
+/// pipeline runs and the change stays uncommitted for a person.
+#[tokio::test]
+async fn a_task_without_a_pull_request_leaves_the_change_uncommitted() {
+    let repo = factory_repo("name: placeholder\n").await;
+    let reviewer = wf_agent(&repo.dir, "rev.state", "approve");
+    let workflow = format!("name: Plain flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n");
+    std::fs::write(repo.work.join(".warpforge/workflows/test.yaml"), workflow).unwrap();
+    let daemon = Daemon::spawn(
+        repo.projects.clone(),
+        Store::open_at(std::path::Path::new(":memory:")).ok(),
+    );
+    let mut events = daemon.subscribe();
+    let opened = fake_opener(&daemon).await;
+    let item = create_item(&daemon, "keep it local", "none").await;
+    settings(&daemon, running_with(&writing_agent())).await;
+    let config = wire::FactoryConfig {
+        deliver: false,
+        ..wire::FactoryConfig::default()
+    };
+    let result = enqueue_with(&daemon, &[&item], config).await;
+    let task_id = result.created[0].task_id.clone();
+    let queued = find_task(&daemon, &task_id).await.unwrap();
+    assert!(!queued.prompt.contains("[Factory run"), "{}", queued.prompt);
+
+    let completed = wait_run(&mut events, "completed", |run| {
+        run.task_id.as_deref() == Some(task_id.as_str())
+            && run.outcome == wire::ItemRunOutcome::Completed
+    })
+    .await;
+    assert!(!completed.deliver);
+    assert!(completed.pr_url.is_none());
+    assert!(opened.lock().unwrap().is_empty());
+    assert!(origin_branches(&repo.origin).trim().is_empty());
+    let task = find_task(&daemon, &task_id).await.unwrap();
+    assert_eq!(task.status, TaskStatus::Waiting);
+    let report = task.workflow_run.and_then(|w| w.report).unwrap_or_default();
+    assert!(report.contains("commit when ready"), "{report}");
+    let worktree = task.worktree.expect("ran in a background copy");
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&worktree)
+        .args(["status", "--porcelain"])
+        .output()
+        .unwrap();
+    assert!(
+        !String::from_utf8_lossy(&status.stdout).trim().is_empty(),
+        "the change is left uncommitted"
+    );
+    assert!(status_of_entries(&daemon).await.is_empty());
+    assert_eq!(item_status(&daemon, &item.id).await, "in_progress");
+    daemon.shutdown().await;
+}
+
+async fn status_of_entries(daemon: &DaemonHandle) -> Vec<wire::RunnerEntry> {
+    status(daemon).await.entries
 }

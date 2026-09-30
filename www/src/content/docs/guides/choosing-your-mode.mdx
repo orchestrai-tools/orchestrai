@@ -1,19 +1,19 @@
 ---
 title: Choosing your mode
-description: When to run one agent, when to put a lead in charge, and when a task deserves a full review pipeline.
+description: When to run one agent, when to put a lead in charge, and when a task deserves a full review pipeline in Factory mode.
 sidebar:
   order: 2
   label: Choosing your mode
 ---
 
-Warpforge gives you three ways to start work. Picking the right one is most of the difference between an agent that saves you an afternoon and one that burns your quota producing a diff you throw away.
+Warpforge gives you three ways to start work: **Single agent**, **Orchestrator** and **Factory**. Picking the right one is most of the difference between an agent that saves you an afternoon and one that burns your quota producing a diff you throw away.
 
-You don't have to guess which is which: the composer **draws what pressing Start will actually do** — a strip of blocks showing the shape of the run. For a workflow that's the selected template's real stages and round limit, not a stock illustration. For an orchestrator it's explicitly an example, staffed from your own enabled harnesses, because the lead decides the split once it has read the prompt.
+You don't have to guess which is which: the composer **draws what pressing Start will actually do** — a strip of blocks showing the shape of the run. For Factory that's the selected template's real stages and round limit, not a stock illustration. For an orchestrator it's explicitly an example, staffed from your own enabled harnesses, because the lead decides the split once it has read the prompt.
 
 The short version:
 
 <CardGrid>
-  <Card title="Single session" icon="ph:chat-circle">
+  <Card title="Single agent" icon="ph:chat-circle">
     **Most work.** One agent, one conversation, full runtime and memory access.
 
     *Default to this.*
@@ -23,8 +23,8 @@ The short version:
 
     *When the task has independent parts.*
   </Card>
-  <Card title="Workflow pipeline" icon="ph:flow-arrow">
-    **Work that must be reviewed.** Fixed `plan → implement → review ⇄ fix` stages, driven by the daemon.
+  <Card title="Factory" icon="ph:flow-arrow">
+    **Work that must be reviewed.** Fixed `plan → implement → review ⇄ fix` stages, driven by Warpforge — optionally ending in a draft pull request.
 
     *When you want an independent reviewer, repeatably.*
   </Card>
@@ -32,7 +32,7 @@ The short version:
 
 ---
 
-## Start with a single session
+## Start with a single agent
 
 A regular task is one agent in one conversation. It still gets the [runtime tools](/reference/mcp-tools/#runtime--see-and-drive-the-running-app), [memory](/concepts/memory/), and `create_task` — so "single" is not "limited," it's *undivided*.
 
@@ -99,21 +99,23 @@ Enabling **Orchestrator** turns the agent into a lead with [11 extra tools](/ref
 
 ---
 
-## Use a workflow pipeline when review is the point
+## Use Factory when review is the point
 
-A [pipeline](/concepts/orchestration/#workflow-pipelines) runs fixed stages — `plan? → implement → review ⇄ fix` — and the **daemon** drives the transitions, not a manager model deciding what to do next. Each stage is its own agent session with its own model, and review rounds repeat until approval or a configured limit.
+**Factory** runs a [pipeline](/concepts/orchestration/#workflow-pipelines) of fixed stages — `plan? → implement → verify? → review ⇄ fix` — and Warpforge drives the transitions, not a manager model deciding what to do next. Each stage is its own agent session with its own model, and review rounds repeat until approval or a configured limit.
+
+Choose **Factory** in New Task, or start it from a backlog item — or from many at once. You pick the workflow template, whether an agent tests the change in the running app, where it runs, and whether it ends in a draft pull request.
 
 **Reach for it when:**
 
 - **You want a second opinion by construction.** The reviewer is a different session — often a different model — that did not write the code and is told not to edit files.
-- **The work is repeatable.** Pipelines are versioned YAML in `.warpforge/workflows/`, so the process travels with the repo instead of living in one person's habits. Two ship with Warpforge; [writing your own](/reference/workflow-files/) is a file, not a fork.
+- **The work is repeatable.** Workflow templates are versioned YAML in `.warpforge/workflows/`, so the process travels with the repo instead of living in one person's habits. Three ship with Warpforge; [writing your own](/reference/workflow-files/) is a file, not a fork.
 - **The change is risky enough to be worth several times the cost.** Which brings us to the tradeoff.
 
 <Aside type="caution" title="A pipeline is expensive">
   Several sessions, several review rounds, several times the tokens of a single agent. Warpforge tells its own orchestrator this in the `spawn_workflow` tool description: for straightforward tasks, prefer a single sub-agent. Reserve pipelines for changes where an independent review pass genuinely earns its cost.
 </Aside>
 
-**Two things a pipeline will never do:** commit on its own — a finished pipeline lands in **Needs review** with its chats, timeline, and diff intact — or loop forever. When it exhausts its review rounds with findings open, it stops and asks.
+**Commit or not is your choice.** With **Open a draft PR when done** off, a finished Factory task commits nothing: it lands in **Needs review** with its chats, timeline, and diff intact. With it on, Warpforge commits the change on a fresh branch and opens a draft pull request for a person to review — it never merges. Either way it never loops forever: when it exhausts its review rounds with findings open, it stops and asks. See [The Factory](/guides/factory/) for everything the mode does.
 
 ---
 
@@ -129,19 +131,21 @@ That's usually the shape of a big task done well: **one lead, mostly single sub-
 
 | If… | Use |
 | --- | --- |
-| One coherent change | Single session |
-| You want to steer turn by turn | Single session |
-| One agent should do it, but you want a second opinion on the way | Single session + advisor |
-| You're still exploring the problem | Single session |
+| One coherent change | Single agent |
+| You want to steer turn by turn | Single agent |
+| One agent should do it, but you want a second opinion on the way | Single agent + advisor |
+| You're still exploring the problem | Single agent |
 | Independent parts that won't collide | Orchestrator |
 | You want different harnesses on different pieces | Orchestrator |
 | Bigger than one context window | Orchestrator |
-| An independent reviewer is the point | Workflow pipeline |
-| The process should repeat across the team | Workflow pipeline |
+| An independent reviewer is the point | Factory |
+| The process should repeat across the team | Factory |
+| You want a reviewed draft pull request for each backlog item | Factory with **Open a draft PR when done** |
 | Large feature, one risky piece | Orchestrator + `spawn_workflow` |
 
 ## See also
 
 - [Agent tools (MCP)](/reference/mcp-tools/) — exactly which tools each mode gets
 - [Orchestration and workflows](/concepts/orchestration/) — how delegation and pipelines work
+- [The Factory](/guides/factory/) — everything Factory mode does, from the backlog to the draft pull request
 - [Tasks and backlog](/guides/tasks-and-backlog/) — where the work comes from in the first place

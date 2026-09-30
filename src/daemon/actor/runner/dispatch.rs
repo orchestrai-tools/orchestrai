@@ -1,16 +1,13 @@
-//! Starting queued items: the gates in front of each dispatch, then a
-//! workflow pipeline in a fresh worktree forked from origin's default branch,
-//! or in the project checkout on a task branch (`checkout/`).
-
-use std::collections::HashMap;
+//! Starting queued Factory tasks: the gates in front of each start, and the
+//! choice of where it runs. The start itself is in `start.rs`.
 
 use warpforge_protocol as wire;
 
 use super::now_secs;
+pub(super) use super::start::StartIn;
 use crate::daemon::accounts::SpawnAccount;
 use crate::daemon::actor::Daemon;
 use crate::daemon::runner::{self as logic, Slots};
-use crate::daemon::worktree::StartPoint;
 
 /// Free space on the volume holding `path`, in whole gigabytes.
 fn free_gb(path: &str) -> Option<u64> {
@@ -24,10 +21,10 @@ fn free_gb(path: &str) -> Option<u64> {
     Some((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64) / 1_000_000_000)
 }
 
-/// A queued item and what it runs with, judged ready to start.
+/// A queued task and what it runs with, judged ready to start.
 pub(super) struct Choice {
     pub entry: wire::RunnerEntry,
-    pub item: wire::BacklogItem,
+    pub item: Option<wire::BacklogItem>,
     pub workflow: String,
     pub agent: String,
     pub model: Option<String>,
@@ -42,7 +39,7 @@ struct Pass {
     /// Whether any entry changed.
     touched: bool,
     /// The checkout's refusal, when it alone kept every queued entry back.
-    hold: Option<String>,
+    hold: Option<wire::RunnerWait>,
 }
 
 impl Pass {
@@ -77,11 +74,7 @@ impl Daemon {
         }
         let preparing = self.runner.leases.get(project).is_some_and(|lease| {
             lease.state == wire::CheckoutLeaseState::Preparing
-                && self
-                    .runner
-                    .entries
-                    .get(&lease.item_id)
-                    .is_some_and(|e| e.state == wire::RunnerEntryState::Queued)
+                && self.runner_is_queued(&lease.task_id)
         });
         if preparing {
             slots.in_flight += 1;
@@ -90,7 +83,7 @@ impl Daemon {
         slots
     }
 
-    fn runner_set_hold(&mut self, project: &str, hold: Option<String>) -> bool {
+    fn runner_set_hold(&mut self, project: &str, hold: Option<wire::RunnerWait>) -> bool {
         let changed = self.runner.holds.get(project) != hold.as_ref();
         match hold {
             Some(hold) => self.runner.holds.insert(project.to_string(), hold),
@@ -99,20 +92,24 @@ impl Daemon {
         changed
     }
 
-    fn runner_set_waiting(&mut self, item_id: &str, reason: Option<String>) -> bool {
-        let Some(mut entry) = self.runner.entries.get(item_id).cloned() else {
+    pub(super) fn runner_set_waiting(
+        &mut self,
+        task_id: &str,
+        wait: Option<wire::RunnerWait>,
+    ) -> bool {
+        let Some(mut entry) = self.runner.entries.get(task_id).cloned() else {
             return false;
         };
-        if entry.waiting_reason == reason {
+        if entry.wait == wait {
             return false;
         }
-        entry.waiting_reason = reason;
+        entry.wait = wait;
         self.runner_put_entry(entry);
         true
     }
 
     /// The first enabled agent, for settings that name none.
-    fn runner_default_agent(&self) -> String {
+    pub(super) fn runner_default_agent(&self) -> String {
         self.configured_agents
             .iter()
             .find(|a| a.enabled)
@@ -120,50 +117,70 @@ impl Daemon {
             .unwrap_or_default()
     }
 
-    /// Why none of `spec`'s agents may start a new item now.
+    /// Why one of `spec`'s agents may not start a new task now. `force`
+    /// skips the headroom threshold but never an exhausted account.
     fn runner_agent_refusal(
         &self,
         spec: &crate::workflow_config::WorkflowSpec,
         lead: &str,
         headroom_pct: u32,
-    ) -> Option<String> {
+        force: bool,
+    ) -> Option<wire::RunnerWait> {
         let now = now_secs();
+        let pct = if force { 100 } else { headroom_pct };
         logic::pipeline_agents(spec, lead).iter().find_map(|agent| {
-            self.dispatch_refusal(agent, SpawnAccount::Active)
-                .or_else(|| {
-                    logic::headroom_refusal(
-                        &self.agent_limits,
-                        self.agent_id_of(agent),
-                        now,
-                        headroom_pct,
-                    )
+            let agent_id = self.agent_id_of(agent);
+            logic::headroom_refusal(&self.agent_limits, agent_id, now, pct).or_else(|| {
+                self.dispatch_refusal(agent, SpawnAccount::Active).map(|_| {
+                    wire::RunnerWait::Quota {
+                        agent: agent_id.to_string(),
+                        account: None,
+                        window: None,
+                        used_pct: Some(100),
+                        limit_pct: None,
+                        resets_at: None,
+                    }
                 })
+            })
         })
     }
 
-    /// Start as many queued items of `project` as its gates allow, in order.
+    /// Why nothing queued in `project` may start, whichever task it is.
+    fn runner_project_wait(&self, project: &str) -> Option<wire::RunnerWait> {
+        let settings = self.runner_settings(project);
+        let now = now_secs();
+        if let Some(held) = self.runner_held(project) {
+            return Some(held);
+        }
+        let oldest = self.runner_oldest_today(project, now);
+        if let Some(wait) = logic::slot_refusal(&settings, self.runner_slots(project), oldest) {
+            return Some(wait);
+        }
+        if settings.min_free_gb == 0 {
+            return None;
+        }
+        let free = self.project_path(project).as_deref().and_then(free_gb)?;
+        (free < u64::from(settings.min_free_gb)).then_some(wire::RunnerWait::Disk {
+            free_gb: free,
+            min_gb: settings.min_free_gb,
+        })
+    }
+
+    /// Start as many queued tasks of `project` as its gates allow, in order.
     pub(crate) async fn runner_dispatch(&mut self, project: &str) {
         let mut changed = false;
         loop {
-            let settings = self.runner_settings(project);
             let has_queued =
                 !logic::dispatch_order(self.runner.entries.values(), project).is_empty();
-            let mut hold =
-                logic::slot_refusal(&settings, self.runner_slots(project)).filter(|_| has_queued);
-            if hold.is_none() && has_queued && settings.min_free_gb > 0 {
-                let free = self.project_path(project).as_deref().and_then(free_gb);
-                if let Some(free) = free.filter(|free| *free < u64::from(settings.min_free_gb)) {
-                    hold = Some(format!(
-                        "{free} GB free on the project's disk (needs {} GB)",
-                        settings.min_free_gb
-                    ));
-                }
-            }
-            if hold.is_some() || !has_queued {
-                changed |= self.runner_set_hold(project, hold);
+            if !has_queued {
+                changed |= self.runner_set_hold(project, None);
                 break;
             }
-            let pass = self.runner_start_next(project, &settings).await;
+            if let Some(hold) = self.runner_project_wait(project) {
+                changed |= self.runner_set_hold(project, Some(hold));
+                break;
+            }
+            let pass = self.runner_start_next(project).await;
             changed |= pass.touched;
             if !pass.started {
                 changed |= self.runner_set_hold(project, pass.hold);
@@ -178,51 +195,24 @@ impl Daemon {
     /// Start the first queued entry whose item, agents and run location
     /// allow it. A checkout entry the checkout gates refuse keeps the reason
     /// on its row and is skipped, so worktree entries behind it still start.
-    async fn runner_start_next(&mut self, project: &str, settings: &wire::RunnerSettings) -> Pass {
+    async fn runner_start_next(&mut self, project: &str) -> Pass {
         let order: Vec<String> = logic::dispatch_order(self.runner.entries.values(), project)
             .into_iter()
-            .map(|e| e.item_id.clone())
+            .map(|e| e.task_id.clone())
             .collect();
-        let path = self.project_path(project).unwrap_or_default();
-        let preparing = self
-            .runner
-            .leases
-            .get(project)
-            .is_some_and(|l| l.state == wire::CheckoutLeaseState::Preparing);
         let mut pass = Pass::default();
         let mut only_checkout_refused = true;
-        let mut checkout_gate: Option<Option<String>> = None;
-        for item_id in order {
-            let choice = match self.runner_pick(project, &item_id, settings, &path) {
-                Ok(choice) => choice,
-                Err(changed) => {
+        for task_id in order {
+            match self.runner_try_start(project, &task_id, false).await {
+                Tried::Started => return Pass::started(),
+                Tried::Wait => return pass,
+                Tried::Skipped(changed) => {
                     pass.touched |= changed;
                     only_checkout_refused = false;
-                    continue;
                 }
-            };
-            if choice.location == wire::RunLocation::Worktree {
-                // Preparing the checkout fetches origin in the same repository
-                // as a new worktree does; concurrent fetches race on the
-                // remote-tracking ref. The switch dispatches again when done.
-                if preparing {
-                    pass.hold = None;
-                    return pass;
-                }
-                self.runner_start(choice, None).await;
-                return Pass::started();
-            }
-            let refusal = checkout_gate
-                .get_or_insert_with(|| self.runner_checkout_refusal(project))
-                .clone();
-            match refusal {
-                None => {
-                    self.runner_checkout_begin(&choice.entry);
-                    return Pass::started();
-                }
-                Some(reason) => {
-                    pass.touched |= self.runner_set_waiting(&item_id, Some(reason.clone()));
-                    pass.hold.get_or_insert(reason);
+                Tried::CheckoutRefused(wait, changed) => {
+                    pass.touched |= changed;
+                    pass.hold.get_or_insert(wait);
                 }
             }
         }
@@ -232,25 +222,84 @@ impl Daemon {
         pass
     }
 
-    /// What queued `item_id` would run with, or whether judging it changed
-    /// its entry (dropped, or a new waiting reason).
-    pub(super) fn runner_pick(
+    /// Try to start queued `task_id` now. `force` is a person's Start now:
+    /// it passes quota headroom, the slot counts having been skipped already.
+    pub(super) async fn runner_try_start(
         &mut self,
         project: &str,
-        item_id: &str,
+        task_id: &str,
+        force: bool,
+    ) -> Tried {
+        let settings = self.runner_settings(project);
+        let path = self.project_path(project).unwrap_or_default();
+        let choice = match self.runner_pick(task_id, &settings, &path, force) {
+            Ok(choice) => choice,
+            Err(changed) => return Tried::Skipped(changed),
+        };
+        let preparing = self
+            .runner
+            .leases
+            .get(project)
+            .is_some_and(|l| l.state == wire::CheckoutLeaseState::Preparing);
+        if choice.location == wire::RunLocation::Worktree {
+            // Preparing the checkout fetches origin in the same repository
+            // as a new worktree does; concurrent fetches race on the
+            // remote-tracking ref. The switch dispatches again when done.
+            if preparing {
+                return Tried::Wait;
+            }
+            self.runner_start(choice, StartIn::Worktree).await;
+            return Tried::Started;
+        }
+        let leased = choice.entry.deliver;
+        match self.runner_checkout_refusal(project, leased) {
+            None if leased => {
+                if force {
+                    self.runner.forced.insert(task_id.to_string());
+                }
+                self.runner_checkout_begin(&choice.entry);
+                Tried::Started
+            }
+            None => {
+                self.runner_start(choice, StartIn::InPlace).await;
+                Tried::Started
+            }
+            Some(wait) => {
+                let changed = self.runner_set_waiting(task_id, Some(wait.clone()));
+                Tried::CheckoutRefused(wait, changed)
+            }
+        }
+    }
+
+    /// What queued `task_id` would run with, or whether judging it changed
+    /// its entry (removed, or a new wait).
+    pub(super) fn runner_pick(
+        &mut self,
+        task_id: &str,
         settings: &wire::RunnerSettings,
         path: &str,
+        force: bool,
     ) -> Result<Choice, bool> {
-        let item = match self.runner_read_item(project, item_id) {
-            Ok(Some(item)) if !matches!(item.status.as_str(), "done" | "cancelled") => item,
-            Ok(_) => {
-                self.runner_drop_entry(item_id);
-                return Err(true);
-            }
-            Err(error) => return Err(self.runner_set_waiting(item_id, Some(format!("{error:#}")))),
-        };
-        let Some(entry) = self.runner.entries.get(item_id).cloned() else {
+        let Some(entry) = self.runner.entries.get(task_id).cloned() else {
             return Err(false);
+        };
+        let item = match entry.item_id.as_deref() {
+            None => None,
+            Some(item_id) => match self.runner_read_item(&entry.project, item_id) {
+                Ok(Some(item)) if !matches!(item.status.as_str(), "done" | "cancelled") => {
+                    Some(item)
+                }
+                Ok(_) => {
+                    self.runner_discard_queued(task_id);
+                    return Err(true);
+                }
+                Err(error) => {
+                    let wait = wire::RunnerWait::Other {
+                        detail: format!("{error:#}"),
+                    };
+                    return Err(self.runner_set_waiting(task_id, Some(wait)));
+                }
+            },
         };
         let workflow = entry
             .workflow
@@ -268,19 +317,28 @@ impl Daemon {
             {
                 Some(Ok(spec)) => spec,
                 Some(Err(error)) => {
-                    let reason = format!("workflow `{workflow}` is invalid: {error}");
-                    return Err(self.runner_set_waiting(item_id, Some(reason)));
+                    let wait = wire::RunnerWait::WorkflowInvalid {
+                        workflow,
+                        error: error.to_string(),
+                    };
+                    return Err(self.runner_set_waiting(task_id, Some(wait)));
                 }
                 None => {
-                    let reason = format!("unknown workflow `{workflow}`");
-                    return Err(self.runner_set_waiting(item_id, Some(reason)));
+                    let wait = wire::RunnerWait::WorkflowInvalid {
+                        workflow,
+                        error: "no workflow by that name".to_string(),
+                    };
+                    return Err(self.runner_set_waiting(task_id, Some(wait)));
                 }
             };
         if agent.is_empty() {
-            return Err(self.runner_set_waiting(item_id, Some("no agent is set up".to_string())));
+            let wait = wire::RunnerWait::Other {
+                detail: "no agent is set up".to_string(),
+            };
+            return Err(self.runner_set_waiting(task_id, Some(wait)));
         }
-        if let Some(reason) = self.runner_agent_refusal(&spec, &agent, settings.headroom_pct) {
-            return Err(self.runner_set_waiting(item_id, Some(reason)));
+        if let Some(wait) = self.runner_agent_refusal(&spec, &agent, settings.headroom_pct, force) {
+            return Err(self.runner_set_waiting(task_id, Some(wait)));
         }
         let location = logic::resolve_location(settings.run_location, entry.run_location, &spec);
         Ok(Choice {
@@ -292,101 +350,15 @@ impl Daemon {
             location,
         })
     }
+}
 
-    /// Start `choice`'s pipeline: in a fresh worktree, or with `checkout` =
-    /// `(task id, origin's default branch)` in the project checkout, which is
-    /// already on that task's branch.
-    pub(super) async fn runner_start(
-        &mut self,
-        choice: Choice,
-        checkout: Option<(String, String)>,
-    ) {
-        let Choice {
-            mut entry,
-            item,
-            workflow,
-            agent,
-            model,
-            location: _,
-        } = choice;
-        let location = match checkout {
-            Some(_) => wire::RunLocation::Checkout,
-            None => wire::RunLocation::Worktree,
-        };
-        let now = now_secs();
-        let project = entry.project.clone();
-        entry.number = item.number;
-        entry.title = item.title.clone();
-        entry.priority = item.priority.clone();
-        let mut run = wire::ItemRun {
-            id: uuid::Uuid::new_v4().to_string(),
-            project: project.clone(),
-            item_id: item.id.clone(),
-            item_number: item.number,
-            item_title: item.title.clone(),
-            task_id: None,
-            workflow: workflow.clone(),
-            agent: agent.clone(),
-            model: model.clone(),
-            enqueued_at: entry.enqueued_at,
-            dispatched_at: now,
-            finished_at: None,
-            pr_opened_at: None,
-            merged_at: None,
-            closed_at: None,
-            rounds: 0,
-            fix_rounds: 0,
-            cost_usd: None,
-            outcome: wire::ItemRunOutcome::Running,
-            detail: None,
-            pr_url: None,
-            pr_number: None,
-            run_location: Some(location),
-        };
-        self.runner.dispatches.push((project.clone(), now));
-        let (preset_id, base) = checkout.unzip();
-        let created = self
-            .workflow_create(
-                project.clone(),
-                logic::brief(&item),
-                agent,
-                vec![logic::RUNNER_TAG.to_string()],
-                preset_id.is_none(),
-                StartPoint::Origin,
-                workflow,
-                Vec::new(),
-                model,
-                false,
-                HashMap::new(),
-                None,
-                Some(item.id.clone()),
-                preset_id,
-            )
-            .await;
-        match created {
-            Ok(task_id) => {
-                if let Some(task) = self.tasks.get_mut(&task_id).filter(|_| base.is_some()) {
-                    task.base_branch = base;
-                    let updated = task.clone();
-                    self.persist(&updated);
-                }
-                run.task_id = Some(task_id.clone());
-                entry.state = wire::RunnerEntryState::Running;
-                entry.task_id = Some(task_id.clone());
-                entry.run_id = Some(run.id.clone());
-                entry.resolved_location = Some(location);
-                entry.waiting_reason = None;
-                self.runner_put_entry(entry);
-                self.runner_put_run(run, false);
-                self.runner_write_item(&project, &item.id, "in_progress", Some(&task_id));
-            }
-            Err(error) => {
-                run.outcome = wire::ItemRunOutcome::Failed;
-                run.finished_at = Some(now);
-                run.detail = Some(format!("the pipeline could not start: {error}"));
-                self.runner_drop_entry(&item.id);
-                self.runner_put_run(run, false);
-            }
-        }
-    }
+/// What trying to start one queued task did.
+pub(super) enum Tried {
+    Started,
+    /// Nothing may start until the checkout finishes preparing.
+    Wait,
+    /// The task cannot start for a reason of its own; whether its entry changed.
+    Skipped(bool),
+    /// The project folder refused it; whether its entry changed.
+    CheckoutRefused(wire::RunnerWait, bool),
 }

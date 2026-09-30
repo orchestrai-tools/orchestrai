@@ -6,6 +6,7 @@ import type { AttentionItem } from "../lib/attentionRail";
 import { decisionActionKinds } from "../lib/decisionActions";
 import type { PermissionUpdate } from "../lib/sessionPermissions";
 import type { TaskInfo, WorkflowRunInfo } from "../protocol";
+import { useUi } from "../store/ui";
 import { daemon } from "./../daemon";
 import { DecisionRowActions } from "./DecisionRowActions";
 
@@ -148,5 +149,27 @@ describe("DecisionRowActions", () => {
   it.each(["blocked", "interrupted"] as const)("renders nothing for %s rows", (status) => {
     const { container } = render(<DecisionRowActions item={item({ task: task({ status }) })} />);
     expect(container.firstChild).toBeNull();
+  });
+  it("offers Try again and a terminal when the Factory could not give the project folder back", async () => {
+    const request = vi.spyOn(daemon, "request").mockImplementation(async () => ({}));
+    const user = userEvent.setup();
+    const row = item({
+      task: task({
+        blockedKind: "checkout_held",
+        blockedReason: "The Factory left your project folder on warpforge/task/t1",
+        status: "blocked",
+        tags: ["runner", "workflow:review-loop"],
+      }),
+    });
+    expect(decisionActionKinds(row)).toEqual(["checkout_held"]);
+    render(<DecisionRowActions item={row} />);
+
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith("runner.retryCheckout", { project: "warpforge" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Open terminal" }));
+    expect(useUi.getState().view).toBe("project");
+    expect(useUi.getState().projectSurfaceByProject.warpforge).toBe("terminal");
   });
 });

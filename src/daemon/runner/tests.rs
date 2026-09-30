@@ -4,7 +4,8 @@ use super::*;
 
 fn entry(id: &str, priority: &str, position: u64, enqueued_at: i64) -> wire::RunnerEntry {
     wire::RunnerEntry {
-        item_id: id.into(),
+        task_id: id.into(),
+        item_id: None,
         project: "demo".into(),
         number: 1,
         title: id.into(),
@@ -16,12 +17,15 @@ fn entry(id: &str, priority: &str, position: u64, enqueued_at: i64) -> wire::Run
         agent: None,
         model: None,
         run_location: wire::EntryRunLocation::Default,
+        deliver: true,
+        config_overrides: Default::default(),
+        include_runtime_context: false,
+        attachments: Vec::new(),
         resolved_location: None,
-        task_id: None,
         run_id: None,
         pr_url: None,
         pr_number: None,
-        waiting_reason: None,
+        wait: None,
         updated_at: 0,
     }
 }
@@ -47,10 +51,7 @@ fn item(source: &str, external_id: Option<&str>) -> wire::BacklogItem {
 }
 
 fn running() -> wire::RunnerSettings {
-    wire::RunnerSettings {
-        running: true,
-        ..wire::RunnerSettings::defaults("demo")
-    }
+    wire::RunnerSettings::defaults("demo")
 }
 
 #[test]
@@ -69,7 +70,7 @@ fn queue_orders_by_priority_then_position_then_age() {
     ];
     let order: Vec<&str> = dispatch_order(&entries, "demo")
         .iter()
-        .map(|e| e.item_id.as_str())
+        .map(|e| e.task_id.as_str())
         .collect();
     assert_eq!(
         order,
@@ -87,39 +88,46 @@ fn queue_orders_by_priority_then_position_then_age() {
 #[test]
 fn every_slot_gate_holds_the_queue_with_its_reason() {
     let free = Slots::default();
-    assert_eq!(slot_refusal(&running(), free), None);
-
-    let paused = wire::RunnerSettings::defaults("demo");
-    assert!(slot_refusal(&paused, free).unwrap().contains("paused"));
+    assert_eq!(slot_refusal(&running(), free, None), None);
 
     let busy = Slots {
         in_flight: 1,
         ..free
     };
-    assert!(slot_refusal(&running(), busy)
-        .unwrap()
-        .contains("1 of 1 run slot"));
+    assert_eq!(
+        slot_refusal(&running(), busy, None),
+        Some(wire::RunnerWait::Slots {
+            in_use: 1,
+            limit: 1
+        })
+    );
     let two = wire::RunnerSettings {
         max_concurrent: 2,
         ..running()
     };
-    assert_eq!(slot_refusal(&two, busy), None);
+    assert_eq!(slot_refusal(&two, busy, None), None);
 
     let reviewing = Slots {
         open_prs: 3,
         ..free
     };
-    assert!(slot_refusal(&running(), reviewing)
-        .unwrap()
-        .contains("wait for review"));
+    assert_eq!(
+        slot_refusal(&running(), reviewing, None),
+        Some(wire::RunnerWait::OpenPrs { open: 3, limit: 3 })
+    );
 
     let spent = Slots {
         dispatched_today: 10,
         ..free
     };
-    assert!(slot_refusal(&running(), spent)
-        .unwrap()
-        .contains("last 24 hours"));
+    assert_eq!(
+        slot_refusal(&running(), spent, Some(100)),
+        Some(wire::RunnerWait::Daily {
+            started: 10,
+            limit: 10,
+            next_at: Some(100 + DAY_SECS)
+        })
+    );
 }
 
 fn limits(used: f64, resets_in: i64, window: &str, now: i64) -> Vec<wire::AgentAccountLimits> {
@@ -147,9 +155,19 @@ fn limits(used: f64, resets_in: i64, window: &str, now: i64) -> Vec<wire::AgentA
 fn headroom_refuses_only_a_fresh_window_above_the_threshold() {
     let now = 1_000_000;
     let hot = limits(85.0, 3600, "five_hour", now);
-    assert!(headroom_refusal(&hot, "claude", now, 80)
-        .unwrap()
-        .contains("85%"));
+    assert_eq!(
+        headroom_refusal(&hot, "claude", now, 80),
+        Some(wire::RunnerWait::Quota {
+            agent: "claude".into(),
+            account: Some("Work".into()),
+            window: Some("Session".into()),
+            used_pct: Some(85),
+            limit_pct: Some(80),
+            resets_at: Some(now + 3600),
+        })
+    );
+    let full = limits(100.0, 3600, "five_hour", now);
+    assert!(headroom_refusal(&full, "claude", now, 100).is_some());
     assert_eq!(headroom_refusal(&hot, "claude", now, 90), None);
     assert_eq!(headroom_refusal(&hot, "codex", now, 80), None);
     let reset = limits(85.0, -10, "five_hour", now);
@@ -172,22 +190,27 @@ fn every_stage_agent_is_gated_once() {
 
 #[test]
 fn a_local_brief_is_plain_and_an_imported_one_is_untrusted() {
-    let local = brief(&item("local", None));
-    assert!(local.contains("Backlog item #12: Fix the cache"));
-    assert!(local.contains("Do not commit"));
+    let local = brief_body(&item("local", None));
+    assert!(local.starts_with("Backlog item #12: Fix the cache"));
+    assert!(!local.contains("Do not commit"));
     assert!(!local.contains("<github_untrusted>"));
 
-    let imported = brief(&item("github", Some("#87")));
+    let imported = brief_body(&item("github", Some("#87")));
     assert!(imported.contains("Work on GitHub issue #87."));
     assert!(imported.contains("<github_untrusted>"));
     assert_eq!(imported.matches("</github_untrusted>").count(), 1);
     assert!(imported.ends_with("</github_untrusted>"));
+
+    let prompt = with_preamble(&local);
+    assert!(prompt.contains("Do not commit"));
+    assert_eq!(strip_preamble(&prompt), local);
+    assert_eq!(strip_preamble("plain"), "plain");
 }
 
 #[test]
 fn the_pull_request_links_and_closes_a_github_issue() {
     let github = item("github", Some("#87"));
-    assert_eq!(pr_title(&github), "Fix the cache (#87)");
+    assert_eq!(pr_title(Some(&github), "ignored"), "Fix the cache (#87)");
     let facts = PrFacts {
         summary: Some("Rewrote the cache."),
         report: Some("Verification passed: the page loads."),
@@ -196,20 +219,20 @@ fn the_pull_request_links_and_closes_a_github_issue() {
         rounds: 2,
         cost_usd: None,
     };
-    let body = pr_body(&github, &facts);
+    let body = pr_body(Some(&github), &facts);
     assert!(body.starts_with("Closes #87"), "{body}");
     assert!(body.contains("## Summary\n\nRewrote the cache."));
     assert!(body.contains("## Verification"));
     assert!(!body.contains("Low-severity"));
     assert!(body.contains("2 review round(s), agent cost not reported"));
     assert_eq!(
-        commit_message(&github, Some("Rewrote the cache.")),
+        commit_message(Some(&github), "ignored", Some("Rewrote the cache.")),
         "Fix the cache (#87)\n\nRewrote the cache."
     );
 
     let local = item("local", None);
     let body = pr_body(
-        &local,
+        Some(&local),
         &PrFacts {
             cost_usd: Some(1.234),
             ..PrFacts::default()
@@ -218,6 +241,19 @@ fn the_pull_request_links_and_closes_a_github_issue() {
     assert!(body.starts_with("Backlog item #12"), "{body}");
     assert!(!body.contains("Closes"));
     assert!(body.contains("$1.23"));
+}
+
+#[test]
+fn a_task_without_an_item_titles_its_pull_request_itself() {
+    assert_eq!(pr_title(None, " Add dark mode "), "Add dark mode");
+    let body = pr_body(
+        None,
+        &PrFacts {
+            summary: Some("Done."),
+            ..PrFacts::default()
+        },
+    );
+    assert!(body.starts_with("## Summary"), "{body}");
 }
 
 #[test]

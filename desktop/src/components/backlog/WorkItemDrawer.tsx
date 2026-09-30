@@ -35,8 +35,8 @@ export interface WorkItemDrawerProps {
   onClose: () => void;
   onStartTask?: (item: WorkItem) => void;
   onOpenTask?: (taskId: string) => void;
-  /** Queues the item in the project's Factory. */
-  onRunInFactory?: (item: WorkItem) => void;
+  /** Opens New Task in Factory mode for the item. */
+  onStartInFactory?: (item: WorkItem) => void;
   /** The task this item became, when the daemon still has it. */
   linkedTask?: TaskInfo | null;
 }
@@ -51,7 +51,7 @@ export function WorkItemDrawer({
   onClose,
   onStartTask,
   onOpenTask,
-  onRunInFactory,
+  onStartInFactory,
   linkedTask,
 }: WorkItemDrawerProps) {
   // A ref, not state: this is read when a key arrives, never rendered, and the
@@ -83,7 +83,7 @@ export function WorkItemDrawer({
             linkedTask={linkedTask}
             onOpenTask={onOpenTask}
             onStartTask={onStartTask}
-            onRunInFactory={onRunInFactory}
+            onStartInFactory={onStartInFactory}
           />
         )}
       </DialogContent>
@@ -97,7 +97,7 @@ function WorkItemDetails({
   onEditingChange,
   onStartTask,
   onOpenTask,
-  onRunInFactory,
+  onStartInFactory,
   linkedTask,
 }: {
   item: WorkItem;
@@ -106,7 +106,7 @@ function WorkItemDetails({
   onEditingChange: (editing: boolean) => void;
   onStartTask?: (item: WorkItem) => void;
   onOpenTask?: (taskId: string) => void;
-  onRunInFactory?: (item: WorkItem) => void;
+  onStartInFactory?: (item: WorkItem) => void;
   linkedTask?: TaskInfo | null;
 }) {
   const queryClient = useQueryClient();
@@ -443,7 +443,7 @@ function WorkItemDetails({
         linkedTask={linkedTask}
         onOpenTask={onOpenTask}
         onStartTask={onStartTask}
-        onRunInFactory={onRunInFactory}
+        onStartInFactory={onStartInFactory}
       />
 
       <ConfirmDialog

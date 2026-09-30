@@ -10,6 +10,7 @@ import { runOnIdle } from "@/lib/idle";
 import type { Snapshot, TaskInfo } from "@/protocol";
 import type { View } from "@/store/ui";
 
+import type { NewTaskOptions } from "./dialogs";
 import {
   loadAutomations,
   loadInboxView,
@@ -49,11 +50,17 @@ export interface AppContentProps {
   newTaskProject: string | null;
   newTaskPrompt: string | undefined;
   newTaskBacklogItemId: string | null;
+  newTaskOptions?: NewTaskOptions;
   onNewTaskOpenChange: (open: boolean) => void;
   onOpenTask: (id: string) => void;
   onCloseTask: () => void;
   onAddProject: () => void;
-  onNewTask: (project?: string, prompt?: string) => void;
+  onNewTask: (
+    project?: string,
+    prompt?: string,
+    backlogItemId?: string,
+    options?: NewTaskOptions,
+  ) => void;
   onOpenPush: () => void;
   projectNames: string[];
   showPersistent: boolean;
@@ -69,6 +76,7 @@ export function AppContent({
   newTaskProject,
   newTaskPrompt,
   newTaskBacklogItemId,
+  newTaskOptions,
   onNewTaskOpenChange,
   onOpenTask,
   onCloseTask,
@@ -128,6 +136,8 @@ export function AppContent({
                 defaultProject={newTaskProject}
                 initialPrompt={newTaskPrompt}
                 backlogItemId={newTaskBacklogItemId}
+                initialMode={newTaskOptions?.mode}
+                factorySeed={newTaskOptions?.factory}
               />
             ) : openTask ? (
               <TaskDetail

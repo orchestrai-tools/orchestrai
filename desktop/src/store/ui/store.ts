@@ -17,8 +17,8 @@ export const useUi = create<UiState>()(
     }),
     {
       name: "wf-ui",
-      // Next persisted-shape change must bump this to 8.
-      version: 7,
+      // Next persisted-shape change must bump this to 9.
+      version: 8,
       migrate: (persisted: unknown, version: number) => {
         let state = persisted as Record<string, unknown>;
         if (version === 0 && state && "sidebarWidth" in state) {
@@ -69,6 +69,17 @@ export const useUi = create<UiState>()(
         // toggle still turns it back off per machine.
         if (version < 7 && state) {
           state = { ...state, bodyGlass: true };
+        }
+        // The Factory project tab became a task mode; a project that was left
+        // on it reopens on its backlog instead of a tab no branch renders.
+        if (version < 8 && state && state.projectSurfaceByProject) {
+          const surfaces = state.projectSurfaceByProject as Record<string, string>;
+          state = {
+            ...state,
+            projectSurfaceByProject: Object.fromEntries(
+              Object.entries(surfaces).filter(([, surface]) => surface !== "factory"),
+            ),
+          };
         }
         return state;
       },

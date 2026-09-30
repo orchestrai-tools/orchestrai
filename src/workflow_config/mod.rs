@@ -174,6 +174,26 @@ pub struct LoadedWorkflow {
 
 impl WorkflowSpec {
     /// Stage names for picker tooltips, e.g. `["plan", "implement", "review×2", "fix"]`.
+    /// The agent each entry of [`Self::stage_summary`] is pinned to, if any.
+    pub fn stage_agents(&self) -> Vec<Option<String>> {
+        let mut agents = Vec::new();
+        if let Some(plan) = self.plan.as_ref() {
+            agents.push(plan.agent.clone());
+        }
+        agents.push(self.implement.agent.clone());
+        if let Some(verify) = self.verify.as_ref() {
+            agents.push(verify.agent.clone());
+        }
+        agents.push(self.review.reviewers.first().and_then(|r| r.agent.clone()));
+        agents.push(
+            self.fix
+                .agent
+                .clone()
+                .or_else(|| self.implement.agent.clone()),
+        );
+        agents
+    }
+
     pub fn stage_summary(&self) -> Vec<String> {
         let mut stages = Vec::new();
         if self.plan.is_some() {

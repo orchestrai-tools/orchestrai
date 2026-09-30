@@ -170,7 +170,7 @@ impl Task {
 /// Derive a display title from a prompt: first line, stripped of leading
 /// whitespace and markdown fences, truncated to 80 characters. Returns empty
 /// string for empty prompts.
-fn derive_title(prompt: &str) -> String {
+pub(crate) fn derive_title(prompt: &str) -> String {
     let line = prompt
         .trim()
         .lines()

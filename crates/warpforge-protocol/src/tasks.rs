@@ -325,6 +325,9 @@ pub enum TaskBlockedKind {
     /// stored is unaffected, so the work can continue in a fresh session.
     SessionLost,
     ModelMismatch,
+    /// The Factory could not give the project folder back after this task:
+    /// a person cleans it up, then tries again.
+    CheckoutHeld,
 }
 
 /// Which kind of git prose `text.generate` should produce.

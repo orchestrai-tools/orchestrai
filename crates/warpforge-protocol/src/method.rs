@@ -5,9 +5,9 @@
 
 use crate::{
     default_true, AdvisorPick, AgentConfig, AutomationPatch, AutomationTrigger, BacklogStorageMode,
-    BootstrapAnswers, EntryRunLocation, HunkResolution, OrchestratorConfigDto, PermissionOutcome,
-    PromptAttachment, RunnerSettingsPatch, TextGenKind, WorkItemPriority, WorkflowDecision,
-    WorktreeBase, DEFAULT_MISSED_RUN_GRACE_MINUTES,
+    BootstrapAnswers, EntryRunLocation, FactoryCreate, HunkResolution, OrchestratorConfigDto,
+    PermissionOutcome, PromptAttachment, RunnerSettingsPatch, TextGenKind, WorkItemPriority,
+    WorkflowDecision, WorktreeBase, DEFAULT_MISSED_RUN_GRACE_MINUTES,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -265,6 +265,11 @@ pub enum Method {
         /// Single-agent tasks only: refused with `workflow`.
         #[serde(default)]
         advisor: Option<AdvisorPick>,
+        /// With `workflow`: hand the task to the Factory, which creates it
+        /// queued and starts it when the project's limits allow. The reply
+        /// then also carries `started`.
+        #[serde(default)]
+        factory: Option<FactoryCreate>,
     },
     #[serde(rename = "task.cancel")]
     TaskCancel { task_id: String },
@@ -1416,12 +1421,15 @@ pub enum Method {
         limit: Option<u32>,
     },
 
-    // ── Backlog runner (ADR 0023) ────────────────────────────────────────────
-    /// One project's runner: settings, queue and counters. Returns [`crate::RunnerStatus`].
+    // ── Factory (ADR 0023; the code says runner) ────────────────────────────
+    /// One project's Factory: settings, the tasks it schedules and counters.
+    /// Returns [`crate::RunnerStatus`].
     #[serde(rename = "runner.status")]
     RunnerStatus { project: String },
-    /// Queue backlog items. Items already queued are left where they are.
-    /// `origin_task` names the session asking, when an agent asks.
+    /// Create one Factory task per backlog item, with one shared
+    /// configuration; each starts when the project's limits allow. Items that
+    /// already have a Factory task are skipped. `origin_task` names the
+    /// session asking, when an agent asks. Returns [`crate::EnqueueResult`].
     #[serde(rename = "runner.enqueue")]
     RunnerEnqueue {
         project: String,
@@ -1434,33 +1442,47 @@ pub enum Method {
         model: Option<String>,
         #[serde(default)]
         run_location: EntryRunLocation,
+        /// Open a draft pull request when a run succeeds; absent means yes.
+        #[serde(default)]
+        deliver: Option<bool>,
         #[serde(default)]
         origin_task: Option<String>,
     },
-    /// Change where a queued item will run. Returns [`crate::RunnerStatus`].
-    #[serde(rename = "runner.setEntryLocation")]
-    RunnerSetEntryLocation {
-        project: String,
-        item_id: String,
-        run_location: EntryRunLocation,
-    },
-    /// Remove an item that has not started yet.
+    /// Cancel a queued Factory task before it starts; the task is deleted.
+    /// Returns [`crate::RunnerStatus`].
     #[serde(rename = "runner.dequeue")]
-    RunnerDequeue { project: String, item_id: String },
-    /// Put the queued items in this order; ids not given keep their places after them.
+    RunnerDequeue { project: String, task_id: String },
+    /// Put the queued tasks in this order; ids not given keep their places after them.
     #[serde(rename = "runner.reorder")]
     RunnerReorder {
         project: String,
-        item_ids: Vec<String>,
+        task_ids: Vec<String>,
     },
-    /// Change settings, including starting and pausing. Returns [`crate::RunnerStatus`].
+    /// Start a queued Factory task now, past the slot, pull request, daily,
+    /// quota headroom and disk limits. The project folder's own checks still
+    /// apply. Returns [`crate::RunnerStatus`].
+    #[serde(rename = "runner.startNow")]
+    RunnerStartNow { project: String, task_id: String },
+    /// Start a new Factory task with the configuration of a finished, failed
+    /// or stopped one. Returns [`crate::EnqueueResult`].
+    #[serde(rename = "runner.retry")]
+    RunnerRetry { task_id: String },
+    /// Try again to give back a project folder the Factory could not return.
+    /// Returns [`crate::RunnerStatus`].
+    #[serde(rename = "runner.retryCheckout")]
+    RunnerRetryCheckout { project: String },
+    /// The prompt a Factory task for this backlog item starts from, with
+    /// tracker text inside the untrusted block. Returns `{ prompt }`.
+    #[serde(rename = "runner.brief")]
+    RunnerBrief { project: String, item_id: String },
+    /// Change the project's limits and defaults. Returns [`crate::RunnerStatus`].
     #[serde(rename = "runner.updateSettings")]
     RunnerUpdateSettings {
         project: String,
         patch: RunnerSettingsPatch,
     },
-    /// Pause the runner and stop every pipeline it is running; their items go
-    /// back to the queue. Returns [`crate::RunnerStatus`].
+    /// Stop every running Factory task of the project and remove the queued
+    /// ones. Returns [`crate::RunnerStatus`].
     #[serde(rename = "runner.stop")]
     RunnerStop { project: String },
     /// Recent attempts, newest first.

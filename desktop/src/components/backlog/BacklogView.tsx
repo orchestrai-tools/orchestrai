@@ -4,6 +4,8 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { daemon } from "@/daemon";
+import { useRunnerStatus } from "@/hooks/useRunner";
+import type { RunnerEntry } from "@/protocol";
 import { useUi } from "@/store/ui";
 
 import { BacklogList } from "./BacklogList";
@@ -28,11 +30,10 @@ interface BacklogViewProps {
   onOpenItem?: (item: WorkItem) => void;
   /** Adds a work item by hand. */
   onCreate?: () => void;
-  /**
-   * Queues items in the project's Factory; enables row selection. `onQueued`
-   * runs once they are queued, and not when the person cancels.
-   */
-  onRunInFactory?: (items: WorkItem[], onQueued?: () => void) => void;
+  /** Opens New Task in Factory mode for items; enables row selection. */
+  onStartInFactory?: (items: WorkItem[]) => void;
+  /** Opens the Factory batch form, with the selected items offered. */
+  onRunInFactory?: (selected: WorkItem[]) => void;
 }
 
 export function BacklogView({
@@ -42,6 +43,7 @@ export function BacklogView({
   liveTaskIds,
   onOpenItem,
   onCreate,
+  onStartInFactory,
   onRunInFactory,
 }: BacklogViewProps) {
   const queryClient = useQueryClient();
@@ -173,17 +175,36 @@ export function BacklogView({
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
+  const runner = useRunnerStatus(onStartInFactory ? project : "");
+  const factory = React.useMemo(() => {
+    const byItem = new Map<string, RunnerEntry>();
+    for (const entry of runner.data?.entries ?? []) {
+      if (entry.itemId) byItem.set(entry.itemId, entry);
+    }
+    return byItem;
+  }, [runner.data]);
+
   const actions = React.useMemo<BacklogRowActions>(
     () => ({
       onOpen: (item) => onOpenItem?.(item),
       onOpenTask,
       onStartTask,
       liveTaskIds,
-      onRunInFactory: onRunInFactory && ((item) => onRunInFactory([item])),
-      onToggleSelect: onRunInFactory && toggleSelect,
+      onStartInFactory: onStartInFactory && ((item) => onStartInFactory([item])),
+      factory,
+      onToggleSelect: onStartInFactory && toggleSelect,
       selected: selectedIds,
     }),
-    [onOpenItem, onOpenTask, onStartTask, liveTaskIds, onRunInFactory, toggleSelect, selectedIds],
+    [
+      onOpenItem,
+      onOpenTask,
+      onStartTask,
+      liveTaskIds,
+      onStartInFactory,
+      factory,
+      toggleSelect,
+      selectedIds,
+    ],
   );
 
   return (
@@ -196,18 +217,20 @@ export function BacklogView({
         onSync={() => void syncNow()}
         isSyncing={sync.isFetching || manualSyncing}
         assignees={seenAssignees}
+        onRunInFactory={onRunInFactory && (() => onRunInFactory([...selection.values()]))}
       />
-      {onRunInFactory && selection.size > 0 && (
+      {onStartInFactory && selection.size > 0 && (
         <div className="flex h-9 shrink-0 items-center gap-2 border-b border-rule bg-secondary/40 px-3 text-[12px]">
           <span className="tnum text-muted-foreground">{selection.size} selected</span>
           <Button
             size="sm"
             className="h-7 px-2.5 text-[12px]"
             onClick={() => {
-              onRunInFactory([...selection.values()], () => setSelection(new Map()));
+              onStartInFactory([...selection.values()]);
+              setSelection(new Map());
             }}
           >
-            Run selected in Factory
+            Start {selection.size} in Factory
           </Button>
           <Button
             size="sm"

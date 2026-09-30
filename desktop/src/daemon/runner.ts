@@ -1,10 +1,16 @@
-import type { EntryRunLocation, ItemRun, RunnerSettingsPatch, RunnerStatus } from "../protocol";
+import type {
+  EnqueueResult,
+  FactoryConfig,
+  ItemRun,
+  RunnerSettingsPatch,
+  RunnerStatus,
+} from "../protocol";
 import type { CoreClient } from "./client";
 import type { Constructor } from "./types";
 
 /**
- * A status the Factory surface can always render, even from the demo
- * transport, which answers unknown methods with `{}`.
+ * A status every Factory view can render, even from the demo transport,
+ * which answers unknown methods with `{}`.
  * @param project The project the status belongs to.
  * @param raw What the daemon answered.
  * @returns The status with every missing field filled in.
@@ -14,7 +20,6 @@ export function normalizeRunnerStatus(project: string, raw: unknown): RunnerStat
   return {
     settings: {
       project,
-      running: false,
       workflow: "review-loop",
       agent: "",
       model: null,
@@ -23,7 +28,7 @@ export function normalizeRunnerStatus(project: string, raw: unknown): RunnerStat
       maxPerDay: 10,
       headroomPct: 80,
       minFreeGb: 25,
-      runLocation: "worktree",
+      runLocation: "auto",
       updatedAt: 0,
       ...status.settings,
     },
@@ -34,62 +39,90 @@ export function normalizeRunnerStatus(project: string, raw: unknown): RunnerStat
   };
 }
 
+/**
+ * An enqueue result every caller can read, whatever the transport answered.
+ * @param project The project the tasks belong to.
+ * @param raw What the daemon answered.
+ * @returns The result with empty lists for anything missing.
+ */
+export function normalizeEnqueueResult(project: string, raw: unknown): EnqueueResult {
+  const result = (raw ?? {}) as Partial<EnqueueResult>;
+  return {
+    created: Array.isArray(result.created) ? result.created : [],
+    skipped: Array.isArray(result.skipped) ? result.skipped : [],
+    status: normalizeRunnerStatus(project, result.status),
+  };
+}
+
 export function RunnerMethods<TBase extends Constructor<CoreClient>>(Base: TBase) {
-  // ── Backlog runner RPCs ──
-  // Not in the connect snapshot; the Factory surface fetches its project's
-  // status and then stays live off `runner.updated` / `runner.runUpdated`.
+  // ── Factory RPCs ──
+  // Not in the connect snapshot: views fetch a project's status and then stay
+  // live off `runner.updated` / `runner.runUpdated`.
   return class extends Base {
     async runnerStatus(project: string): Promise<RunnerStatus> {
       return normalizeRunnerStatus(project, await this.request("runner.status", { project }));
     }
 
-    /** Queue backlog items; ones already queued keep their place. */
+    /** One Factory task per backlog item, with one shared configuration. */
     async runnerEnqueue(
       project: string,
       itemIds: string[],
-      runLocation: EntryRunLocation = "default",
-    ): Promise<RunnerStatus> {
+      config: FactoryConfig,
+    ): Promise<EnqueueResult> {
       const result = await this.request("runner.enqueue", {
+        agent: config.agent ?? undefined,
+        deliver: config.deliver,
         item_ids: itemIds,
+        model: config.model ?? undefined,
         project,
-        run_location: runLocation,
+        run_location: config.runLocation,
+        workflow: config.workflow ?? undefined,
       });
+      return normalizeEnqueueResult(project, result);
+    }
+
+    /** Cancel a queued Factory task before it starts; its task is deleted. */
+    async runnerDequeue(project: string, taskId: string): Promise<RunnerStatus> {
+      const result = await this.request("runner.dequeue", { project, task_id: taskId });
       return normalizeRunnerStatus(project, result);
     }
 
-    /** Change where a queued item will run. */
-    async runnerSetEntryLocation(
-      project: string,
-      itemId: string,
-      runLocation: EntryRunLocation,
-    ): Promise<RunnerStatus> {
-      const result = await this.request("runner.setEntryLocation", {
-        item_id: itemId,
-        project,
-        run_location: runLocation,
-      });
+    /** Put the queued tasks in this order. */
+    async runnerReorder(project: string, taskIds: string[]): Promise<RunnerStatus> {
+      const result = await this.request("runner.reorder", { project, task_ids: taskIds });
       return normalizeRunnerStatus(project, result);
     }
 
-    /** Remove an item that has not started yet. */
-    async runnerDequeue(project: string, itemId: string): Promise<RunnerStatus> {
-      const result = await this.request("runner.dequeue", { item_id: itemId, project });
+    /** Start a queued task now, past the project's limits. */
+    async runnerStartNow(project: string, taskId: string): Promise<RunnerStatus> {
+      const result = await this.request("runner.startNow", { project, task_id: taskId });
       return normalizeRunnerStatus(project, result);
     }
 
-    /** Put the queued items in this order. */
-    async runnerReorder(project: string, itemIds: string[]): Promise<RunnerStatus> {
-      const result = await this.request("runner.reorder", { item_ids: itemIds, project });
+    /** Start a new Factory task configured like a finished one. */
+    async runnerRetry(project: string, taskId: string): Promise<EnqueueResult> {
+      const result = await this.request("runner.retry", { task_id: taskId });
+      return normalizeEnqueueResult(project, result);
+    }
+
+    /** Try again to give back a project folder the Factory could not return. */
+    async runnerRetryCheckout(project: string): Promise<RunnerStatus> {
+      const result = await this.request("runner.retryCheckout", { project });
       return normalizeRunnerStatus(project, result);
     }
 
-    /** Change settings, including Start (`running: true`) and Pause. */
+    /** The prompt a Factory task for this backlog item starts from. */
+    async runnerBrief(project: string, itemId: string): Promise<string> {
+      const result = await this.request("runner.brief", { item_id: itemId, project });
+      return (result as { prompt?: string } | null)?.prompt ?? "";
+    }
+
     async runnerUpdateSettings(project: string, patch: RunnerSettingsPatch): Promise<RunnerStatus> {
       const result = await this.request("runner.updateSettings", { patch, project });
       return normalizeRunnerStatus(project, result);
     }
 
-    /** Pause and stop every running item; they go back to the queue. */
+    /** Stop every running Factory task of the project and remove the queued ones. */
     async runnerStop(project: string): Promise<RunnerStatus> {
       const result = await this.request("runner.stop", { project });
       return normalizeRunnerStatus(project, result);

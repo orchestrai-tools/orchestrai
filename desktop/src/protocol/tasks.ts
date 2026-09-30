@@ -39,7 +39,7 @@ export interface TaskInfo {
    * `model_mismatch` means the session is alive but running on a model other
    * than the requested one; the status is deliberately left unchanged.
    */
-  blockedKind?: "session_lost" | "model_mismatch" | null;
+  blockedKind?: "session_lost" | "model_mismatch" | "checkout_held" | null;
   /** Session selectors (model/mode/…) reported by the live ACP session. */
   configOptions?: ConfigOption[];
   /** Path to the git worktree for this task, if isolated. */

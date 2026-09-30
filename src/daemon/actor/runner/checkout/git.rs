@@ -7,6 +7,8 @@ use std::path::Path;
 
 use tokio::process::Command as Process;
 
+use warpforge_protocol as wire;
+
 use crate::daemon::worktree::owns_branch;
 
 /// Where the project checkout was before the Factory switched it.
@@ -88,29 +90,36 @@ async fn busy(repo: &Path) -> Result<Option<Busy>, String> {
     Ok((!status.is_empty()).then_some(Busy::Changes))
 }
 
+fn refused(cause: wire::CheckoutBusyCause, detail: impl Into<String>) -> wire::RunnerWait {
+    wire::RunnerWait::CheckoutBusy {
+        cause,
+        detail: Some(detail.into()),
+    }
+}
+
 /// Whether the project checkout can host a run, and where it is now.
 /// @param repo the project checkout
 /// @returns where to return it, or why it cannot be used
-pub async fn inspect(repo: &Path) -> Result<ReturnPoint, String> {
-    match busy(repo).await? {
+pub async fn inspect(repo: &Path) -> Result<ReturnPoint, wire::RunnerWait> {
+    use wire::CheckoutBusyCause as Cause;
+    match busy(repo).await.map_err(|e| refused(Cause::Other, e))? {
         Some(Busy::Changes) => {
-            return Err(
-                "the project checkout has uncommitted changes or untracked files; \
-                 commit or stash them, then start the Factory again"
-                    .to_string(),
-            )
+            return Err(refused(
+                Cause::Dirty,
+                "the project folder has uncommitted changes or untracked files",
+            ))
         }
         Some(Busy::Operation(what)) => {
-            return Err(format!(
-                "{what} is in progress in the project checkout; finish or abort it, then start \
-                 the Factory again"
+            return Err(refused(
+                Cause::Operation,
+                format!("{what} is in progress in the project folder"),
             ))
         }
         None => {}
     }
     let commit = git(repo, &["rev-parse", "HEAD"])
         .await
-        .map_err(|_| "the project checkout has no commit yet".to_string())?;
+        .map_err(|_| refused(Cause::Other, "the project folder has no commit yet"))?;
     Ok(ReturnPoint {
         branch: current_branch(repo).await,
         commit,
@@ -128,14 +137,18 @@ pub async fn switch_to_task(
     repo: &Path,
     branch: &str,
     expected: &ReturnPoint,
-) -> Result<String, String> {
+) -> Result<String, wire::RunnerWait> {
+    use wire::CheckoutBusyCause as Cause;
     let now = inspect(repo).await?;
     if &now != expected {
-        return Err("the project checkout moved while the Factory prepared it".to_string());
+        return Err(refused(
+            Cause::Other,
+            "the project folder moved while the Factory prepared it",
+        ));
     }
     let default = crate::daemon::worktree::fetch_origin_default(repo)
         .await
-        .map_err(|e| format!("{e:#}"))?;
+        .map_err(|e| refused(Cause::Other, format!("{e:#}")))?;
     git(
         repo,
         &[
@@ -148,7 +161,12 @@ pub async fn switch_to_task(
         ],
     )
     .await
-    .map_err(|e| format!("could not switch the project checkout to {branch}: {e}"))?;
+    .map_err(|e| {
+        refused(
+            Cause::Other,
+            format!("could not switch the project folder to {branch}: {e}"),
+        )
+    })?;
     Ok(default)
 }
 
@@ -171,7 +189,7 @@ pub async fn give_back(
     }
     let held = |cause: String| {
         GiveBack::Held(format!(
-            "The Factory left the checkout on {branch} because {cause}, then start the Factory \
+            "The Factory left your project folder on {branch} because {cause}, then choose Try \
              again."
         ))
     };

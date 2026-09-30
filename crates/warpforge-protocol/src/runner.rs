@@ -1,7 +1,11 @@
-//! The backlog runner ("Factory", ADR 0023): per-project settings, the queue of
-//! backlog items waiting to run, and one metrics row per attempt.
+//! The Factory (ADR 0023; the code says runner): per-project limits, the
+//! Factory tasks it schedules, and one metrics row per attempt.
+
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+
+use crate::{PromptAttachment, RunnerWait};
 
 pub const DEFAULT_RUNNER_WORKFLOW: &str = "review-loop";
 pub const DEFAULT_RUNNER_MAX_CONCURRENT: u32 = 1;
@@ -55,52 +59,55 @@ pub enum EntryRunLocation {
     Checkout,
 }
 
-/// How one project's runner works. Stored per project; a project that never
-/// saved any gets [`RunnerSettings::defaults`], paused.
+/// How one project's Factory works: its limits and the defaults the New Task
+/// dialog offers. Stored per project; a project that never saved any gets
+/// [`RunnerSettings::defaults`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunnerSettings {
     pub project: String,
-    /// Whether the runner starts queued items. Pausing never stops a run in flight.
-    #[serde(default)]
-    pub running: bool,
-    /// Workflow template every item runs through.
+    /// Default workflow template for a Factory task.
     #[serde(default = "default_workflow")]
     pub workflow: String,
-    /// Lead agent: every stage the template does not pin runs on it. Empty
-    /// means the first enabled agent.
+    /// Default lead agent: every stage the template does not pin runs on it.
+    /// Empty means the first enabled agent.
     #[serde(default)]
     pub agent: String,
     #[serde(default)]
     pub model: Option<String>,
+    /// Factory tasks running at once.
     #[serde(default = "default_max_concurrent")]
     pub max_concurrent: u32,
-    /// Runner pull requests still open before dispatch waits for review.
+    /// Factory draft pull requests still open before new tasks wait for review.
     #[serde(default = "default_max_open_prs")]
     pub max_open_prs: u32,
-    /// Items started in any 24 hours.
+    /// Factory tasks started in any 24 hours.
     #[serde(default = "default_max_per_day")]
     pub max_per_day: u32,
-    /// A new item waits while any quota window of a stage agent is above this.
+    /// A new task waits while any quota window of a stage agent is above this.
     #[serde(default = "default_headroom_pct")]
     pub headroom_pct: u32,
-    /// A new item waits while the project's disk has less free space than this.
+    /// A new task waits while the project's disk has less free space than this.
     #[serde(default = "default_min_free_gb")]
     pub min_free_gb: u32,
-    #[serde(default)]
+    /// Where a task runs when it does not choose.
+    #[serde(default = "default_location")]
     pub run_location: RunLocation,
     #[serde(default)]
     pub updated_at: i64,
 }
 
+fn default_location() -> RunLocation {
+    RunLocation::Auto
+}
+
 impl RunnerSettings {
     /// Settings of a project that never saved any.
     /// @param project the project name
-    /// @returns paused settings with every default
+    /// @returns settings with every default
     pub fn defaults(project: &str) -> Self {
         Self {
             project: project.to_string(),
-            running: false,
             workflow: default_workflow(),
             agent: String::new(),
             model: None,
@@ -109,7 +116,7 @@ impl RunnerSettings {
             max_per_day: DEFAULT_RUNNER_MAX_PER_DAY,
             headroom_pct: DEFAULT_RUNNER_HEADROOM_PCT,
             min_free_gb: DEFAULT_RUNNER_MIN_FREE_GB,
-            run_location: RunLocation::Worktree,
+            run_location: RunLocation::Auto,
             updated_at: 0,
         }
     }
@@ -119,8 +126,6 @@ impl RunnerSettings {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunnerSettingsPatch {
-    #[serde(default)]
-    pub running: Option<bool>,
     #[serde(default)]
     pub workflow: Option<String>,
     #[serde(default)]
@@ -141,11 +146,12 @@ pub struct RunnerSettingsPatch {
     pub run_location: Option<RunLocation>,
 }
 
-/// Where a queued item is. An entry leaves the queue when its run ends or its
+/// Where a Factory task is. An entry leaves the queue when its run ends or its
 /// pull request merges or closes; the attempt stays in [`ItemRun`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunnerEntryState {
+    /// The task exists and waits for the Factory's limits to let it start.
     Queued,
     /// Its pipeline is running, or waiting at a barrier.
     Running,
@@ -155,22 +161,32 @@ pub enum RunnerEntryState {
     Delivered,
 }
 
+/// One Factory task the daemon schedules: created with its task, so it shows
+/// in the sidebar while it waits.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunnerEntry {
-    /// The backlog item's id; one entry per item.
-    pub item_id: String,
+    /// The Factory task; one entry per task.
+    #[serde(default)]
+    pub task_id: String,
+    /// The backlog item the task works on, when it was started from one.
+    #[serde(default)]
+    pub item_id: Option<String>,
     pub project: String,
-    /// Item number, title and priority as of the last read, for display and order.
+    /// Item number (0 without an item), title and priority, for display and order.
+    #[serde(default)]
     pub number: u64,
+    #[serde(default)]
     pub title: String,
     #[serde(default)]
     pub priority: String,
     /// Manual order among queued entries of the same priority.
+    #[serde(default)]
     pub position: u64,
+    #[serde(default)]
     pub enqueued_at: i64,
     pub state: RunnerEntryState,
-    /// Per-item overrides of the project settings.
+    /// What the task runs with; absent follows the project settings.
     #[serde(default)]
     pub workflow: Option<String>,
     #[serde(default)]
@@ -179,12 +195,21 @@ pub struct RunnerEntry {
     pub model: Option<String>,
     #[serde(default)]
     pub run_location: EntryRunLocation,
-    /// Where the running attempt runs, set at dispatch: never `auto`.
+    /// Whether a successful run is committed, pushed and opened as a draft
+    /// pull request. Off runs the pipeline and leaves the change for a person.
+    #[serde(default = "default_deliver")]
+    pub deliver: bool,
+    /// Session options applied to every stage agent.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub config_overrides: HashMap<String, String>,
+    #[serde(default)]
+    pub include_runtime_context: bool,
+    /// Files handed to the first stage. Kept in the store, never sent to clients.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<PromptAttachment>,
+    /// Where the running attempt runs, set at start: never `auto`.
     #[serde(default)]
     pub resolved_location: Option<RunLocation>,
-    /// The pipeline task, once dispatched.
-    #[serde(default)]
-    pub task_id: Option<String>,
     /// The attempt in flight.
     #[serde(default)]
     pub run_id: Option<String>,
@@ -192,11 +217,15 @@ pub struct RunnerEntry {
     pub pr_url: Option<String>,
     #[serde(default)]
     pub pr_number: Option<u64>,
-    /// Why a queued entry is not starting yet.
+    /// Why this queued task, and only this one, is not starting yet.
     #[serde(default)]
-    pub waiting_reason: Option<String>,
+    pub wait: Option<RunnerWait>,
     #[serde(default)]
     pub updated_at: i64,
+}
+
+fn default_deliver() -> bool {
+    true
 }
 
 /// How an attempt ended, or where it is while it runs.
@@ -220,6 +249,8 @@ pub enum ItemRunOutcome {
     DeliveryFailed,
     /// The pipeline task was deleted.
     TaskDeleted,
+    /// The pipeline succeeded and the task was set not to open a pull request.
+    Completed,
 }
 
 impl ItemRunOutcome {
@@ -237,6 +268,7 @@ impl ItemRunOutcome {
 pub struct ItemRun {
     pub id: String,
     pub project: String,
+    /// The backlog item; empty for a Factory task started from a prompt.
     pub item_id: String,
     pub item_number: u64,
     pub item_title: String,
@@ -278,6 +310,9 @@ pub struct ItemRun {
     /// written before it was recorded.
     #[serde(default)]
     pub run_location: Option<RunLocation>,
+    /// Whether the attempt was to open a draft pull request.
+    #[serde(default = "default_deliver")]
+    pub deliver: bool,
 }
 
 /// Where the Factory's hold on the project checkout is.
@@ -291,18 +326,19 @@ pub enum CheckoutLeaseState {
     /// Switching the checkout back to the branch it was on.
     Returning,
     /// The checkout cannot be switched back without losing work; a person
-    /// has to act, then start the Factory again.
+    /// has to act, then try again.
     Held,
 }
 
-/// The Factory's use of a project checkout in `checkout` run location,
-/// persisted so a restarted daemon still knows where to return it.
+/// The Factory's use of a project checkout for a task that opens a pull
+/// request, persisted so a restarted daemon still knows where to return it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckoutLease {
     pub project: String,
-    /// The backlog item whose run holds the checkout.
-    pub item_id: String,
+    /// The backlog item whose run holds the checkout, when it has one.
+    #[serde(default)]
+    pub item_id: Option<String>,
     #[serde(default)]
     pub item_number: u64,
     /// The pipeline task, id chosen before the task exists.
@@ -323,46 +359,46 @@ pub struct CheckoutLease {
     pub updated_at: i64,
 }
 
-/// One project's runner as the Factory surface shows it.
+/// One project's Factory: its settings and every task it schedules.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunnerStatus {
     pub settings: RunnerSettings,
-    /// Queued entries in dispatch order, then the in-flight and delivered ones.
+    /// Queued entries in start order, then the in-flight and delivered ones.
     pub entries: Vec<RunnerEntry>,
-    /// Items started in the last 24 hours.
+    /// Tasks started in the last 24 hours.
     pub dispatched_today: u32,
-    /// Why no queued item starts right now, when something holds them all.
+    /// Why no queued task starts right now, when something holds them all.
     #[serde(default)]
-    pub hold: Option<String>,
-    /// The Factory's hold on the project checkout, in `checkout` run location.
+    pub hold: Option<RunnerWait>,
+    /// The Factory's use of the project checkout.
     #[serde(default)]
     pub checkout: Option<CheckoutLease>,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Method, RunnerSettings, RunnerStatus};
+    use crate::{Method, RunnerEntry, RunnerSettings, RunnerStatus};
 
     #[test]
     fn the_desktop_request_shapes_parse() {
         let enqueue: Method = serde_json::from_value(serde_json::json!({
             "method": "runner.enqueue",
-            "params": { "project": "demo", "item_ids": ["b_1", "b_2"] }
+            "params": { "project": "demo", "item_ids": ["b_1", "b_2"], "deliver": false }
         }))
         .unwrap();
         assert!(
-            matches!(enqueue, Method::RunnerEnqueue { item_ids, origin_task: None, .. } if item_ids.len() == 2)
+            matches!(enqueue, Method::RunnerEnqueue { item_ids, origin_task: None, deliver: Some(false), .. } if item_ids.len() == 2)
         );
         let settings: Method = serde_json::from_value(serde_json::json!({
             "method": "runner.updateSettings",
-            "params": { "project": "demo", "patch": { "running": true, "maxOpenPrs": 2, "model": "" } }
+            "params": { "project": "demo", "patch": { "maxOpenPrs": 2, "model": "" } }
         }))
         .unwrap();
         let Method::RunnerUpdateSettings { patch, .. } = settings else {
             panic!("not a settings update");
         };
-        assert_eq!((patch.running, patch.max_open_prs), (Some(true), Some(2)));
+        assert_eq!(patch.max_open_prs, Some(2));
         assert_eq!(patch.model.as_deref(), Some(""));
     }
 
@@ -377,8 +413,23 @@ mod tests {
         };
         let json = serde_json::to_value(&status).unwrap();
         assert_eq!(json["settings"]["maxOpenPrs"], 3);
+        assert_eq!(json["settings"]["runLocation"], "auto");
         let sparse: RunnerSettings =
             serde_json::from_value(serde_json::json!({ "project": "demo" })).unwrap();
         assert_eq!(sparse, RunnerSettings::defaults("demo"));
+    }
+
+    #[test]
+    fn an_entry_saved_before_factory_tasks_still_loads() {
+        let legacy: RunnerEntry = serde_json::from_value(serde_json::json!({
+            "itemId": "b_1", "project": "demo", "number": 3, "title": "T",
+            "position": 0, "enqueuedAt": 1, "state": "queued",
+            "waitingReason": "stopped by you", "updatedAt": 1
+        }))
+        .unwrap();
+        assert_eq!(legacy.item_id.as_deref(), Some("b_1"));
+        assert!(legacy.task_id.is_empty());
+        assert!(legacy.deliver);
+        assert!(legacy.wait.is_none());
     }
 }

@@ -1,5 +1,7 @@
 import { useCallback } from "react";
 
+import { isFactoryTask } from "@/lib/factory";
+
 import { daemon } from "../daemon";
 import type { PromptSubmission, TaskInfo } from "../protocol";
 
@@ -65,12 +67,16 @@ export function workflowHandoff(task: TaskInfo): WorkflowHandoff | null {
  */
 export function useWorkflowSend(task: TaskInfo): WorkflowSend {
   const run = task.workflowRun ?? null;
+  // A Factory task waiting for its turn has no pipeline yet, and no session:
+  // a prompt must not start one.
+  const notStarted = !run && isFactoryTask(task);
   const waiting = run?.waiting ?? null;
   const finished = run?.stage === "done" || run?.stage === "failed";
-  const disabled = !!run && !waiting;
+  const disabled = (!!run && !waiting) || notStarted;
   const handoff = workflowHandoff(task);
-  const undeliverable =
-    !run || waiting || handoff
+  const undeliverable = notStarted
+    ? "This Factory task has not started yet"
+    : !run || waiting || handoff
       ? null
       : finished
         ? "This pipeline ended before any stage changed the code"
@@ -78,6 +84,7 @@ export function useWorkflowSend(task: TaskInfo): WorkflowSend {
 
   const send = useCallback(
     async (submission: PromptSubmission): Promise<boolean> => {
+      if (notStarted) throw new Error(undeliverable ?? "This Factory task has not started yet");
       if (!run) return false;
       const text = submission.text.trim();
       switch (waiting?.kind) {
@@ -101,15 +108,16 @@ export function useWorkflowSend(task: TaskInfo): WorkflowSend {
           return true;
       }
     },
-    [handoff, run, task.id, undeliverable, waiting],
+    [handoff, notStarted, run, task.id, undeliverable, waiting],
   );
 
   return {
     disabled,
     handoff,
-    isWorkflow: !!run,
-    placeholder:
-      waiting?.kind === "limit" && waiting.stage === "verify"
+    isWorkflow: !!run || notStarted,
+    placeholder: notStarted
+      ? "This Factory task starts on its own when it can — nothing to send yet."
+      : waiting?.kind === "limit" && waiting.stage === "verify"
         ? "Add guidance for the next attempt, or pick an option above…"
         : placeholderFor(waiting?.kind, !!run, finished),
     send,

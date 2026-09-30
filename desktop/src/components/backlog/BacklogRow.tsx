@@ -4,6 +4,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { openExternalLink } from "@/lib/externalLinks";
 import { cn } from "@/lib/utils";
+import type { RunnerEntry } from "@/protocol";
 
 import { PRIORITY_LABEL, priorityTone, SOURCE_LABEL, SourceDot, STATUS_META } from "./labels";
 import type { WorkItem } from "./types";
@@ -15,11 +16,33 @@ export interface BacklogRowActions {
   /** Set of task IDs the daemon still knows about. Used to downgrade a stale
    *  "Open task" link to "Start task" when the referenced task was deleted. */
   liveTaskIds?: ReadonlySet<string>;
-  /** Queues the item in the project's Factory. */
-  onRunInFactory?: (item: WorkItem) => void;
+  /** Opens New Task in Factory mode for the item. */
+  onStartInFactory?: (item: WorkItem) => void;
+  /** Factory tasks of the project, by backlog item id. */
+  factory?: ReadonlyMap<string, RunnerEntry>;
   /** Item ids picked for a bulk action; rows show a checkbox when given. */
   selected?: ReadonlySet<string>;
   onToggleSelect?: (item: WorkItem) => void;
+}
+
+/**
+ * What a backlog item's Factory task is doing, as its row badge says it.
+ * @param entry The item's Factory entry.
+ * @returns For example "In Factory · PR #41".
+ */
+export function factoryBadge(entry: Pick<RunnerEntry, "state" | "prNumber">): string {
+  switch (entry.state) {
+    case "queued":
+      return "In Factory · Queued";
+    case "delivering":
+      return "In Factory · Opening PR";
+    case "delivered":
+      return entry.prNumber
+        ? `In Factory · PR #${entry.prNumber}`
+        : "In Factory · Ready for review";
+    default:
+      return "In Factory";
+  }
 }
 
 export function relativeTime(ts: number, now = Date.now()): string {
@@ -50,6 +73,7 @@ export const BacklogRow = React.memo(function BacklogRow({
   const StatusIcon = status.icon;
   const selected = actions.selected?.has(item.id) ?? false;
   const selecting = (actions.selected?.size ?? 0) > 0;
+  const inFactory = actions.factory?.get(item.id) ?? null;
 
   return (
     <div className="group flex h-9 min-w-0 items-center border-b border-rule pr-2 hover:bg-secondary/40">
@@ -73,6 +97,11 @@ export const BacklogRow = React.memo(function BacklogRow({
       >
         <SourceDot source={item.source} />
         <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{item.title}</span>
+        {inFactory && (
+          <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-px text-[11px] text-primary">
+            {factoryBadge(inFactory)}
+          </span>
+        )}
 
         <span
           className={cn(
@@ -115,17 +144,17 @@ export const BacklogRow = React.memo(function BacklogRow({
       {/* Reserved width, not conditional rendering: an action appearing on
           hover must not shift the columns to its left. */}
       <div className="flex w-[6rem] shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-        {actions.onRunInFactory && (
+        {actions.onStartInFactory && !inFactory && (
           <Button
             type="button"
             variant="ghost"
             size="icon"
             className="size-6 text-muted-foreground hover:text-foreground"
-            onClick={() => actions.onRunInFactory?.(item)}
-            title="Run in Factory: a pipeline makes the change and opens a draft pull request"
+            onClick={() => actions.onStartInFactory?.(item)}
+            title="Start in Factory: a pipeline makes the change and can open a draft PR"
           >
             <Factory className="size-3.5" />
-            <span className="sr-only">Run in Factory</span>
+            <span className="sr-only">Start in Factory</span>
           </Button>
         )}
         {item.url && (

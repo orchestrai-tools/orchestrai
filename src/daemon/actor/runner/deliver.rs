@@ -58,7 +58,7 @@ pub enum Delivery {
 }
 
 pub(super) struct Wrapup {
-    pub item_id: String,
+    pub task_id: String,
     pub run_id: String,
     pub children: Vec<String>,
     pub job: Option<DeliveryJob>,
@@ -84,7 +84,7 @@ pub(super) fn spawn(wrapup: Wrapup) {
         let _ = wrapup
             .cmd_tx
             .send(Command::Runner(RunnerCommand::Finished {
-                item_id: wrapup.item_id,
+                task_id: wrapup.task_id,
                 run_id: wrapup.run_id,
                 cost_usd,
                 delivery,
@@ -252,7 +252,7 @@ pub(crate) async fn deliver(job: DeliveryJob, open_pr: PrOpener) -> Delivery {
 /// A stand-in item for an entry whose backlog item can no longer be read.
 pub(super) fn item_from_entry(entry: &wire::RunnerEntry) -> wire::BacklogItem {
     wire::BacklogItem {
-        id: entry.item_id.clone(),
+        id: entry.item_id.clone().unwrap_or_default(),
         number: entry.number,
         project: entry.project.clone(),
         title: entry.title.clone(),
@@ -266,6 +266,6 @@ pub(super) fn item_from_entry(entry: &wire::RunnerEntry) -> wire::BacklogItem {
         assignee: None,
         created_at: 0,
         updated_at: 0,
-        task_id: entry.task_id.clone(),
+        task_id: Some(entry.task_id.clone()),
     }
 }

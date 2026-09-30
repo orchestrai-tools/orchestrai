@@ -71,8 +71,8 @@ async fn a_checkout_run_delivers_and_returns_to_the_original_branch() {
     let mut events = daemon.subscribe();
     let opened = fake_opener(&daemon).await;
     let item = create_item(&daemon, "checkout change", "high").await;
-    enqueue(&daemon, &[&item]).await;
     settings(&daemon, in_checkout(&writing_agent())).await;
+    enqueue(&daemon, &[&item]).await;
 
     let delivered = wait_run(&mut events, "delivered", |run| {
         run.item_id == item.id && run.outcome == wire::ItemRunOutcome::Delivered
@@ -124,13 +124,17 @@ async fn a_dirty_checkout_holds_the_queue_and_is_left_alone() {
     );
     std::fs::write(repo.work.join("scratch.txt"), "my notes\n").unwrap();
     let item = create_item(&daemon, "held", "none").await;
-    enqueue(&daemon, &[&item]).await;
     settings(&daemon, in_checkout(&lead)).await;
+    enqueue(&daemon, &[&item]).await;
 
     let held = wait_status(&daemon, "dirty checkout holds", |s| {
-        s.hold
-            .as_deref()
-            .is_some_and(|h| h.contains("uncommitted changes"))
+        matches!(
+            s.hold,
+            Some(wire::RunnerWait::CheckoutBusy {
+                cause: wire::CheckoutBusyCause::Dirty,
+                ..
+            })
+        )
     })
     .await;
     assert!(held.checkout.is_none());
@@ -159,8 +163,8 @@ async fn a_dirty_checkout_holds_the_queue_and_is_left_alone() {
 }
 
 /// A run that fails with the agent's edits uncommitted leaves the checkout on
-/// the task branch with the edits intact, pauses, and says what to do; once
-/// the person cleans up, Start gives the checkout back.
+/// the task branch with the edits intact, holds every start, and says what to
+/// do; once the person cleans up, Try again gives the checkout back.
 #[tokio::test]
 async fn a_failed_run_with_leftover_edits_holds_the_checkout_and_discards_nothing() {
     let dir = tempfile::tempdir().unwrap();
@@ -175,8 +179,8 @@ async fn a_failed_run_with_leftover_edits_holds_the_checkout_and_discards_nothin
     );
     let mut events = daemon.subscribe();
     let item = create_item(&daemon, "breaks", "none").await;
-    enqueue(&daemon, &[&item]).await;
     settings(&daemon, in_checkout(&writing_agent())).await;
+    enqueue(&daemon, &[&item]).await;
 
     let failed = wait_run(&mut events, "failed", |run| {
         run.item_id == item.id && run.outcome == wire::ItemRunOutcome::Failed
@@ -191,36 +195,45 @@ async fn a_failed_run_with_leftover_edits_holds_the_checkout_and_discards_nothin
     let lease = held.checkout.clone().unwrap();
     let reason = lease.held_reason.clone().unwrap();
     assert!(
-        reason.contains(&format!("left the checkout on {}", lease.branch))
+        reason.contains(&format!("left your project folder on {}", lease.branch))
             && reason.contains("uncommitted changes"),
         "{reason}"
     );
-    assert_eq!(held.hold.as_deref(), Some(reason.as_str()));
-    assert!(!held.settings.running, "the Factory pauses");
+    let task_id = failed.task_id.clone().unwrap();
+    assert_eq!(
+        held.hold,
+        Some(wire::RunnerWait::CheckoutHeld {
+            reason: reason.clone(),
+            task_id: Some(task_id.clone()),
+        })
+    );
     assert_eq!(branch(&repo.work), lease.branch);
     assert!(
         repo.work.join("factory-change.txt").exists(),
         "nothing discarded"
     );
-    let parent = task(&daemon, failed.task_id.as_deref().unwrap()).await;
+    let parent = task(&daemon, &task_id).await;
     assert_eq!(parent.blocked_reason.as_deref(), Some(reason.as_str()));
+    assert_eq!(
+        parent.blocked_kind,
+        Some(wire::TaskBlockedKind::CheckoutHeld)
+    );
 
     std::fs::remove_file(repo.work.join("factory-change.txt")).unwrap();
-    settings(
-        &daemon,
-        wire::RunnerSettingsPatch {
-            running: Some(true),
-            ..Default::default()
-        },
-    )
-    .await;
+    ask(&daemon, |reply| RunnerCommand::RetryCheckout {
+        project: "demo".into(),
+        reply,
+    })
+    .await
+    .unwrap();
     wait_status(&daemon, "given back", |s| s.checkout.is_none()).await;
     assert_eq!(branch(&repo.work), "feature/mine");
+    assert!(task(&daemon, &task_id).await.blocked_kind.is_none());
     daemon.shutdown().await;
 }
 
-/// The lease survives a restart with its run parked at a question; Stop then
-/// ends the run, puts the item back in the queue and returns the checkout.
+/// The lease survives a restart with its run parked at a question; Stop all
+/// then ends the run, sends the item back and returns the checkout.
 #[tokio::test]
 async fn the_lease_survives_a_restart_and_stop_returns_the_checkout() {
     let repo = checkout_repo("name: Restart flow\n").await;
@@ -229,15 +242,15 @@ async fn the_lease_survives_a_restart_and_stop_returns_the_checkout() {
     let daemon = Daemon::spawn(repo.projects.clone(), Store::open_at(&db_path).ok());
     let mut events = daemon.subscribe();
     let item = create_item(&daemon, "parked", "none").await;
-    enqueue(&daemon, &[&item]).await;
     settings(&daemon, in_checkout(&lead)).await;
+    enqueue(&daemon, &[&item]).await;
     let running = wait_status(&daemon, "running in the checkout", |s| {
         s.checkout
             .as_ref()
             .is_some_and(|l| l.state == wire::CheckoutLeaseState::Running)
     })
     .await;
-    let task_id = entry(&running, &item).unwrap().task_id.clone().unwrap();
+    let task_id = entry(&running, &item).unwrap().task_id.clone();
     wait_for_parent(&mut events, &task_id, "asking", |t| {
         t.workflow_run.as_ref().is_some_and(|w| w.waiting.is_some())
     })
@@ -261,11 +274,12 @@ async fn the_lease_survives_a_restart_and_stop_returns_the_checkout() {
     })
     .await
     .unwrap();
-    assert!(!stopped.settings.running);
-    let requeued = entry(&stopped, &item).unwrap();
-    assert_eq!(requeued.state, wire::RunnerEntryState::Queued);
-    assert_eq!(requeued.waiting_reason.as_deref(), Some("stopped by you"));
+    assert!(entry(&stopped, &item).is_none(), "nothing is queued again");
     assert_eq!(item_status(&daemon, &item.id).await, "todo");
+    assert_eq!(
+        task(&daemon, &task_id).await.status,
+        TaskStatus::Interrupted
+    );
     wait_status(&daemon, "given back", |s| s.checkout.is_none()).await;
     assert_eq!(branch(&repo.work), "feature/mine");
     let branches = std::process::Command::new("git")

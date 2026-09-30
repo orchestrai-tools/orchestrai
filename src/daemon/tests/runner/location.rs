@@ -7,20 +7,6 @@ use super::*;
 
 use warpforge_protocol::EntryRunLocation as Place;
 
-async fn set_location(
-    daemon: &DaemonHandle,
-    item: &wire::BacklogItem,
-    run_location: Place,
-) -> Result<wire::RunnerStatus, String> {
-    ask(daemon, |reply| RunnerCommand::SetLocation {
-        project: "demo".into(),
-        item_id: item.id.clone(),
-        run_location,
-        reply,
-    })
-    .await
-}
-
 fn start_with(
     agent: &str,
     max_concurrent: u32,
@@ -60,20 +46,13 @@ async fn auto_puts_a_verifying_workflow_in_the_checkout_beside_a_worktree_run() 
     let verifying = create_item(&daemon, "verifying", "high").await;
     let plain = create_item(&daemon, "plain", "none").await;
     let later = create_item(&daemon, "later", "none").await;
-    ask(&daemon, |reply| RunnerCommand::Enqueue {
-        project: "demo".into(),
-        item_ids: vec![verifying.id.clone()],
-        workflow: Some("verified".into()),
-        agent: None,
-        model: None,
-        run_location: Place::Default,
-        origin_task: None,
-        reply,
-    })
-    .await
-    .unwrap();
-    enqueue(&daemon, &[&plain]).await;
     settings(&daemon, start_with(&lead, 2, wire::RunLocation::Auto)).await;
+    let config = wire::FactoryConfig {
+        workflow: Some("verified".into()),
+        ..wire::FactoryConfig::default()
+    };
+    enqueue_with(&daemon, &[&verifying], config).await;
+    enqueue(&daemon, &[&plain]).await;
 
     let both = wait_status(&daemon, "one checkout and one worktree run", |s| {
         state_of(s, &verifying) == Some(wire::RunnerEntryState::Running)
@@ -94,11 +73,11 @@ async fn auto_puts_a_verifying_workflow_in_the_checkout_beside_a_worktree_run() 
         Some(wire::RunLocation::Worktree)
     );
     let lease = both.checkout.clone().unwrap();
-    assert_eq!(lease.item_id, verifying.id);
+    assert_eq!(lease.item_id.as_deref(), Some(verifying.id.as_str()));
     assert_eq!(branch(&repo.work), lease.branch);
-    let checkout_task = task(&daemon, in_checkout.task_id.as_deref().unwrap()).await;
+    let checkout_task = task(&daemon, &in_checkout.task_id).await;
     assert!(checkout_task.worktree.is_none());
-    let worktree_id = in_worktree.task_id.clone().unwrap();
+    let worktree_id = in_worktree.task_id.clone();
     timeout(Duration::from_secs(30), async {
         while task(&daemon, &worktree_id).await.worktree.is_none() {
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -107,18 +86,18 @@ async fn auto_puts_a_verifying_workflow_in_the_checkout_beside_a_worktree_run() 
     .await
     .expect("the worktree item gets its own worktree");
 
-    let full = enqueue(&daemon, &[&later]).await;
+    let full = enqueue(&daemon, &[&later]).await.status;
     assert_eq!(
         state_of(&full, &later),
         Some(wire::RunnerEntryState::Queued)
     );
-    assert!(
-        full.hold.as_deref().unwrap().contains("2 of 2 run slot"),
-        "{full:?}"
+    assert_eq!(
+        full.hold,
+        Some(wire::RunnerWait::Slots {
+            in_use: 2,
+            limit: 2
+        })
     );
-
-    let refused = set_location(&daemon, &verifying, Place::Worktree).await;
-    assert!(refused.unwrap_err().contains("already started"));
 
     let runs = ask(&daemon, |reply| RunnerCommand::Runs {
         project: "demo".into(),
@@ -151,15 +130,21 @@ async fn a_dirty_checkout_holds_only_the_item_that_needs_it() {
     std::fs::write(repo.work.join("scratch.txt"), "my notes\n").unwrap();
     let first = create_item(&daemon, "needs the checkout", "high").await;
     let behind = create_item(&daemon, "worktree", "none").await;
+    settings(&daemon, start_with(&lead, 2, wire::RunLocation::Worktree)).await;
     enqueue_at(&daemon, &[&first], Place::Checkout).await;
     enqueue(&daemon, &[&behind]).await;
-    settings(&daemon, start_with(&lead, 2, wire::RunLocation::Worktree)).await;
 
     let held = wait_status(&daemon, "worktree item runs past the held one", |s| {
         state_of(s, &behind) == Some(wire::RunnerEntryState::Running)
-            && entry(s, &first)
-                .and_then(|e| e.waiting_reason.as_deref())
-                .is_some_and(|r| r.contains("uncommitted changes"))
+            && entry(s, &first).is_some_and(|e| {
+                matches!(
+                    e.wait,
+                    Some(wire::RunnerWait::CheckoutBusy {
+                        cause: wire::CheckoutBusyCause::Dirty,
+                        ..
+                    })
+                )
+            })
     })
     .await;
     assert_eq!(
@@ -187,16 +172,18 @@ async fn two_checkout_items_never_run_at_once() {
     );
     let first = create_item(&daemon, "first", "high").await;
     let second = create_item(&daemon, "second", "none").await;
-    enqueue(&daemon, &[&first, &second]).await;
     settings(&daemon, start_with(&lead, 3, wire::RunLocation::Checkout)).await;
+    enqueue(&daemon, &[&first, &second]).await;
 
+    let in_use = Some(wire::RunnerWait::CheckoutBusy {
+        cause: wire::CheckoutBusyCause::InUse,
+        detail: None,
+    });
     let running = wait_status(&daemon, "first runs in the checkout", |s| {
         s.checkout
             .as_ref()
             .is_some_and(|l| l.state == wire::CheckoutLeaseState::Running)
-            && entry(s, &second)
-                .and_then(|e| e.waiting_reason.as_deref())
-                .is_some_and(|r| r.contains("is running in the project checkout"))
+            && entry(s, &second).is_some_and(|e| e.wait == in_use)
     })
     .await;
     assert_eq!(
@@ -207,10 +194,7 @@ async fn two_checkout_items_never_run_at_once() {
         state_of(&running, &second),
         Some(wire::RunnerEntryState::Queued)
     );
-    assert!(running
-        .hold
-        .as_deref()
-        .is_some_and(|h| h.contains("is running in the project checkout")));
+    assert_eq!(running.hold, in_use);
 
     daemon.send(Command::Runner(RunnerCommand::Tick)).await;
     let later = status(&daemon).await;
@@ -223,30 +207,78 @@ async fn two_checkout_items_never_run_at_once() {
     daemon.shutdown().await;
 }
 
-/// An item's own run location is stored with it, survives a restart, and
-/// can be changed while it waits in the queue.
+/// A queued task keeps its run location and stays queued across a restart.
 #[tokio::test]
-async fn an_item_location_survives_a_restart_and_changes_while_queued() {
+async fn a_queued_task_and_its_location_survive_a_restart() {
     let repo = factory_repo("name: Plain flow\n").await;
     let db_path = repo.dir.path().join("warpforge.db");
+    let lead = wf_agent(&repo.dir, "lead.state", "question");
     let daemon = Daemon::spawn(repo.projects.clone(), Store::open_at(&db_path).ok());
     let item = create_item(&daemon, "placed", "none").await;
+    settings(
+        &daemon,
+        wire::RunnerSettingsPatch {
+            min_free_gb: Some(10_000),
+            ..running_with(&lead)
+        },
+    )
+    .await;
     let queued = enqueue_at(&daemon, &[&item], Place::Checkout).await;
-    assert_eq!(entry(&queued, &item).unwrap().run_location, Place::Checkout);
+    let task_id = queued.created[0].task_id.clone();
+    assert_eq!(
+        entry(&queued.status, &item).unwrap().run_location,
+        Place::Checkout
+    );
     daemon.shutdown().await;
 
     let daemon = Daemon::spawn(repo.projects.clone(), Store::open_at(&db_path).ok());
     let restored = status(&daemon).await;
-    assert_eq!(
-        entry(&restored, &item).unwrap().run_location,
-        Place::Checkout
-    );
-    let moved = set_location(&daemon, &item, Place::Worktree).await.unwrap();
-    assert_eq!(entry(&moved, &item).unwrap().run_location, Place::Worktree);
+    let kept = entry(&restored, &item).unwrap();
+    assert_eq!(kept.run_location, Place::Checkout);
+    assert_eq!(kept.task_id, task_id);
+    assert_eq!(task(&daemon, &task_id).await.status, TaskStatus::Queued);
     daemon.shutdown().await;
+}
 
-    let daemon = Daemon::spawn(repo.projects.clone(), Store::open_at(&db_path).ok());
-    let again = status(&daemon).await;
-    assert_eq!(entry(&again, &item).unwrap().run_location, Place::Worktree);
+/// A task that opens no pull request runs in the project folder as it is:
+/// no task branch, no lease, the person's branch and edits untouched.
+#[tokio::test]
+async fn a_task_without_a_pull_request_runs_in_the_project_folder_in_place() {
+    let repo = checkout_repo("name: Plain flow\n").await;
+    let lead = wf_agent(&repo.dir, "lead.state", "question");
+    let daemon = Daemon::spawn(
+        repo.projects.clone(),
+        Store::open_at(std::path::Path::new(":memory:")).ok(),
+    );
+    std::fs::write(repo.work.join("scratch.txt"), "my notes\n").unwrap();
+    let item = create_item(&daemon, "local only", "none").await;
+    settings(&daemon, start_with(&lead, 3, wire::RunLocation::Auto)).await;
+    let config = wire::FactoryConfig {
+        run_location: Place::Checkout,
+        deliver: false,
+        ..wire::FactoryConfig::default()
+    };
+    let result = enqueue_with(&daemon, &[&item], config).await;
+    assert!(result.created[0].started);
+    let running = entry(&result.status, &item).unwrap();
+    assert_eq!(running.resolved_location, Some(wire::RunLocation::Checkout));
+    assert!(result.status.checkout.is_none(), "no lease");
+    assert_eq!(branch(&repo.work), "feature/mine");
+    assert!(task(&daemon, &running.task_id).await.worktree.is_none());
+
+    let other = create_item(&daemon, "second", "none").await;
+    let config = wire::FactoryConfig {
+        run_location: Place::Checkout,
+        ..wire::FactoryConfig::default()
+    };
+    let second = enqueue_with(&daemon, &[&other], config).await;
+    assert!(!second.created[0].started);
+    assert_eq!(
+        entry(&second.status, &other).unwrap().wait,
+        Some(wire::RunnerWait::CheckoutBusy {
+            cause: wire::CheckoutBusyCause::InUse,
+            detail: None,
+        })
+    );
     daemon.shutdown().await;
 }

@@ -38,12 +38,9 @@ fn verification_report(run: &WorkflowRun) -> Option<String> {
 
 impl Daemon {
     /// Called by `workflow_finalize` for every pipeline that ends. Does
-    /// nothing for a pipeline the runner did not start.
+    /// nothing for a pipeline the Factory did not schedule.
     pub(crate) fn runner_pipeline_finished(&mut self, task_id: &str, outcome: &WorkflowOutcome) {
-        let Some(item_id) = self.runner_entry_of_task(task_id) else {
-            return;
-        };
-        let Some(mut entry) = self.runner.entries.get(&item_id).cloned() else {
+        let Some(mut entry) = self.runner.entries.get(task_id).cloned() else {
             return;
         };
         if entry.state != wire::RunnerEntryState::Running {
@@ -69,6 +66,10 @@ impl Daemon {
             .map(|r| r.all_children().into_iter().collect())
             .unwrap_or_default();
         let ended = match outcome {
+            WorkflowOutcome::Success { limit_hit: false } if !entry.deliver => Some((
+                wire::ItemRunOutcome::Completed,
+                "the pipeline succeeded; the change waits for you to commit it".to_string(),
+            )),
             WorkflowOutcome::Success { limit_hit: false } => None,
             WorkflowOutcome::Success { limit_hit: true } => Some((
                 wire::ItemRunOutcome::LimitHit,
@@ -85,20 +86,14 @@ impl Daemon {
         };
         let job = match ended {
             Some((result, detail)) => {
-                let by_you = result == wire::ItemRunOutcome::Stopped
-                    && self.runner.stopping.contains(&item_id);
-                if by_you {
-                    self.runner_requeue(&item_id);
+                if result == wire::ItemRunOutcome::Completed {
+                    self.runner_drop_entry(task_id);
                 } else {
-                    self.runner_end_entry(&item_id);
+                    self.runner_end_entry(task_id);
                 }
                 if let Some(mut run) = run.clone() {
                     run.outcome = result;
-                    run.detail = Some(if by_you {
-                        super::stop::STOPPED_BY_YOU.to_string()
-                    } else {
-                        detail
-                    });
+                    run.detail = Some(detail);
                     self.runner_put_run(run, true);
                 }
                 None
@@ -114,7 +109,7 @@ impl Daemon {
                     Some(job)
                 }
                 Err(detail) => {
-                    self.runner_end_entry(&item_id);
+                    self.runner_end_entry(task_id);
                     if let Some(mut run) = run.clone() {
                         run.outcome = wire::ItemRunOutcome::DeliveryFailed;
                         run.detail = Some(detail);
@@ -126,7 +121,7 @@ impl Daemon {
         };
         self.runner_emit(&project);
         if let Some(run) = run {
-            self.runner_spawn_wrapup(item_id, run.id, children, job);
+            self.runner_spawn_wrapup(task_id.to_string(), run.id, children, job);
         }
         self.runner_schedule_dispatch(project);
     }
@@ -147,11 +142,15 @@ impl Daemon {
             .clone()
             .or_else(|| self.runner_checkout_dir(task_id))
             .ok_or_else(|| "the pipeline ran without an isolated checkout".to_string())?;
-        let item = self
-            .runner_read_item(&entry.project, &entry.item_id)
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| deliver::item_from_entry(entry));
+        let item = entry
+            .item_id
+            .as_deref()
+            .and_then(|id| self.runner_read_item(&entry.project, id).ok().flatten());
+        let title = if task.title.trim().is_empty() {
+            entry.title.as_str()
+        } else {
+            task.title.as_str()
+        };
         let summary = workflow_run.and_then(|r| r.last_summary.clone());
         let report = workflow_run.and_then(verification_report);
         let deferred = workflow_run
@@ -165,26 +164,32 @@ impl Daemon {
             rounds: workflow_run.map(|r| r.round).unwrap_or_default(),
             cost_usd: None,
         };
+        let item = item.or_else(|| {
+            entry
+                .item_id
+                .as_ref()
+                .map(|_| deliver::item_from_entry(entry))
+        });
         Ok(DeliveryJob {
             project_path: self.project_path(&entry.project).unwrap_or_default(),
             worktree,
             base: task.base_branch.clone(),
-            title: logic::pr_title(&item),
-            message: logic::commit_message(&item, summary.as_deref()),
-            body: logic::pr_body(&item, &facts),
+            title: logic::pr_title(item.as_ref(), title),
+            message: logic::commit_message(item.as_ref(), title, summary.as_deref()),
+            body: logic::pr_body(item.as_ref(), &facts),
         })
     }
 
     fn runner_spawn_wrapup(
         &mut self,
-        item_id: String,
+        task_id: String,
         run_id: String,
         children: Vec<String>,
         job: Option<DeliveryJob>,
     ) {
-        self.runner.finishing.insert(item_id.clone());
+        self.runner.finishing.insert(task_id.clone());
         deliver::spawn(Wrapup {
-            item_id,
+            task_id,
             run_id,
             children,
             job,
@@ -207,23 +212,25 @@ impl Daemon {
     }
 
     /// Remove an entry that did not end in an open pull request; its item
-    /// goes back to `todo` so it can be queued again.
-    pub(super) fn runner_end_entry(&mut self, item_id: &str) {
-        let Some(entry) = self.runner.entries.get(item_id).cloned() else {
+    /// goes back to `todo` so it can be started again.
+    pub(super) fn runner_end_entry(&mut self, task_id: &str) {
+        let Some(entry) = self.runner.entries.get(task_id).cloned() else {
             return;
         };
-        self.runner_drop_entry(item_id);
-        self.runner_write_item(&entry.project, item_id, "todo", None);
+        self.runner_drop_entry(task_id);
+        if let Some(item_id) = entry.item_id.as_deref() {
+            self.runner_write_item(&entry.project, item_id, "todo", None);
+        }
     }
 
     pub(super) async fn runner_finished(
         &mut self,
-        item_id: &str,
+        task_id: &str,
         run_id: &str,
         cost_usd: Option<f64>,
         delivery: Option<Delivery>,
     ) {
-        self.runner.finishing.remove(item_id);
+        self.runner.finishing.remove(task_id);
         let Some(mut run) = self.runner.runs.get(run_id).cloned() else {
             return;
         };
@@ -232,10 +239,10 @@ impl Daemon {
         let entry = self
             .runner
             .entries
-            .get(item_id)
+            .get(task_id)
             .filter(|e| e.run_id.as_deref() == Some(run_id))
             .cloned();
-        if let (Some(delivery), Some(task_id)) = (delivery.as_ref(), run.task_id.as_deref()) {
+        if let Some(delivery) = delivery.as_ref() {
             self.runner_report_delivery(task_id, delivery);
         }
         match (delivery, entry) {
@@ -248,22 +255,22 @@ impl Daemon {
                 entry.state = wire::RunnerEntryState::Delivered;
                 entry.pr_url = Some(url);
                 entry.pr_number = number;
-                let task_id = entry.task_id.clone();
+                let item_id = entry.item_id.clone();
                 self.runner_put_entry(entry);
-                self.runner_write_item(&project, item_id, "waiting", None);
-                if let Some(task_id) = task_id {
-                    self.runner_watch(task_id);
+                if let Some(item_id) = item_id.as_deref() {
+                    self.runner_write_item(&project, item_id, "waiting", None);
                 }
+                self.runner_watch(task_id.to_string());
             }
             (Some(Delivery::NoChanges), _) => {
                 run.outcome = wire::ItemRunOutcome::NoChanges;
                 run.detail = Some("the pipeline succeeded but changed nothing".to_string());
-                self.runner_end_entry(item_id);
+                self.runner_end_entry(task_id);
             }
             (Some(Delivery::Failed(reason)), _) => {
                 run.outcome = wire::ItemRunOutcome::DeliveryFailed;
                 run.detail = Some(reason);
-                self.runner_end_entry(item_id);
+                self.runner_end_entry(task_id);
             }
             (Some(Delivery::Opened { url, number }), None) => {
                 run.outcome = wire::ItemRunOutcome::TaskDeleted;
@@ -277,14 +284,18 @@ impl Daemon {
         self.runner_dispatch(&project).await;
     }
 
-    /// A deleted task ends whatever attempt it carried.
+    /// A deleted task ends whatever attempt it carried. A queued one had
+    /// none, and its item was never touched.
     pub(crate) fn runner_task_deleted(&mut self, task_id: &str) {
-        let Some(item_id) = self.runner_entry_of_task(task_id) else {
+        let Some(entry) = self.runner.entries.get(task_id).cloned() else {
             return;
         };
-        let Some(entry) = self.runner.entries.get(&item_id).cloned() else {
+        if entry.state == wire::RunnerEntryState::Queued {
+            self.runner_drop_entry(task_id);
+            self.runner_emit(&entry.project);
+            self.runner_schedule_dispatch(entry.project);
             return;
-        };
+        }
         if let Some(mut run) = entry
             .run_id
             .as_ref()
@@ -294,10 +305,10 @@ impl Daemon {
                 run.outcome = wire::ItemRunOutcome::TaskDeleted;
                 run.finished_at.get_or_insert(now_secs());
                 run.detail = Some("the pipeline task was deleted".to_string());
-                self.runner_put_run(run, self.runner.finishing.contains(&item_id));
+                self.runner_put_run(run, self.runner.finishing.contains(task_id));
             }
         }
-        self.runner_end_entry(&item_id);
+        self.runner_end_entry(task_id);
         self.runner_emit(&entry.project);
         self.runner_schedule_dispatch(entry.project);
     }
@@ -331,9 +342,7 @@ impl Daemon {
     pub(super) fn runner_sweep(&mut self) {
         let entries: Vec<wire::RunnerEntry> = self.runner.entries.values().cloned().collect();
         for entry in entries {
-            let Some(task_id) = entry.task_id.clone() else {
-                continue;
-            };
+            let task_id = entry.task_id.clone();
             if !self.tasks.contains_key(&task_id) {
                 self.runner_task_deleted(&task_id);
                 continue;
@@ -344,12 +353,10 @@ impl Daemon {
                         self.runner_pipeline_finished(&task_id, &outcome);
                     }
                 }
-                wire::RunnerEntryState::Delivering
-                    if !self.runner.finishing.contains(&entry.item_id) =>
-                {
+                wire::RunnerEntryState::Delivering if !self.runner.finishing.contains(&task_id) => {
                     let mut entry = entry;
                     entry.state = wire::RunnerEntryState::Running;
-                    self.runner.entries.insert(entry.item_id.clone(), entry);
+                    self.runner.entries.insert(task_id.clone(), entry);
                     let outcome = WorkflowOutcome::Success { limit_hit: false };
                     self.runner_pipeline_finished(&task_id, &outcome);
                 }

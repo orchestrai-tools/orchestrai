@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { EllipsisVertical, FolderGit2, Pencil, Trash2 } from "lucide-react";
+import { EllipsisVertical, Factory, FolderGit2, Pencil, Square, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
+import type { NewTaskOptions } from "@/app/dialogs";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,8 +26,7 @@ import { WorkItemDrawer } from "../components/backlog/WorkItemDrawer";
 import { TerminalWorkspaceView } from "../components/runtime/TerminalWorkspace";
 import { daemon } from "../daemon";
 import type { ServiceInfo, Snapshot } from "../protocol";
-import { FactoryRunDialog } from "./projects/factory/FactoryRunDialog";
-import { FactorySurface } from "./projects/factory/FactorySurface";
+import { FactorySettingsDialog } from "./projects/FactorySettingsDialog";
 import { PortRangeConflictCard, PortRangeSourceChip } from "./projects/PortRangeStatus";
 import { ProjectFilesSurface } from "./projects/ProjectFilesSurface";
 import { ProjectRuntimeSurface } from "./projects/ProjectRuntimeSurface";
@@ -37,7 +38,12 @@ import { WorktreesSurface } from "./projects/WorktreesSurface";
 interface Props {
   snapshot: Snapshot;
   onOpenTask: (id: string) => void;
-  onNewTask: (project?: string, prompt?: string, backlogItemId?: string) => void;
+  onNewTask: (
+    project?: string,
+    prompt?: string,
+    backlogItemId?: string,
+    options?: NewTaskOptions,
+  ) => void;
   onAddProject?: () => void;
 }
 
@@ -48,6 +54,8 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
   const [removeProject, setRemoveProject] = useState<string | null>(null);
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [openItem, setOpenItem] = useState<WorkItem | null>(null);
+  const [factorySettings, setFactorySettings] = useState<string | null>(null);
+  const [stoppingAll, setStoppingAll] = useState<string | null>(null);
 
   const project =
     snapshot.projects.find((p) => p.name === selectedProjectId) ?? snapshot.projects[0] ?? null;
@@ -164,13 +172,34 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
     [onNewTask],
   );
 
-  const [factoryRun, setFactoryRun] = useState<{
-    items: WorkItem[];
-    onQueued?: () => void;
-  } | null>(null);
-  const runItemsInFactory = useCallback(
-    (items: WorkItem[], onQueued?: () => void) => setFactoryRun({ items, onQueued }),
-    [],
+  const startInFactory = useCallback(
+    async (items: WorkItem[]) => {
+      setOpenItem(null);
+      const [first] = items;
+      if (!first) return;
+      if (items.length > 1) {
+        onNewTask(first.project, undefined, undefined, {
+          factory: { items, kind: "items" },
+          mode: "factory",
+        });
+        return;
+      }
+      // The daemon words the prompt, so tracker text arrives inside the
+      // untrusted block exactly as the Factory hands it to agents.
+      const prompt = await daemon
+        .runnerBrief(first.project, first.id)
+        .catch(() => [first.title, first.body].filter(Boolean).join("\n\n"));
+      onNewTask(first.project, prompt, first.id, { mode: "factory" });
+    },
+    [onNewTask],
+  );
+  const runBatchInFactory = useCallback(
+    (selected: WorkItem[]) =>
+      onNewTask(projectName, undefined, undefined, {
+        factory: { kind: "batch", selected },
+        mode: "factory",
+      }),
+    [onNewTask, projectName],
   );
 
   const openTaskFromItem = useCallback(
@@ -266,6 +295,14 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
                 <Pencil className="size-4" />
                 Edit
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setFactorySettings(project.name)}>
+                <Factory className="size-4" />
+                Factory settings…
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setStoppingAll(project.name)}>
+                <Square className="size-4" />
+                Stop all Factory tasks
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
@@ -309,13 +346,6 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
           />
         ) : surface === "worktrees" ? (
           <WorktreesSurface project={project.name} />
-        ) : surface === "factory" ? (
-          <FactorySurface
-            project={project.name}
-            agents={snapshot.agents ?? []}
-            tasks={snapshot.tasks}
-            onOpenTask={onOpenTask}
-          />
         ) : surface === "pulls" ? (
           <PullRequestSurface
             project={project.name}
@@ -330,7 +360,8 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
               onOpenTask={onOpenTask}
               onOpenItem={setOpenItem}
               onStartTask={startTaskFromItem}
-              onRunInFactory={runItemsInFactory}
+              onStartInFactory={(items) => void startInFactory(items)}
+              onRunInFactory={runBatchInFactory}
               onCreate={() => setBacklogOpen(true)}
             />
           </div>
@@ -344,11 +375,23 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
         onConfirm={confirmProjectRemoval}
       />
 
-      <FactoryRunDialog
-        project={project.name}
-        items={factoryRun?.items ?? null}
-        onClose={() => setFactoryRun(null)}
-        onQueued={factoryRun?.onQueued}
+      <FactorySettingsDialog
+        project={factorySettings}
+        agents={snapshot.agents ?? []}
+        onClose={() => setFactorySettings(null)}
+      />
+
+      <ConfirmDialog
+        open={stoppingAll !== null}
+        title="Stop all Factory tasks?"
+        description="Running Factory tasks in this project stop, and queued ones are removed. Their work so far stays where it is."
+        confirmLabel="Stop all"
+        busyLabel="Stopping…"
+        onCancel={() => setStoppingAll(null)}
+        onConfirm={async () => {
+          if (stoppingAll) await daemon.runnerStop(stoppingAll);
+          setStoppingAll(null);
+        }}
       />
 
       <NewWorkItemDrawer open={backlogOpen} onOpenChange={setBacklogOpen} project={project.name} />
@@ -358,7 +401,7 @@ export default function Projects({ snapshot, onOpenTask, onNewTask, onAddProject
         linkedTask={linkedTask}
         onClose={() => setOpenItem(null)}
         onStartTask={startTaskFromItem}
-        onRunInFactory={(item) => runItemsInFactory([item])}
+        onStartInFactory={(item) => void startInFactory([item])}
         onOpenTask={openTaskFromItem}
       />
     </div>

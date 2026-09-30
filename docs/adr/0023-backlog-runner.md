@@ -1,6 +1,8 @@
 # 0023 — The backlog runner: a daemon queue that turns ready items into pull requests
 
-**Status:** accepted (2026-09-29) · Phase 1 built; later phases proposed
+**Status:** accepted (2026-09-29) · Phase 1 built; later phases proposed ·
+amended 2026-09-30: *Factory as a task mode* supersedes the Factory surface,
+Start/Pause and per-item queue editing described below
 
 ## Context
 
@@ -542,6 +544,105 @@ browser, in the checkout.
 
 *Rejected:* a per-location concurrency pair (`max_worktree`, `max_checkout`).
 The checkout limit is always one, and the lease already enforces it.
+
+## Amendment — Factory as a task mode (2026-09-30)
+
+The owner decided the Factory is not a place but a way to run a task. The
+Factory tab on the project page is gone, and **Factory** is the third New Task
+mode beside Single agent and Orchestrator; it absorbs the Workflow mode. Where
+this amendment and the text above differ, this amendment holds.
+
+**One mode, two deliveries.** Factory mode picks a workflow template (stage
+chips, pinned agents from `WorkflowMeta.stage_agents`), *Test in the running
+app* (switches to a template with a verify stage), where it runs
+(Automatic / Background copy / Your project folder = `default` / `worktree` /
+`checkout`) and **Open a draft PR when done** (default on when the project's
+GitHub source resolves). PR on is the runner as described above. PR off is
+ADR 0001's pipeline unchanged: nothing is committed or pushed.
+
+**Entries are Factory tasks, keyed by task id.** The task row exists from the
+moment a person asks, `Queued`, tagged `runner` and `workflow:<id>`, so it
+shows in the sidebar while it waits; `workflow_create` starts the pipeline on
+that same task id (`task_id` of an existing task is reused, not recreated).
+`RunnerEntry` gains `task_id` (the key), an optional `item_id` (a prompt from
+the dialog has no item), `deliver`, the session options and attachments, and a
+structured `wait`. `ItemRun` gains `deliver` and the `completed` outcome (PR
+off, pipeline succeeded). The store's queue key column is renamed
+`entry_key`; rows keyed by an item are rewritten under their task at boot, and
+a queued row that never had a task gets one.
+
+**How tasks are created.** `task.create` with `workflow` and `factory:
+{ deliver: true, runLocation }` creates a scheduled task (`RunnerCommand::
+CreateTask`) and answers `{ taskId, started }`; PR off starts on the spot as
+before. `runner.enqueue` makes one task per backlog item with one shared
+`FactoryConfig` (the backlog's Start {n} in Factory and the Run in Factory…
+batch, whose filter the client resolves to ids) and reports item by item:
+`EnqueueResult { created[{taskId, itemId, started}], skipped[{itemId, number,
+reason}] }` with `already_in_factory | closed | not_found | unreadable`.
+`runner.brief` renders an item's prompt, tracker text inside the untrusted
+block, for the dialog to prefill; the preamble is added only when the task
+delivers.
+
+**No running flag, no Start/Pause.** A request to start means "start when
+allowed". `runner.stop` is *Stop all Factory tasks*: running pipelines stop
+(their items go to `todo`), queued tasks are removed; nothing is requeued.
+Per task: `runner.startNow` (past slots, open PRs, the daily cap, disk and
+headroom — never an exhausted account, a held checkout or the checkout
+checks), `runner.dequeue` (Remove from queue: the never-started task is
+deleted), `runner.reorder` by task id, and `runner.retry` (**Run again**: a new
+task with the last attempt's workflow, agent, model, location and delivery, or
+what the task records when it had no attempt). `runner.setEntryLocation` and
+the History list are removed.
+
+**Waits are structured.** `RunnerWait` = `slots | open_prs | daily (next_at) |
+quota (agent, account, window, used_pct, limit_pct, resets_at) | disk |
+checkout_busy (cause dirty/operation/task_running/in_use/yaml_backlog/other) |
+checkout_held | workflow_invalid | other`, on the project (`hold`) or on one
+entry (`wait`). Clients word them; a queued task with neither is *next in
+line*, which is not a wait. The desktop shows the project's hold first, since
+the daemon judges it on every pass, then the task's own.
+
+**Project folder without a PR runs in place.** Only a delivering task takes
+the lease. A PR-off task in the project folder runs on whatever is checked
+out, like a Workflow did, and counts as the one checkout run while it is in
+flight.
+
+**Held checkout.** A `Held` lease no longer pauses anything (there is nothing
+to pause); it is the project's `checkout_held` hold, the task is `Blocked`
+with `TaskBlockedKind::CheckoutHeld`, and Needs you offers **Try again**
+(`runner.retryCheckout`) and **Open terminal**.
+
+**Settings** are the project's Factory settings (project ⋮ menu): tasks at
+the same time, pause at N open draft PRs, new tasks per 24 hours, keep N GB
+free, pause when quota use passes N%, and the dialog's defaults (template,
+agent, model, where it runs — default Automatic).
+
+*Rejected:* keeping the Factory tab as a queue page next to the sidebar — two
+lists of the same tasks, and the tab's Start/Pause state was the most
+misunderstood part of the audit. Running PR-off tasks through the queue by
+default — the old Workflow mode started on the spot, and the limits exist for
+unattended PRs, not for a person watching a pipeline they just started. An
+entry without a task (created at dispatch) — the queued work would be
+invisible where people look for work.
+
+### Invariants added
+
+21. **A Factory task exists before its pipeline, and the pipeline starts on
+    it.** Dispatch never creates a second task; `workflow_create` reuses a
+    queued task's row and emits `task.updated`, not `task.created`.
+22. **A queued Factory task has no session and is never prompted.** Every
+    composer routes through `useWorkflowSend`, which refuses a Factory task
+    without a run. The store reads queued tasks back as interrupted; boot puts
+    back `Queued` only for tasks whose entry is still queued, and quit/update
+    blockers do not count them.
+23. **Only a delivering task switches the project checkout.** In-place runs
+    never take the lease, and every checkout-located run, leased or not, is
+    the one checkout run of its project.
+24. **Start now never passes safety.** It skips slots, open PRs, the daily
+    cap, disk and headroom only; an exhausted account, a held checkout and the
+    checkout inspection still refuse.
+25. **One Factory task per backlog item at a time.** Enqueue, the dialog and
+    Run again skip or refuse an item with an entry, and say so.
 
 ## Phased plan
 

@@ -121,7 +121,7 @@ export function buildAttentionQueue(
         priority: 0.5,
         reason:
           waiting.kind === "question"
-            ? (waiting.question ?? "workflow needs your input")
+            ? (waiting.question ?? "the Factory task needs your input")
             : `${waiting.stage === "verify" ? "verification needs a decision" : "review limit reached"}${waiting.question ? ` — ${waiting.question}` : ""}`,
         task,
       });

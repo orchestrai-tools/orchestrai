@@ -24,6 +24,7 @@ import { useFontScaling } from "./hooks/useFontScaling";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { usePullShortcut } from "./hooks/usePullShortcut";
 import { usePushShortcut } from "./hooks/usePushShortcut";
+import { useRunnerEvents } from "./hooks/useRunner";
 import { useTheme } from "./hooks/useTheme";
 import { queryClient } from "./query";
 
@@ -64,6 +65,7 @@ export default function App() {
   useTheme();
   const transparentWindow = useUi((s) => s.transparentWindow);
   useDaemonEvents();
+  useRunnerEvents(queryClient);
 
   const handleOpenTask = (id: string) => {
     setNewTaskOpen(false);
@@ -214,6 +216,7 @@ export default function App() {
                   newTaskProject={dialogs.newTaskProject}
                   newTaskPrompt={dialogs.newTaskPrompt}
                   newTaskBacklogItemId={dialogs.newTaskBacklogItemId}
+                  newTaskOptions={dialogs.newTaskOptions}
                   onNewTaskOpenChange={setNewTaskOpen}
                   onOpenTask={setOpenTaskId}
                   onCloseTask={() => setOpenTaskId(null)}

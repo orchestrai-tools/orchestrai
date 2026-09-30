@@ -1,4 +1,4 @@
-//! A delivered item's pull request: the daemon asks `PullWatch` to follow it
+//! A delivered Factory task's pull request: the daemon asks `PullWatch` to follow it
 //! without waiting for a client, and a merge or close ends the attempt.
 
 use tokio::sync::{broadcast, mpsc};
@@ -56,10 +56,7 @@ impl Daemon {
     }
 
     pub(super) async fn runner_pull_settled(&mut self, task_id: &str, pull: wire::TaskPullRequest) {
-        let Some(item_id) = self.runner_entry_of_task(task_id) else {
-            return;
-        };
-        let Some(entry) = self.runner.entries.get(&item_id).cloned() else {
+        let Some(entry) = self.runner.entries.get(task_id).cloned() else {
             return;
         };
         if entry.state != wire::RunnerEntryState::Delivered {
@@ -86,10 +83,12 @@ impl Daemon {
             self.runner_put_run(run, false);
         }
         if merged {
-            self.runner_drop_entry(&item_id);
-            self.runner_write_item(&project, &item_id, "done", None);
+            self.runner_drop_entry(task_id);
+            if let Some(item_id) = entry.item_id.as_deref() {
+                self.runner_write_item(&project, item_id, "done", None);
+            }
         } else {
-            self.runner_end_entry(&item_id);
+            self.runner_end_entry(task_id);
         }
         self.runner_emit(&project);
         self.runner_dispatch(&project).await;

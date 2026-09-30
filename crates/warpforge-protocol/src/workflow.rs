@@ -112,6 +112,10 @@ pub struct WorkflowMeta {
     /// Whether the verify stage must pass; `None` without a verify stage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verify_required: Option<bool>,
+    /// The agent the template pins for each entry of `stages`, in the same
+    /// order; `None` where the stage runs on the task's lead agent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stage_agents: Vec<Option<String>>,
 }
 
 /// Where a workflow definition comes from.

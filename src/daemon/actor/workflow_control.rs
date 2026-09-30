@@ -127,7 +127,7 @@ impl Daemon {
 
         let mut summary = String::new();
         let rounds_used = run.round;
-        let factory = self.runner_entry_of_task(parent_id).is_some();
+        let factory = self.runner_delivers(parent_id);
         match &outcome {
             WorkflowOutcome::Success { limit_hit } => {
                 run.state = RunState::Done;

@@ -15,7 +15,7 @@ import type { WorkItem, WorkItemStatus } from "./types";
  * @param props.linkedTask The task it became, when the daemon still has it.
  * @param props.onOpenTask Opens that task.
  * @param props.onStartTask Starts a task from the item.
- * @param props.onRunInFactory Queues the item in the project's Factory.
+ * @param props.onStartInFactory Opens New Task in Factory mode for the item.
  */
 export function WorkItemFooter({
   item,
@@ -23,14 +23,14 @@ export function WorkItemFooter({
   linkedTask,
   onOpenTask,
   onStartTask,
-  onRunInFactory,
+  onStartInFactory,
 }: {
   item: WorkItem;
   status: WorkItemStatus;
   linkedTask?: TaskInfo | null;
   onOpenTask?: (taskId: string) => void;
   onStartTask?: (item: WorkItem) => void;
-  onRunInFactory?: (item: WorkItem) => void;
+  onStartInFactory?: (item: WorkItem) => void;
 }) {
   return (
     <>
@@ -53,17 +53,17 @@ export function WorkItemFooter({
           </div>
         </dl>
         <div className="flex items-center gap-2">
-          {onRunInFactory && status !== "done" && status !== "cancelled" && (
+          {onStartInFactory && status !== "done" && status !== "cancelled" && (
             <Button
               type="button"
               size="sm"
               variant="outline"
               className="h-8 gap-1.5"
-              onClick={() => onRunInFactory(item)}
-              title="A pipeline makes the change in its own worktree and opens a draft pull request"
+              onClick={() => onStartInFactory(item)}
+              title="A pipeline makes the change and can open a draft PR"
             >
               <Factory className="size-3.5" />
-              Run in Factory
+              Start in Factory
             </Button>
           )}
           {item.taskId && linkedTask ? (

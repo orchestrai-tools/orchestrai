@@ -1,7 +1,8 @@
-//! Checkout-mode runs (ADR 0023, *Run location*): one item at a time in the
-//! project checkout, on a task branch the Factory creates, so the running dev
-//! services serve the change. The lease records where to return the checkout
+//! Project-folder runs (ADR 0023, *Run location*): one Factory task at a time
+//! in the project checkout. A task that opens a pull request runs on a task
+//! branch the Factory creates; the lease records where to return the checkout
 //! and survives a restart. The Factory switches branches only on a clean tree.
+//! A task that opens no pull request runs in place, on whatever is checked out.
 
 mod git;
 
@@ -31,24 +32,32 @@ impl Daemon {
             .write(PersistWrite::CheckoutLeaseDrop(project.to_string()));
     }
 
-    /// Why nothing starts while the Factory holds `project`'s checkout.
-    pub(super) fn runner_lease_hold(&self, project: &str) -> Option<String> {
+    /// Why no project-folder task starts while the Factory holds `project`'s
+    /// checkout.
+    pub(super) fn runner_lease_hold(&self, project: &str) -> Option<wire::RunnerWait> {
         let lease = self.runner.leases.get(project)?;
         Some(match lease.state {
-            wire::CheckoutLeaseState::Preparing => {
-                format!("Preparing the project checkout for #{}", lease.item_number)
-            }
-            wire::CheckoutLeaseState::Running => {
-                format!("#{} is running in the project checkout", lease.item_number)
-            }
-            wire::CheckoutLeaseState::Returning => {
-                "Switching the project checkout back to where it was".to_string()
-            }
-            wire::CheckoutLeaseState::Held => lease
-                .held_reason
-                .clone()
-                .unwrap_or_else(|| format!("The Factory left the checkout on {}", lease.branch)),
+            wire::CheckoutLeaseState::Held => wire::RunnerWait::CheckoutHeld {
+                reason: lease.held_reason.clone().unwrap_or_else(|| {
+                    format!("The Factory left your project folder on {}", lease.branch)
+                }),
+                task_id: Some(lease.task_id.clone()),
+            },
+            _ => wire::RunnerWait::CheckoutBusy {
+                cause: wire::CheckoutBusyCause::InUse,
+                detail: None,
+            },
         })
+    }
+
+    /// The whole project waits while a checkout is held: a person has to
+    /// clean it up, and a worktree start would fetch into the same repo.
+    pub(super) fn runner_held(&self, project: &str) -> Option<wire::RunnerWait> {
+        self.runner
+            .leases
+            .get(project)
+            .filter(|l| l.state == wire::CheckoutLeaseState::Held)
+            .and_then(|_| self.runner_lease_hold(project))
     }
 
     /// Whether `task` or one of its ancestors is a Factory pipeline.
@@ -70,25 +79,46 @@ impl Daemon {
         false
     }
 
-    /// Why a checkout-located entry cannot start in `project` now, judged on
-    /// the loop; the git checks run when the run is prepared.
-    pub(super) fn runner_checkout_refusal(&self, project: &str) -> Option<String> {
+    /// Why a project-folder task cannot start in `project` now, judged on
+    /// the loop; the git checks run when a leased run is prepared.
+    /// @param leased whether the task needs the lease (it opens a pull request)
+    pub(super) fn runner_checkout_refusal(
+        &self,
+        project: &str,
+        leased: bool,
+    ) -> Option<wire::RunnerWait> {
+        use wire::CheckoutBusyCause as Cause;
         if let Some(hold) = self.runner_lease_hold(project) {
             return Some(hold);
         }
-        let yaml = self
-            .with_store(|store| store.backlog_storage_mode().ok())
-            .flatten()
-            == Some(wire::BacklogStorageMode::Yaml);
-        if yaml {
-            return Some(
-                "Project checkout mode needs the backlog stored in the app: a YAML backlog is \
-                 part of the checkout the Factory switches"
-                    .to_string(),
-            );
+        let in_place = self.runner.entries.values().any(|e| {
+            e.project == project
+                && e.resolved_location == Some(wire::RunLocation::Checkout)
+                && matches!(
+                    e.state,
+                    wire::RunnerEntryState::Running | wire::RunnerEntryState::Delivering
+                )
+        });
+        if in_place {
+            return Some(wire::RunnerWait::CheckoutBusy {
+                cause: Cause::InUse,
+                detail: None,
+            });
         }
-        if let Some(reason) = self.runner.checkout_blocks.get(project) {
-            return Some(reason.clone());
+        if leased {
+            let yaml = self
+                .with_store(|store| store.backlog_storage_mode().ok())
+                .flatten()
+                == Some(wire::BacklogStorageMode::Yaml);
+            if yaml {
+                return Some(wire::RunnerWait::CheckoutBusy {
+                    cause: Cause::YamlBacklog,
+                    detail: None,
+                });
+            }
+            if let Some(wait) = self.runner.checkout_blocks.get(project) {
+                return Some(wait.clone());
+            }
         }
         self.tasks
             .values()
@@ -96,7 +126,10 @@ impl Daemon {
                 t.project == project && t.worktree.is_none() && t.status == TaskStatus::Running
             })
             .find(|t| !self.runner_owns_task(t))
-            .map(|t| format!("“{}” is running in the project checkout", t.title))
+            .map(|t| wire::RunnerWait::CheckoutBusy {
+                cause: Cause::TaskRunning,
+                detail: Some(t.title.clone()),
+            })
     }
 
     /// The project checkout a checkout-mode pipeline `task_id` runs in.
@@ -107,7 +140,7 @@ impl Daemon {
 
     /// Take the checkout for `entry` and inspect it off the loop.
     pub(super) fn runner_checkout_begin(&mut self, entry: &wire::RunnerEntry) {
-        let task_id = crate::daemon::task::new_task_id();
+        let task_id = entry.task_id.clone();
         let lease = wire::CheckoutLease {
             project: entry.project.clone(),
             item_id: entry.item_id.clone(),
@@ -146,16 +179,11 @@ impl Daemon {
 
     /// Whether the entry a preparing lease is for should still start.
     fn runner_lease_wanted(&self, lease: &wire::CheckoutLease) -> bool {
-        self.runner_settings(&lease.project).running
-            && self
-                .runner
-                .entries
-                .get(&lease.item_id)
-                .is_some_and(|e| e.state == wire::RunnerEntryState::Queued)
+        self.runner_is_queued(&lease.task_id)
     }
 
     /// A refusal left the checkout untouched: release it and hold the queue.
-    async fn runner_checkout_refused(&mut self, project: &str, reason: String) {
+    async fn runner_checkout_refused(&mut self, project: &str, reason: wire::RunnerWait) {
         self.runner_drop_lease(project);
         self.runner
             .checkout_blocks
@@ -168,14 +196,17 @@ impl Daemon {
         &mut self,
         project: &str,
         task_id: &str,
-        result: Result<ReturnPoint, String>,
+        result: Result<ReturnPoint, wire::RunnerWait>,
     ) {
         let Some(mut lease) = self.runner_preparing(project, task_id) else {
             return;
         };
         let point = match result {
             Ok(point) => point,
-            Err(reason) => return self.runner_checkout_refused(project, reason).await,
+            Err(reason) => {
+                self.runner.forced.remove(task_id);
+                return self.runner_checkout_refused(project, reason).await;
+            }
         };
         if !self.runner_lease_wanted(&lease) {
             self.runner_drop_lease(project);
@@ -209,26 +240,32 @@ impl Daemon {
         &mut self,
         project: &str,
         task_id: &str,
-        result: Result<String, String>,
+        result: Result<String, wire::RunnerWait>,
     ) {
         let Some(mut lease) = self.runner_preparing(project, task_id) else {
             return;
         };
         let base = match result {
             Ok(base) => base,
-            Err(reason) => return self.runner_checkout_refused(project, reason).await,
+            Err(reason) => {
+                self.runner.forced.remove(task_id);
+                return self.runner_checkout_refused(project, reason).await;
+            }
         };
         if self.runner_lease_wanted(&lease) {
             let settings = self.runner_settings(project);
             let path = self.project_path(project).unwrap_or_default();
-            if let Ok(choice) = self.runner_pick(project, &lease.item_id, &settings, &path) {
-                self.runner_start(choice, Some((task_id.to_string(), base.clone())))
+            let force = self.runner.forced.remove(task_id);
+            if let Ok(choice) = self.runner_pick(task_id, &settings, &path, force) {
+                self.runner_start(choice, super::dispatch::StartIn::Leased(base.clone()))
                     .await;
             }
         }
-        let started = self.runner.entries.get(&lease.item_id).is_some_and(|e| {
-            e.state == wire::RunnerEntryState::Running && e.task_id.as_deref() == Some(task_id)
-        });
+        let started = self
+            .runner
+            .entries
+            .get(task_id)
+            .is_some_and(|e| e.state == wire::RunnerEntryState::Running);
         if started {
             lease.state = wire::CheckoutLeaseState::Running;
             self.runner_put_lease(lease);
@@ -241,12 +278,12 @@ impl Daemon {
 
     /// An entry left `Running`/`Delivering` or the queue: a checkout it
     /// held goes back.
-    pub(super) fn runner_checkout_entry_left(&mut self, item_id: &str) {
+    pub(super) fn runner_checkout_entry_left(&mut self, task_id: &str) {
         let Some(lease) = self
             .runner
             .leases
             .values()
-            .find(|l| l.item_id == item_id && l.state == wire::CheckoutLeaseState::Running)
+            .find(|l| l.task_id == task_id && l.state == wire::CheckoutLeaseState::Running)
             .cloned()
         else {
             return;
@@ -303,12 +340,12 @@ impl Daemon {
             GiveBack::Returned | GiveBack::Released => {
                 let held = lease.held_reason.clone();
                 self.runner_drop_lease(project);
-                if let Some(task) = self
-                    .tasks
-                    .get_mut(task_id)
-                    .filter(|t| held.is_some() && t.blocked_reason == held)
-                {
+                if let Some(task) = self.tasks.get_mut(task_id).filter(|t| {
+                    t.blocked_kind == Some(wire::TaskBlockedKind::CheckoutHeld)
+                        || (held.is_some() && t.blocked_reason == held)
+                }) {
                     task.blocked_reason = None;
+                    task.blocked_kind = None;
                     task.set_status(TaskStatus::Waiting);
                     let updated = task.clone();
                     self.persist(&updated);
@@ -330,12 +367,12 @@ impl Daemon {
                 lease.state = wire::CheckoutLeaseState::Held;
                 lease.held_reason = Some(reason.clone());
                 self.runner_put_lease(lease);
-                self.runner_pause(project);
                 if self.workflow_runs.contains_key(task_id) {
                     self.workflow_timeline(task_id, reason.clone());
                 }
                 if let Some(task) = self.tasks.get_mut(task_id) {
                     task.blocked_reason = Some(reason);
+                    task.blocked_kind = Some(wire::TaskBlockedKind::CheckoutHeld);
                     task.set_status(TaskStatus::Blocked);
                     let updated = task.clone();
                     self.persist(&updated);
@@ -346,7 +383,7 @@ impl Daemon {
         self.runner_emit(project);
     }
 
-    /// Start was pressed: try again to give back a checkout left held.
+    /// Try again to give back a checkout left held.
     pub(super) fn runner_checkout_retry(&mut self, project: &str) {
         let Some(lease) = self
             .runner
@@ -369,11 +406,11 @@ impl Daemon {
     pub(super) fn runner_checkout_restore(&mut self) {
         let leases: Vec<wire::CheckoutLease> = self.runner.leases.values().cloned().collect();
         for mut lease in leases {
-            let running = self.runner.entries.get(&lease.item_id).is_some_and(|e| {
+            let running = self.runner.entries.get(&lease.task_id).is_some_and(|e| {
                 matches!(
                     e.state,
                     wire::RunnerEntryState::Running | wire::RunnerEntryState::Delivering
-                ) && e.task_id.as_deref() == Some(lease.task_id.as_str())
+                )
             });
             let base = self
                 .tasks

@@ -1,109 +1,130 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
 import { daemon } from "@/daemon";
-import type { DaemonEvent, EntryRunLocation, ItemRun, RunnerStatus } from "@/protocol";
+import { enqueueSummary, isFactoryTask } from "@/lib/factory";
+import type {
+  DaemonEvent,
+  EnqueueResult,
+  FactoryConfig,
+  RunnerEntry,
+  RunnerStatus,
+  TaskInfo,
+} from "@/protocol";
+import { useUi } from "@/store/ui";
 
-export const RUNNER_RUNS_LIMIT = 25;
 export const runnerStatusKey = (project: string) => ["runner", project, "status"] as const;
-export const runnerRunsKey = (project: string) => ["runner", project, "runs"] as const;
 
 /**
- * Merge one attempt into a newest-first run list.
- * @param runs The cached runs.
- * @param run The attempt the daemon just wrote.
- * @returns The list with the attempt replaced or added, capped.
+ * Keep every cached Factory status current off `runner.updated`. Mounted
+ * once by the app shell, above its query provider, so views only read the cache.
+ * @param queryClient The app's query client.
  */
-export function upsertItemRun(runs: ItemRun[], run: ItemRun): ItemRun[] {
-  const next = runs.some((candidate) => candidate.id === run.id)
-    ? runs.map((candidate) => (candidate.id === run.id ? run : candidate))
-    : [run, ...runs];
-  return next.sort((a, b) => b.dispatchedAt - a.dispatchedAt).slice(0, RUNNER_RUNS_LIMIT);
-}
-
-/**
- * One project's Factory status and recent runs, kept live off the daemon's
- * `runner.*` events.
- * @param project The project name.
- * @returns The status and runs queries.
- */
-export function useRunner(project: string) {
-  const queryClient = useQueryClient();
-  const status = useQuery({
-    enabled: project.length > 0,
-    queryFn: () => daemon.runnerStatus(project),
-    queryKey: runnerStatusKey(project),
-  });
-  const runs = useQuery({
-    enabled: project.length > 0,
-    queryFn: () => daemon.runnerRuns(project, RUNNER_RUNS_LIMIT),
-    queryKey: runnerRunsKey(project),
-  });
+export function useRunnerEvents(queryClient: QueryClient) {
   useEffect(
     () =>
       daemon.subscribeEvents((event: DaemonEvent) => {
-        if (event.event === "runner.updated" && event.data.settings.project === project) {
-          queryClient.setQueryData<RunnerStatus>(runnerStatusKey(project), event.data);
-          return;
-        }
-        if (event.event === "runner.runUpdated" && event.data.project === project) {
-          const run = event.data;
-          queryClient.setQueryData<ItemRun[]>(runnerRunsKey(project), (previous) =>
-            previous ? upsertItemRun(previous, run) : previous,
-          );
-        }
+        if (event.event !== "runner.updated") return;
+        queryClient.setQueryData<RunnerStatus>(
+          runnerStatusKey(event.data.settings.project),
+          event.data,
+        );
       }),
-    [project, queryClient],
+    [queryClient],
   );
-  return { runs, status };
 }
 
 /**
- * Queue backlog items in the Factory and say what happens next.
- * @param project The project the items belong to.
- * @returns A function that queues the given item ids where they should run
- *   and resolves to whether they were queued.
+ * One project's Factory: its settings and every task it schedules.
+ * @param project The project name; empty fetches nothing.
+ * @returns The status query.
  */
-export function useQueueInFactory(project: string) {
+export function useRunnerStatus(project: string) {
+  return useQuery({
+    enabled: project.length > 0,
+    queryFn: () => daemon.runnerStatus(project),
+    queryKey: runnerStatusKey(project),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * The Factory entry of a task, while the Factory schedules it, and what
+ * holds the project's queue.
+ * @param task The task; non-Factory tasks fetch nothing.
+ * @returns The entry, when there is one, and the project's status.
+ */
+export function useFactoryEntry(task: Pick<TaskInfo, "id" | "project" | "tags">): {
+  entry: RunnerEntry | null;
+  status: RunnerStatus | null;
+} {
+  const factory = isFactoryTask(task);
+  const status = useRunnerStatus(factory ? task.project : "").data ?? null;
+  const entry = status?.entries.find((candidate) => candidate.taskId === task.id) ?? null;
+  return { entry, status };
+}
+
+/**
+ * Tell the person what a start request did: started, queued, skipped.
+ * @param result The daemon's answer.
+ */
+export function toastEnqueueResult(result: EnqueueResult) {
+  const summary = enqueueSummary(result);
+  if (result.created.length === 0) {
+    toast(summary);
+    return;
+  }
+  const wait = result.status.hold;
+  toast.success(summary, {
+    description: result.created.every((task) => task.started)
+      ? "Follow them in the sidebar."
+      : wait
+        ? "Queued tasks start on their own when a slot frees."
+        : "Queued tasks start on their own as soon as they can.",
+  });
+}
+
+/**
+ * Start Factory tasks for backlog items with one shared configuration.
+ * @param project The project the items belong to.
+ * @returns A function that starts them and resolves to the daemon's answer,
+ *   or null when the request failed.
+ */
+export function useStartInFactory(project: string) {
   const queryClient = useQueryClient();
   return useCallback(
-    async (itemIds: string[], runLocation: EntryRunLocation = "default"): Promise<boolean> => {
+    async (itemIds: string[], config: FactoryConfig): Promise<EnqueueResult | null> => {
       try {
-        const status = await daemon.runnerEnqueue(project, itemIds, runLocation);
-        queryClient.setQueryData(runnerStatusKey(project), status);
+        const result = await daemon.runnerEnqueue(project, itemIds, config);
+        queryClient.setQueryData(runnerStatusKey(project), result.status);
         await queryClient.invalidateQueries({ queryKey: ["backlog", project] });
-        const count = itemIds.length === 1 ? "Item" : `${itemIds.length} items`;
-        if (status.settings.running) {
-          toast.success(`${count} queued in the Factory`, {
-            description: status.hold ?? "It starts as soon as a slot is free.",
-          });
-        } else {
-          toast.success(`${count} queued in the Factory`, {
-            description: "The Factory is paused. Start it to run the queue.",
-            action: {
-              label: "Start",
-              onClick: () => {
-                void daemon
-                  .runnerUpdateSettings(project, { running: true })
-                  .then((next) => queryClient.setQueryData(runnerStatusKey(project), next))
-                  .catch((error: unknown) =>
-                    toast.error("Could not start the Factory", {
-                      description: error instanceof Error ? error.message : String(error),
-                    }),
-                  );
-              },
-            },
-          });
-        }
-        return true;
+        toastEnqueueResult(result);
+        return result;
       } catch (error) {
-        toast.error("Could not queue in the Factory", {
+        toast.error("Could not start in Factory", {
           description: error instanceof Error ? error.message : String(error),
         });
-        return false;
+        return null;
       }
     },
     [project, queryClient],
   );
+}
+
+/**
+ * Start a new Factory task configured like `task`, and open it.
+ * @param task A failed, stopped or finished Factory task.
+ */
+export async function runAgain(task: Pick<TaskInfo, "id" | "project">) {
+  try {
+    const result = await daemon.runnerRetry(task.project, task.id);
+    toastEnqueueResult(result);
+    const created = result.created[0];
+    if (created) useUi.getState().openTask(created.taskId);
+  } catch (error) {
+    toast.error("Could not run it again", {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

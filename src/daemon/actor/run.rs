@@ -379,6 +379,7 @@ impl Daemon {
             .tasks
             .values()
             .filter(|task| matches!(task.status, TaskStatus::Queued | TaskStatus::Running))
+            .filter(|task| !self.runner_is_queued(&task.id))
             .count();
         if active_tasks > 0 {
             blockers.push(format!("{active_tasks} agent task(s) are active"));

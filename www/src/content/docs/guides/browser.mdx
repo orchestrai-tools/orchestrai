@@ -101,11 +101,11 @@ The check happens right before each action, on the page that is actually loaded 
 
 ### Testing every change before review
 
-A workflow with a [**verify** stage](/reference/workflow-files/#verify) makes this routine instead of something you ask for. After the implementation, and after each fix, a tester agent starts the project's services, works out a test plan from the task — an issue an analyst wrote works fine — and walks through it in its Agent tab. It checks the console for errors, takes a screenshot at each key step, and reports **pass**, **fail** or **blocked** with a checklist. A failure goes back to the fixer; only a pass goes on to the reviewers.
+A [Factory](/guides/factory/) task whose workflow has a [**verify** stage](/reference/workflow-files/#verify) makes this routine instead of something you ask for — turn on **Test in the running app** in New Task. After the implementation, and after each fix, a tester agent starts the project's services, works out a test plan from the task — an issue an analyst wrote works fine — and walks through it in its Agent tab. It checks the console for errors, takes a screenshot at each key step, and reports **pass**, **fail** or **blocked** with a checklist. A failure goes back to the fixer; only a pass goes on to the reviewers.
 
 Because the tester only visits the project's own services, it never stops to ask you for access. Its screenshots are kept with the pipeline: open the verify stage in the task's **Pipeline** view to see the verdict, each step, and the pictures, and click one to see it full size. Give the tester what it can't guess — a test login, seed data, the page to start from — with `instructions` in the workflow file.
 
-Leave the desktop app open while it runs. A task in its own worktree can't be verified yet, because the services run from the main checkout rather than the worktree.
+Leave the desktop app open while it runs. A task in a background copy of the repository can't be verified, because the services run from your project folder; with **Where it runs** on *Automatic*, such a task runs in your project folder for you.
 
 ### What it can't do
 

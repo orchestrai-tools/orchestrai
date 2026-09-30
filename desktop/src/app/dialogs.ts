@@ -1,7 +1,15 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
+import type { TaskMode } from "@/components/TaskComposeBar";
 import { useUi } from "@/store/ui";
+import type { FactorySeed } from "@/views/NewTaskDialog/useFactoryBatch";
+
+/** How New Task opens beyond its prompt: its mode, or several backlog items. */
+export interface NewTaskOptions {
+  mode?: TaskMode;
+  factory?: FactorySeed | null;
+}
 
 export interface AppDialogs {
   newTaskOpen: boolean;
@@ -9,6 +17,7 @@ export interface AppDialogs {
   newTaskProject: string | null;
   newTaskPrompt: string | undefined;
   newTaskBacklogItemId: string | null;
+  newTaskOptions: NewTaskOptions;
   pushOpen: boolean;
   setPushOpen: (open: boolean) => void;
   addProjectOpen: boolean;
@@ -17,8 +26,13 @@ export interface AppDialogs {
   setWizardProject: (project: string | null) => void;
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
-  /** Open New Task, optionally pre-filling a project, prompt and backlog link. */
-  startNewTask: (project?: string, prompt?: string, backlogItemId?: string) => void;
+  /** Open New Task, optionally pre-filling a project, prompt, backlog link and mode. */
+  startNewTask: (
+    project?: string,
+    prompt?: string,
+    backlogItemId?: string,
+    options?: NewTaskOptions,
+  ) => void;
   /** Select the freshly added project and offer its setup wizard. */
   handleProjectAdded: (name: string) => void;
 }
@@ -31,18 +45,23 @@ export function useAppDialogs(): AppDialogs {
   // Set when the new-task surface was opened from a backlog item, so the
   // created task can be linked back to it.
   const [newTaskBacklogItemId, setNewTaskBacklogItemId] = useState<string | null>(null);
+  const [newTaskOptions, setNewTaskOptions] = useState<NewTaskOptions>({});
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [wizardProject, setWizardProject] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const startNewTask = useCallback((project?: string, prompt?: string, backlogItemId?: string) => {
-    setNewTaskProject(project ?? null);
-    setNewTaskPrompt(prompt);
-    setNewTaskBacklogItemId(backlogItemId ?? null);
-    setNewTaskOpen(true);
-  }, []);
+  const startNewTask = useCallback(
+    (project?: string, prompt?: string, backlogItemId?: string, options?: NewTaskOptions) => {
+      setNewTaskProject(project ?? null);
+      setNewTaskPrompt(prompt);
+      setNewTaskBacklogItemId(backlogItemId ?? null);
+      setNewTaskOptions(options ?? {});
+      setNewTaskOpen(true);
+    },
+    [],
+  );
 
   const handleProjectAdded = useCallback(
     (name: string) => {
@@ -65,6 +84,7 @@ export function useAppDialogs(): AppDialogs {
     newTaskProject,
     newTaskPrompt,
     newTaskBacklogItemId,
+    newTaskOptions,
     pushOpen,
     setPushOpen,
     addProjectOpen,

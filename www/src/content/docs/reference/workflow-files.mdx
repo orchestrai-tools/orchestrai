@@ -6,7 +6,7 @@ sidebar:
   label: Workflow files
 ---
 
-Warpforge ships **three** workflows. They are a starting point, not the menu: drop a YAML file in `.warpforge/workflows/` and it appears in the New Task picker alongside them, for everyone who checks out the repository.
+A workflow template is what a [Factory](/guides/factory/) task runs. Warpforge ships **three**. They are a starting point, not the menu: drop a YAML file in `.warpforge/workflows/` and it appears in the **Workflow template** picker of Factory mode alongside them, for everyone who checks out the repository.
 
 | Built-in | Stages |
 | --- | --- |
@@ -14,13 +14,15 @@ Warpforge ships **three** workflows. They are a starting point, not the menu: dr
 | **Plan + implement + review loop** (`plan-review-loop`) | `plan → implement → review ⇄ fix` |
 | **Implement + verify + review loop** (`verify-review-loop`) | `implement → verify → review ⇄ fix` |
 
+The **Test in the running app** toggle in New Task switches between templates with and without a [`verify`](#verify) stage: on picks one that has it (`verify-review-loop`), off goes back to one without. It is shown when the project has a template with a verify stage.
+
 <Aside type="note">
-  The pipeline **shape** is fixed — `plan? → implement → verify? → review ⇄ fix`. A workflow file configures those stages; it does not declare new ones. That is what lets the daemon drive the run deterministically, survive a restart, and stop at known boundaries. See [ADR 0001](https://github.com/warpforgehq/warpforge/blob/main/docs/adr/0001-workflow-pipelines.md).
+  The pipeline **shape** is fixed — `plan? → implement → verify? → review ⇄ fix`. A workflow file configures those stages; it does not declare new ones. That is what lets Warpforge drive the run deterministically, survive a restart, and stop at known boundaries. See [ADR 0001](https://github.com/warpforgehq/warpforge/blob/main/docs/adr/0001-workflow-pipelines.md).
 </Aside>
 
 ## Start from a built-in
 
-Don't write one from scratch. In the New Task dialog, pick a built-in and choose **Copy to project** — it writes the template into `.warpforge/workflows/<id>.yaml`, fully commented, with every stage spelled out. Edit from there.
+Don't write one from scratch. In the New Task dialog, choose **Factory**, pick a built-in and choose **Copy to project** — it writes the template into `.warpforge/workflows/<id>.yaml`, fully commented, with every stage spelled out. Edit from there.
 
 Copying refuses to overwrite an existing file, so it is safe to press twice.
 
@@ -174,7 +176,7 @@ How it fits the pipeline:
 - **Evidence.** Every screenshot the tester takes is kept with the pipeline and shown on its verify stage in the **Pipeline** view. The verdict, the checklist and the screenshots are part of the pipeline's final summary.
 
 <Aside type="caution">
-  Verification needs the Warpforge desktop app open, because the browser lives there. A task that runs in its **own worktree** cannot be verified yet: the project's dev services run from the main checkout, so they would test the wrong code. The stage says so and stops at the same decision point instead of reporting a pass it cannot back up. The [Factory](/guides/factory/#verify-needs-the-checkout) can still verify its items: run them in the **Project checkout** — choose it when you queue an item, or set the Factory's **Run location** to **Project checkout** or **Auto** — and each one runs in the checkout that your dev services serve.
+  Verification needs the Warpforge desktop app open, because the browser lives there. It also needs the task to run in **your project folder**, which is what your dev services serve. **Where it runs** set to *Automatic* takes care of that for a template with a verify stage. A task you put in a **background copy** yourself cannot be verified: the dev services would test the wrong code, so the stage says so and stops at the same decision point instead of reporting a pass it cannot back up. See [Where it runs](/guides/factory/#where-it-runs).
 </Aside>
 
 ## Placeholders

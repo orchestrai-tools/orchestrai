@@ -117,24 +117,33 @@ Statuses are `todo`, `in_progress`, `waiting`, `done` and `cancelled`; prioritie
 
 ---
 
-## Factory — queue backlog items for draft pull requests
+## Factory — start Factory tasks for backlog items
 
-Available in **every** session. The [Factory](/guides/factory/) runs queued items through a pipeline and opens a draft pull request for each one that passes review.
+Available in **every** session. A [Factory](/guides/factory/) task runs a backlog item through a workflow template — implement, an optional check in the running app, review ⇄ fix — and can open a draft pull request when it succeeds.
 
 ### `runner_enqueue` · `runner_status`
 
 ```
-runner_enqueue(number | numbers, project?, run_location?)
+runner_enqueue(number | numbers, project?, workflow?, agent?, model?, run_location?, pull_request?)
 runner_status(project?, runs?)
 ```
 
-`runner_enqueue` queues one item (`number`, as in #87) or several (`numbers`, queued in that order); an item already queued keeps its place, and a done or cancelled item is refused. `run_location` says where the items run: `worktree`, `checkout` (the project checkout, so a verify stage can test the running app; one checkout item runs at a time), or `default` (the project's setting, the default). Queuing starts nothing while the Factory is paused. It returns the queue as `runner_status` prints it.
+`runner_enqueue` starts one Factory task per item, all with the same configuration: one item (`number`, as in #87) or several (`numbers`, started in that order).
 
-`runner_status` prints whether the Factory is running, what holds the queue (a limit, quota, the disk floor), each entry as `#87 [queued] Fix the login redirect` — with `· checkout` or `· worktree` in the brackets when the item has its own location or has started — and its pull request or the reason it waits, and — with `runs: true` — the ten latest runs with outcome, review rounds, cost and pull request.
+| Argument | What it does |
+| --- | --- |
+| `workflow` | The workflow template id. Defaults to the project's Factory default. |
+| `agent` / `model` | The lead agent and model, for every stage the template does not give its own agent. Default to the project's Factory defaults. |
+| `run_location` | Where each task runs: `default` (*Automatic* — your project folder when the template tests the running app, a background copy otherwise), `worktree` (a background copy of the repository) or `checkout` (your project folder, one task at a time). |
+| `pull_request` | `true` (the default): a successful run is committed, pushed and opened as a draft pull request. `false`: the change is left for a person to review and commit. |
 
-**When:** you ask a chat to line up the next few items for the Factory, or to report how the queue is doing. The Factory, not the agent, decides when each item starts.
+Each task appears in the sidebar at once and starts as soon as the project's [Factory limits](/guides/factory/#factory-settings) allow, showing *Queued* until then. The reply says which tasks started and which are queued, and which items were skipped and why — an item that already has a Factory task, or one that is done or cancelled.
 
-**Why a Factory run cannot call it:** a run that queued more work would keep the Factory busy on work no person chose. `runner_enqueue` from inside a Factory pipeline is refused.
+`runner_status` reports the project's Factory limits, why queued tasks are waiting, and every Factory task that is queued, running or in review, with its pull request. With `runs: true` it adds the ten most recent runs with their outcome and cost.
+
+**When:** you ask a chat to start the next few backlog items in the Factory, or to report how the project's Factory work is going. The project's limits, not the agent, decide when each task starts.
+
+**Why a Factory task cannot call it:** a task that started more work would keep the Factory busy on work no person chose. `runner_enqueue` from inside a Factory task is refused.
 
 ---
 
@@ -384,6 +393,6 @@ A bridge configured outside the daemon, with no project set, resolves the projec
 
 - [Choosing your mode](/guides/choosing-your-mode/) — single, orchestrator, or pipeline
 - [Automations](/guides/automations/) — what the `automation_*` tools schedule
-- [The Factory](/guides/factory/) — what `runner_enqueue` queues into
+- [The Factory](/guides/factory/) — what `runner_enqueue` starts
 - [Cross-harness memory](/concepts/memory/) — what the `memory_*` tools write into
 - [Orchestration and workflows](/concepts/orchestration/) — the concepts behind the delegation tools

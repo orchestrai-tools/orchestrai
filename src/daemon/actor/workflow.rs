@@ -228,11 +228,22 @@ impl Daemon {
             .map_err(|e| format!("workflow `{workflow_id}` is invalid: {e}"))?;
 
         let mut tags = tags;
-        tags.push(format!("workflow:{workflow_id}"));
-        let mut task = Task::new(&project, &prompt, &agent, tags);
-        if let Some(id) = task_id {
-            task.id = id;
+        let workflow_tag = format!("workflow:{workflow_id}");
+        if !tags.contains(&workflow_tag) {
+            tags.push(workflow_tag);
         }
+        // A queued Factory task already exists: its pipeline starts on it.
+        let existing = task_id.as_ref().and_then(|id| self.tasks.get(id)).cloned();
+        let created = existing.is_none();
+        let mut task = existing.unwrap_or_else(|| {
+            let mut task = Task::new(&project, &prompt, &agent, tags.clone());
+            if let Some(id) = task_id {
+                task.id = id;
+            }
+            task
+        });
+        task.tags = tags;
+        task.agent = agent.clone();
         task.parent_task_id = parent_task_id;
         task.backlog_item_id = backlog_item_id;
         // An explicit lead model from the dialog is the task's model intent.
@@ -248,7 +259,11 @@ impl Daemon {
         let parent_id = task.id.clone();
         self.tasks.insert(parent_id.clone(), task.clone());
         self.persist(&task);
-        self.emit(Event::TaskCreated(task));
+        self.emit(if created {
+            Event::TaskCreated(task)
+        } else {
+            Event::TaskUpdated(task)
+        });
 
         let run = WorkflowRun::new(
             parent_id.clone(),

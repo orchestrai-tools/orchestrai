@@ -25,12 +25,13 @@ import { AgentLogo } from "./AgentLogo";
 
 /**
  * How a task executes. `single` and `orchestrator` differ in *who decides* the
- * plan; `workflow` replaces the decision with a fixed pipeline. They are one
- * three-way choice rather than independent toggles because a task runs exactly
- * one of them. (An orchestrator can still spawn a pipeline mid-run — that is
- * the lead's runtime call, not this pre-flight choice.)
+ * plan; `factory` replaces the decision with a fixed pipeline (a workflow
+ * template) and can open a draft PR when it succeeds. They are one three-way
+ * choice rather than independent toggles because a task runs exactly one of
+ * them. (An orchestrator can still spawn a pipeline mid-run — that is the
+ * lead's runtime call, not this pre-flight choice.)
  */
-export type TaskMode = "single" | "orchestrator" | "workflow";
+export type TaskMode = "single" | "orchestrator" | "factory";
 
 /**
  * Every control in this bar is one shape at one height. The bar mixes single
@@ -152,17 +153,17 @@ export function TaskComposeBar({
             Orchestrator
           </ModeButton>
           <ModeButton
-            mode="workflow"
+            mode="factory"
             current={mode}
             onSelect={onModeChange}
             disabled={!hasWorkflows}
             title={hasWorkflows ? undefined : "No pipelines defined in this project"}
           >
-            Workflow
+            Factory
           </ModeButton>
         </div>
 
-        {mode === "workflow" && (
+        {mode === "factory" && (
           <WorkflowPicker
             workflows={workflows}
             selected={selectedWorkflow}
@@ -329,7 +330,7 @@ function PillToggle({
 }
 
 /**
- * Workflow template picker, shown only in `workflow` mode. Invalid templates
+ * Workflow template picker, shown only in `factory` mode. Invalid templates
  * stay listed (with their parse error) so a typo in a project's YAML is visible
  * here rather than silently missing.
  */

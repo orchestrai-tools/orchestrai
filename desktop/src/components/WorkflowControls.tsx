@@ -3,6 +3,7 @@ import { memo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { factoryStage } from "@/lib/factory";
 import { cn } from "@/lib/utils";
 import { verifyBarrier, workflowStageLabel } from "@/lib/workflow";
 
@@ -278,6 +279,8 @@ function LimitDecision({
 
 function StageIndicator({ run }: { run: WorkflowRunInfo }) {
   const waiting = run.waiting ?? null;
+  const paused = waiting?.kind === "paused";
+  const chip = paused ? null : factoryStage({ status: "running", workflowRun: run }, null);
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1.5">
       <span className="truncate font-medium text-foreground" title={run.workflowName}>
@@ -285,15 +288,18 @@ function StageIndicator({ run }: { run: WorkflowRunInfo }) {
       </span>
       <span className="text-border">·</span>
       <span className="text-muted-foreground">
-        {waiting?.kind === "paused"
+        {paused
           ? `paused before ${workflowStageLabel(run.stage)}`
-          : workflowStageLabel(run.stage)}
+          : (chip ?? workflowStageLabel(run.stage))}
       </span>
-      {run.round > 0 && run.stage !== "done" && run.stage !== "failed" && (
-        <span className="tnum text-muted-foreground">
-          round {run.round}/{run.maxRounds}
-        </span>
-      )}
+      {run.round > 0 &&
+        run.stage !== "done" &&
+        run.stage !== "failed" &&
+        !chip?.includes("round") && (
+          <span className="tnum text-muted-foreground">
+            round {run.round}/{run.maxRounds}
+          </span>
+        )}
       {run.verdict && (
         <span
           className={cn(

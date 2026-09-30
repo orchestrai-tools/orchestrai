@@ -1,5 +1,5 @@
-//! The backlog runner end to end: real pipelines on mock agents, real git
-//! against a local bare origin, and a fake pull request opener (never `gh`).
+//! The Factory end to end: real pipelines on mock agents, real git against a
+//! local bare origin, and a fake pull request opener (never `gh`).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -15,6 +15,7 @@ mod delivery;
 mod dispatch;
 mod location;
 mod recovery;
+mod retry;
 
 const FACTORY_FIXTURE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -116,27 +117,36 @@ async fn status(daemon: &DaemonHandle) -> wire::RunnerStatus {
     .unwrap()
 }
 
-async fn enqueue(daemon: &DaemonHandle, items: &[&wire::BacklogItem]) -> wire::RunnerStatus {
-    enqueue_at(daemon, items, wire::EntryRunLocation::Default).await
+async fn enqueue(daemon: &DaemonHandle, items: &[&wire::BacklogItem]) -> wire::EnqueueResult {
+    enqueue_with(daemon, items, wire::FactoryConfig::default()).await
 }
 
 async fn enqueue_at(
     daemon: &DaemonHandle,
     items: &[&wire::BacklogItem],
     run_location: wire::EntryRunLocation,
-) -> wire::RunnerStatus {
+) -> wire::EnqueueResult {
+    let config = wire::FactoryConfig {
+        run_location,
+        ..wire::FactoryConfig::default()
+    };
+    enqueue_with(daemon, items, config).await
+}
+
+async fn enqueue_with(
+    daemon: &DaemonHandle,
+    items: &[&wire::BacklogItem],
+    config: wire::FactoryConfig,
+) -> wire::EnqueueResult {
     ask(daemon, |reply| RunnerCommand::Enqueue {
         project: "demo".into(),
         item_ids: items.iter().map(|i| i.id.clone()).collect(),
-        workflow: None,
-        agent: None,
-        model: None,
-        run_location,
+        config,
         origin_task: None,
         reply,
     })
     .await
-    .expect("queued")
+    .expect("accepted")
 }
 
 async fn create_item(daemon: &DaemonHandle, title: &str, priority: &str) -> wire::BacklogItem {
@@ -179,10 +189,9 @@ async fn item_status(daemon: &DaemonHandle, id: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Settings every test starts from: running, no disk floor.
+/// Settings every test starts from: the test workflow, no disk floor.
 fn running_with(agent: &str) -> wire::RunnerSettingsPatch {
     wire::RunnerSettingsPatch {
-        running: Some(true),
         workflow: Some("test".into()),
         agent: Some(agent.into()),
         min_free_gb: Some(0),
@@ -249,7 +258,14 @@ fn entry<'a>(
     status: &'a wire::RunnerStatus,
     item: &wire::BacklogItem,
 ) -> Option<&'a wire::RunnerEntry> {
-    status.entries.iter().find(|e| e.item_id == item.id)
+    status
+        .entries
+        .iter()
+        .find(|e| e.item_id.as_deref() == Some(item.id.as_str()))
+}
+
+async fn find_task(daemon: &DaemonHandle, id: &str) -> Option<Task> {
+    daemon.tasks().await.into_iter().find(|t| t.id == id)
 }
 
 fn origin_branches(origin: &Path) -> String {

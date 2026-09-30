@@ -259,6 +259,7 @@ fn blocked_kind_str(kind: Option<wire::TaskBlockedKind>) -> Option<&'static str>
     match kind {
         Some(wire::TaskBlockedKind::SessionLost) => Some("session_lost"),
         Some(wire::TaskBlockedKind::ModelMismatch) => Some("model_mismatch"),
+        Some(wire::TaskBlockedKind::CheckoutHeld) => Some("checkout_held"),
         None => None,
     }
 }
@@ -269,6 +270,7 @@ fn parse_blocked_kind(s: Option<String>) -> Option<wire::TaskBlockedKind> {
     match s.as_deref() {
         Some("session_lost") => Some(wire::TaskBlockedKind::SessionLost),
         Some("model_mismatch") => Some(wire::TaskBlockedKind::ModelMismatch),
+        Some("checkout_held") => Some(wire::TaskBlockedKind::CheckoutHeld),
         _ => None,
     }
 }

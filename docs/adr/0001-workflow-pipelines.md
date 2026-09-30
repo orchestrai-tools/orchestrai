@@ -61,7 +61,8 @@ fallback rather than a hard failure.
 **A finished pipeline commits nothing.** It lands in `NeedsReview` for a human.
 *Rejected:* an `on_success: commit` option — it makes an unattended pipeline
 able to write history.
-*Narrowed by ADR 0023:* the backlog runner commits and opens a draft PR for pipelines it starts.
+*Narrowed by ADR 0023:* a Factory task with **Open a draft PR when done** on
+commits and opens a draft PR; with it off, nothing is committed.
 
 **Pause is soft, at stage boundaries.** The running stage finishes its turn and
 the next one does not start. This is what makes pause survive a daemon restart:
@@ -124,3 +125,14 @@ Finding ledger and cross-round dedup, deterministic build/lint/test gates
 (agents run their own checks), separate tester and final-acceptor roles, global
 `~/.warpforge/workflows/`, template versioning, auto-commit. The richer
 reference design these were pruned from is kept outside the repo.
+
+## Amendment — Workflow mode is Factory mode (2026-09-30)
+
+The New Task mode that starts a pipeline is called **Factory** now (ADR 0023,
+*Factory as a task mode*); the Workflow mode is Factory with **Open a draft PR
+when done** off, and runs exactly as this record describes: started on the
+spot, in a worktree or the project checkout as picked, nothing committed.
+Existing workflow tasks display as Factory tasks. A Factory task that opens a
+PR is created queued and waits for the project's limits; until its pipeline
+starts it has no run, so `useWorkflowSend` treats it as a parent with nowhere
+to send a message (ADR 0023 invariant 22).

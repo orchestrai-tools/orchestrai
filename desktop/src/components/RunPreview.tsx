@@ -1,4 +1,4 @@
-import { ChevronRight, FileDiff, MessageSquare, Repeat } from "lucide-react";
+import { ChevronRight, FileDiff, GitPullRequestDraft, MessageSquare, Repeat } from "lucide-react";
 import { Fragment } from "react";
 
 import { agentDisplayName } from "@/lib/agentNames";
@@ -12,8 +12,8 @@ import type { TaskMode } from "./TaskComposeBar";
  * Shows what pressing Start will actually do, as a strip of blocks rather than
  * a paragraph: the mode toggle names the shape of the run, this draws it.
  *
- * Workflow is drawn from the selected template's real stages and round limit —
- * never from a canned picture. Orchestrator is explicitly an example, because
+ * Factory is drawn from the selected template's real stages, pinned agents and
+ * round limit — never from a canned picture. Orchestrator is explicitly an example, because
  * the lead decides the split at runtime and no honest preview exists before
  * the prompt is read; it is staffed from the user's own enabled harnesses so
  * the icons match what they will see in the sidebar.
@@ -28,11 +28,14 @@ export function RunPreview({
   agents,
   mode,
   workflow,
+  deliver = false,
 }: {
   agent: string;
   agents: AgentConfig[];
   mode: TaskMode;
   workflow: WorkflowMeta | null;
+  /** Factory mode opens a draft PR when the run succeeds. */
+  deliver?: boolean;
 }) {
   const agentName = agentDisplayName(agent, agents.find((a) => a.id === agent)?.displayName);
   const logo = (id: string) => (
@@ -43,14 +46,21 @@ export function RunPreview({
     />
   );
 
-  if (mode === "workflow") {
+  if (mode === "factory") {
     if (!workflow) return null;
     const stages = parseStages(workflow.stages ?? []);
     if (stages.length === 0) return null;
     const rounds = workflow.maxRounds ?? 0;
+    const pinned = workflow.stageAgents ?? [];
     return (
       <Preview
-        note={"Every stage runs on " + agentName + " unless the template names its own agent."}
+        note={
+          "Stages without an agent of their own run on " +
+          agentName +
+          (deliver
+            ? ". When it succeeds, Warpforge opens a draft PR."
+            : ". Warpforge commits nothing; you review the change.")
+        }
       >
         {stages.map((stage, index) => {
           const next = stages[index + 1];
@@ -58,7 +68,7 @@ export function RunPreview({
           return (
             <Fragment key={stage.kind}>
               <Node
-                icon={logo(agent)}
+                icon={logo(pinned[index] ?? agent)}
                 title={STAGE_COPY[stage.kind]?.title ?? stage.kind}
                 caption={
                   stage.count > 1
@@ -70,6 +80,21 @@ export function RunPreview({
             </Fragment>
           );
         })}
+        {deliver && (
+          <>
+            <Arrow />
+            <Node
+              icon={
+                <GitPullRequestDraft
+                  aria-hidden
+                  className="size-4 shrink-0 text-muted-foreground"
+                />
+              }
+              title="Draft PR"
+              caption="ready for your review"
+            />
+          </>
+        )}
       </Preview>
     );
   }
@@ -134,6 +159,7 @@ const STAGE_COPY: Record<string, { title: string; caption: string }> = {
   implement: { caption: "writes the code", title: "Implement" },
   plan: { caption: "writes the plan first", title: "Plan" },
   review: { caption: "checks the diff", title: "Review" },
+  verify: { caption: "tests the running app", title: "Verify in browser" },
 };
 
 const WORKER_EXAMPLE = [

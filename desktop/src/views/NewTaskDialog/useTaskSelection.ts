@@ -1,17 +1,29 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
+import { useRunnerStatus } from "@/hooks/useRunner";
 
 import type { TaskMode } from "../../components/TaskComposeBar";
 import { daemon } from "../../daemon";
 import type { AgentConfig, Snapshot, WorkflowMeta } from "../../protocol";
 
+/**
+ * The New Task dialog's project, harness, mode and workflow template, with
+ * the project's Factory defaults applied when Factory mode is chosen.
+ * @param props.defaultProject The project the dialog opens on.
+ * @param props.snapshot The daemon snapshot.
+ * @param props.initialMode The mode the dialog opens in.
+ * @returns The selection and its setters.
+ */
 export function useTaskSelection({
   defaultProject,
   snapshot,
+  initialMode = "single",
 }: {
   defaultProject: string | null;
   snapshot: Snapshot;
+  initialMode?: TaskMode;
 }) {
   const queryClient = useQueryClient();
 
@@ -23,7 +35,7 @@ export function useTaskSelection({
   const [project, setProject] = useState(defaultProject ?? firstProjectName);
   const [selectedAgent, setSelectedAgent] = useState(enabledAgents[0]?.id ?? "claude");
   const [configPicks, setConfigPicks] = useState<Record<string, string | undefined>>({});
-  const [mode, setMode] = useState<TaskMode>("single");
+  const [mode, setMode] = useState<TaskMode>(initialMode);
   const [workflow, setWorkflow] = useState<string | null>(null);
 
   const agent = enabledAgents.some((candidate) => candidate.id === selectedAgent)
@@ -40,6 +52,21 @@ export function useTaskSelection({
   });
   const workflows: WorkflowMeta[] = workflowsQuery.data ?? [];
   const selectedWorkflow = workflows.find((candidate) => candidate.id === workflow) ?? null;
+  const factorySettings = useRunnerStatus(project).data?.settings;
+
+  /** The template Factory mode starts on: the project's default, else the first valid one. */
+  const factoryDefault = (): WorkflowMeta | undefined =>
+    workflows.find((candidate) => candidate.valid && candidate.id === factorySettings?.workflow) ??
+    workflows.find((candidate) => candidate.valid);
+
+  // Opening straight into Factory mode waits for the templates to load.
+  useEffect(() => {
+    if (mode !== "factory" || workflow !== null || workflows.length === 0) return;
+    const first = factoryDefault();
+    if (first) setWorkflow(first.id);
+    else setMode("single");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when the list or mode changes
+  }, [mode, workflow, workflows]);
 
   const changeProject = (nextProject: string) => {
     setProject(nextProject);
@@ -47,7 +74,6 @@ export function useTaskSelection({
     // Realising you picked the wrong project must not cost you the harness,
     // the model picks or the prompt you already typed.
     setWorkflow(null);
-    setMode((current) => (current === "workflow" ? "single" : current));
   };
 
   const changeAgent = (nextAgent: string) => {
@@ -58,15 +84,17 @@ export function useTaskSelection({
 
   const changeWorkflow = (nextWorkflow: string | null) => {
     setWorkflow(nextWorkflow);
-    setMode(nextWorkflow ? "workflow" : "single");
+    setMode(nextWorkflow ? "factory" : "single");
   };
 
   const changeMode = (next: string) => {
-    if (next !== "single" && next !== "orchestrator" && next !== "workflow") return;
-    if (next === "workflow") {
-      const firstValidWorkflow = workflows.find((candidate) => candidate.valid);
-      if (!firstValidWorkflow) return;
-      setWorkflow((current) => current ?? firstValidWorkflow.id);
+    if (next !== "single" && next !== "orchestrator" && next !== "factory") return;
+    if (next === "factory") {
+      const first = factoryDefault();
+      if (!first) return;
+      setWorkflow((current) => current ?? first.id);
+      const lead = factorySettings?.agent;
+      if (lead && enabledAgents.some((candidate) => candidate.id === lead)) changeAgent(lead);
     } else {
       setWorkflow(null);
     }
@@ -102,6 +130,7 @@ export function useTaskSelection({
     configPicks,
     currentAgent,
     ejectWorkflow,
+    factorySettings,
     hasValidWorkflows,
     mode,
     probeLoading,

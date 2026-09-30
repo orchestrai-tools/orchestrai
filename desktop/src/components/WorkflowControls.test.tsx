@@ -52,8 +52,7 @@ describe("WorkflowControls", () => {
   it("shows the pipeline position and pauses a running stage", async () => {
     render(<WorkflowControls task={task({})} />);
     expect(screen.getByText("Review loop")).toBeInTheDocument();
-    expect(screen.getByText("reviewing")).toBeInTheDocument();
-    expect(screen.getByText("round 1/2")).toBeInTheDocument();
+    expect(screen.getByText("Reviewing · round 1/2")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /pause/i }));
     expect(workflowPause).toHaveBeenCalledWith("t_1");

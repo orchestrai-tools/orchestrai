@@ -55,6 +55,14 @@ const submission = (text: string): PromptSubmission => ({ attachments: [], text 
 describe("useWorkflowSend", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("never prompts a queued Factory task, which has no session yet", async () => {
+    const box = send({ ...task(null), status: "queued", tags: ["runner", "workflow:wf"] });
+    expect(box.isWorkflow).toBe(true);
+    expect(box.disabled).toBe(true);
+    await expect(box.send(submission("go"))).rejects.toThrow(/has not started yet/);
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("declines to handle a plain task so the caller prompts its session", async () => {
     const box = send(task(null));
     expect(box.isWorkflow).toBe(false);

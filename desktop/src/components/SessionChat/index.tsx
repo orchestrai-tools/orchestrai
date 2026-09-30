@@ -22,6 +22,7 @@ import { droppedFromFront } from "@/lib/transcriptKeys";
 
 import { daemon } from "../../daemon";
 import { useWorkflowSend } from "../../hooks/useWorkflowSend";
+import { isFactoryTask } from "../../lib/factory";
 import type {
   AgentConfig,
   CommandInfo,
@@ -35,6 +36,7 @@ import { AgentActivityIndicator } from "../AgentActivityIndicator";
 import { AgentConfigBar } from "../AgentConfigBar";
 import type { ComposerHandle } from "../Composer";
 import { Composer } from "../Composer";
+import { FactoryStrip } from "../FactoryStrip";
 import { WorkflowControls } from "../WorkflowControls";
 import {
   CHAT_DRAW_DISTANCE_PX,
@@ -366,6 +368,7 @@ export function SessionChat({
         </div>
       )}
       {!readOnly && <QueuedPromptsBar taskId={task.id} queued={task.queuedPrompts ?? []} />}
+      {isFactoryTask(task) && !readOnly && <FactoryStrip task={task} />}
       {task.workflowRun && !readOnly && <WorkflowControls task={task} />}
       {!readOnly && (
         <div>

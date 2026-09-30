@@ -43,7 +43,7 @@ function renderBar(props: Partial<Parameters<typeof TaskComposeBar>[0]> = {}) {
       ]}
       agent="claude"
       branch="main"
-      mode="workflow"
+      mode="factory"
       onAgentChange={vi.fn<(v: string) => void>()}
       onEjectWorkflow={onEjectWorkflow}
       onModeChange={onModeChange}
@@ -101,7 +101,7 @@ describe("TaskComposeBar — workflow picker", () => {
     expect(onWorkflowChange).not.toHaveBeenCalled();
   });
 
-  it("hides the picker outside workflow mode", () => {
+  it("hides the picker outside Factory mode", () => {
     renderBar({ mode: "single" });
     expect(screen.queryByRole("button", { name: "Pick a pipeline" })).not.toBeInTheDocument();
   });
@@ -114,7 +114,7 @@ describe("TaskComposeBar — execution mode", () => {
     renderBar({ mode: "orchestrator" });
     const group = screen.getByRole("radiogroup", { name: "Execution mode" });
     const modes = within(group).getAllByRole("radio");
-    expect(modes.map((m) => m.textContent)).toEqual(["Single", "Orchestrator", "Workflow"]);
+    expect(modes.map((m) => m.textContent)).toEqual(["Single", "Orchestrator", "Factory"]);
     // Exclusivity is structural now — picking one cannot leave another checked.
     expect(modes.filter((m) => m.getAttribute("aria-checked") === "true")).toHaveLength(1);
     expect(screen.getByRole("radio", { name: "Orchestrator" })).toBeChecked();
@@ -127,9 +127,9 @@ describe("TaskComposeBar — execution mode", () => {
     expect(onModeChange).toHaveBeenCalledWith("orchestrator");
   });
 
-  it("disables workflow mode when the project defines no valid pipeline", () => {
+  it("disables Factory mode when the project defines no valid pipeline", () => {
     renderBar({ mode: "single", workflows: [] });
-    expect(screen.getByRole("radio", { name: "Workflow" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Factory" })).toBeDisabled();
   });
 
   it("locks the worktree toggle for an orchestrator, which shares the checkout", () => {

@@ -329,17 +329,24 @@ async fn runner_enqueue_resolves_numbers_and_names_the_asking_task() {
         &daemon,
         "runner.enqueue",
         vec![json!({
-            "settings": { "running": false, "workflow": "review-loop", "maxConcurrent": 1,
-                          "maxOpenPrs": 3, "maxPerDay": 10 },
-            "entries": [{ "number": 5, "state": "queued", "title": "Item 5" },
-                        { "number": 3, "state": "queued", "title": "Item 3" }],
-            "dispatchedToday": 0,
-            "hold": "The Factory is paused"
+            "created": [{ "taskId": "t_5", "itemId": "b_5", "started": true }],
+            "skipped": [{ "itemId": "b_3", "number": 3,
+                          "reason": { "kind": "already_in_factory", "taskId": "t_3" } }],
+            "status": {
+                "settings": { "workflow": "review-loop", "maxConcurrent": 1,
+                              "maxOpenPrs": 3, "maxPerDay": 10 },
+                "entries": [{ "number": 5, "state": "running", "title": "Item 5", "taskId": "t_5" },
+                            { "number": 3, "state": "queued", "title": "Item 3", "taskId": "t_3",
+                              "wait": { "kind": "slots", "inUse": 1, "limit": 1 } }],
+                "dispatchedToday": 1,
+                "hold": { "kind": "slots", "inUse": 1, "limit": 1 }
+            }
         })],
     );
     let mut client = DaemonClient::new(Box::new(daemon.clone()));
     let params = json!({ "name": "runner_enqueue",
-                         "arguments": { "numbers": [5, 3], "run_location": "checkout" } });
+                         "arguments": { "numbers": [5, 3], "run_location": "checkout",
+                                        "pull_request": false, "workflow": "verify-review-loop" } });
     let text = handle_tool_call(&mut client, "t_chat", "demo", false, Some(&params))
         .await
         .unwrap();
@@ -348,12 +355,21 @@ async fn runner_enqueue_resolves_numbers_and_names_the_asking_task() {
     assert_eq!(sent["item_ids"], json!(["b_5", "b_3"]));
     assert_eq!(sent["origin_task"], "t_chat");
     assert_eq!(sent["run_location"], "checkout");
-    assert!(text.contains("Factory: paused"), "{text}");
-    assert!(text.contains("Waiting: The Factory is paused"), "{text}");
+    assert_eq!(sent["deliver"], false);
+    assert_eq!(sent["workflow"], "verify-review-loop");
     assert!(
-        text.contains("#5 [queued] Item 5\n#3 [queued] Item 3"),
+        text.contains("Created 1 Factory task(s): 1 started, 0 queued."),
         "{text}"
     );
+    assert!(
+        text.contains("Skipped #3: already in the Factory"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Queued tasks wait: waiting for a free slot (1 of 1 in use)"),
+        "{text}"
+    );
+    assert!(text.contains("#5 [running] Item 5 (task t_5)"), "{text}");
 }
 
 #[tokio::test]
@@ -362,7 +378,9 @@ async fn runner_status_lists_recent_runs_on_request() {
     script(
         &daemon,
         "runner.status",
-        vec![json!({ "settings": { "running": true }, "entries": [], "dispatchedToday": 1 })],
+        vec![
+            json!({ "settings": { "workflow": "review-loop" }, "entries": [], "dispatchedToday": 1 }),
+        ],
     );
     script(
         &daemon,
@@ -375,8 +393,11 @@ async fn runner_status_lists_recent_runs_on_request() {
     );
     let text = call_single(&daemon, "demo", "runner_status", json!({ "runs": true })).await;
 
-    assert!(text.contains("Factory: running"), "{text}");
-    assert!(text.contains("The queue is empty."), "{text}");
+    assert!(text.contains("Factory — workflow review-loop"), "{text}");
+    assert!(
+        text.contains("No Factory tasks are queued or running."),
+        "{text}"
+    );
     assert!(
         text.contains(
             "#4 Fix it — delivered, 2 review round(s), $1.50, https://github.com/o/r/pull/9"

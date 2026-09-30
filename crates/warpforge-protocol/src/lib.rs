@@ -54,6 +54,9 @@ pub use pulls::*;
 pub mod runner;
 pub use runner::*;
 
+pub mod runner_wait;
+pub use runner_wait::*;
+
 pub mod runtime;
 pub use runtime::*;
 

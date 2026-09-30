@@ -4,6 +4,7 @@ use warpforge_protocol as wire;
 
 use super::checkout::{GiveBack, ReturnPoint};
 use super::deliver::Delivery;
+use super::tasks::NewFactoryTask;
 
 type Reply<T> = oneshot::Sender<Result<T, String>>;
 
@@ -12,39 +13,58 @@ pub enum RunnerCommand {
         project: String,
         reply: Reply<wire::RunnerStatus>,
     },
+    /// One Factory task per backlog item, with one shared configuration.
     Enqueue {
         project: String,
         item_ids: Vec<String>,
-        workflow: Option<String>,
-        agent: Option<String>,
-        model: Option<String>,
-        run_location: wire::EntryRunLocation,
+        config: wire::FactoryConfig,
         origin_task: Option<String>,
-        reply: Reply<wire::RunnerStatus>,
+        reply: Reply<wire::EnqueueResult>,
     },
-    /// Change where a queued item will run.
-    SetLocation {
-        project: String,
-        item_id: String,
-        run_location: wire::EntryRunLocation,
-        reply: Reply<wire::RunnerStatus>,
+    /// A Factory task from the New Task dialog, with its own prompt.
+    CreateTask {
+        task: Box<NewFactoryTask>,
+        reply: Reply<wire::CreatedFactoryTask>,
     },
+    /// Cancel a queued task before it starts.
     Dequeue {
         project: String,
-        item_id: String,
+        task_id: String,
         reply: Reply<wire::RunnerStatus>,
     },
     Reorder {
         project: String,
-        item_ids: Vec<String>,
+        task_ids: Vec<String>,
         reply: Reply<wire::RunnerStatus>,
+    },
+    /// Start a queued task past the project's limits.
+    StartNow {
+        project: String,
+        task_id: String,
+        reply: Reply<wire::RunnerStatus>,
+    },
+    /// A new Factory task configured like a finished one.
+    Retry {
+        task_id: String,
+        reply: Reply<wire::EnqueueResult>,
+    },
+    /// Try again to give back a held project checkout.
+    RetryCheckout {
+        project: String,
+        reply: Reply<wire::RunnerStatus>,
+    },
+    /// The prompt body for a backlog item.
+    Brief {
+        project: String,
+        item_id: String,
+        reply: Reply<String>,
     },
     UpdateSettings {
         project: String,
         patch: wire::RunnerSettingsPatch,
         reply: Reply<wire::RunnerStatus>,
     },
-    /// Pause, and stop every pipeline in flight; their items are queued again.
+    /// Stop every running Factory task and remove the queued ones.
     Stop {
         project: String,
         reply: Reply<wire::RunnerStatus>,
@@ -61,7 +81,7 @@ pub enum RunnerCommand {
     /// The off-loop wrap-up of a finished pipeline: its cost, and for a
     /// successful one the delivery result.
     Finished {
-        item_id: String,
+        task_id: String,
         run_id: String,
         cost_usd: Option<f64>,
         delivery: Option<Delivery>,
@@ -70,13 +90,13 @@ pub enum RunnerCommand {
     CheckoutInspected {
         project: String,
         task_id: String,
-        result: Result<ReturnPoint, String>,
+        result: Result<ReturnPoint, wire::RunnerWait>,
     },
     /// The project checkout was switched to the task branch, or refused.
     CheckoutSwitched {
         project: String,
         task_id: String,
-        result: Result<String, String>,
+        result: Result<String, wire::RunnerWait>,
     },
     /// Giving the project checkout back after a checkout-mode run.
     CheckoutReturned {
