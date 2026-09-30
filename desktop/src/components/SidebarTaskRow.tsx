@@ -123,16 +123,21 @@ export const SidebarTaskRow = memo(function SidebarTaskRow({
                 that draws one. Its box is the glyph lane, so a glyphed title
                 lands on the project name's column. */}
             {meta.rowGlyph && (
-              <StateIcon
+              // WKWebView can stall a spin on a bare <svg> until something else
+              // repaints; an HTML box with its own layer keeps it on the compositor.
+              <span
                 aria-hidden
                 data-task-glyph={state}
                 style={{ height: LANE_GLYPH_PX, width: LANE_GLYPH_PX }}
                 className={cn(
-                  "shrink-0",
+                  "inline-flex shrink-0",
                   meta.toneClass,
-                  meta.live && "animate-[spin_3s_linear_infinite] motion-reduce:animate-none",
+                  meta.live &&
+                    "animate-[spin_3s_linear_infinite] will-change-transform motion-reduce:animate-none",
                 )}
-              />
+              >
+                <StateIcon className="size-full" />
+              </span>
             )}
             <span
               data-lane="title"

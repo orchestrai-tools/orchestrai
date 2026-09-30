@@ -530,6 +530,7 @@ describe("Sidebar status encoding", () => {
     const glyph = taskRows("run")[0].querySelector("[data-task-glyph]")!;
     expect(glyph.getAttribute("class")).toContain("text-ok");
     expect(glyph.getAttribute("class")).toContain("animate-");
+    expect(glyph.getAttribute("class")).toContain("will-change-transform");
   });
 
   it("lets snooze outrank the reported status without adding a glyph", () => {
