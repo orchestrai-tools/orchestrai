@@ -163,7 +163,7 @@ describe("NewTaskDialog in Factory mode", () => {
     expect(screen.getByText("Verify in browser")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Change where it runs" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "Background copy" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /^Background copy/ }));
     expect(screen.getByText(/stops at the test and waits for you/)).toBeInTheDocument();
 
     await startPrompt("Check the login flow");

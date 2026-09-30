@@ -17,6 +17,12 @@ export const LOCATION_LABEL: Record<EntryRunLocation, string> = {
   worktree: "Background copy",
 };
 
+export const LOCATION_HINT: Record<EntryRunLocation, string> = {
+  checkout: "Switches your checkout to a branch. One at a time; needed for browser checks",
+  default: "Your project folder when it tests the app, otherwise a background copy",
+  worktree: "A separate git worktree. Runs beside your work, several at once",
+};
+
 /**
  * Whether a task is a Factory task: one the Factory schedules, or a workflow
  * pipeline started on the spot (the former Workflow mode).

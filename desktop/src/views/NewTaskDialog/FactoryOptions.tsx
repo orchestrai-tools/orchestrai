@@ -7,7 +7,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LOCATION_LABEL } from "@/lib/factory";
+import { LOCATION_HINT, LOCATION_LABEL } from "@/lib/factory";
 import type { EntryRunLocation } from "@/protocol";
 
 import { ToggleChip } from "./chips";
@@ -34,14 +34,19 @@ export function FactoryLocationNote({ options }: { options: Options }) {
             Change
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-60">
+        <DropdownMenuContent align="start" className="w-72">
           <DropdownMenuRadioGroup
             value={options.location}
             onValueChange={(value) => options.setLocation(value as EntryRunLocation)}
           >
             {LOCATIONS.map((location) => (
-              <DropdownMenuRadioItem key={location} value={location}>
-                {LOCATION_LABEL[location]}
+              <DropdownMenuRadioItem key={location} value={location} className="items-start">
+                <span className="flex flex-col gap-0.5">
+                  <span>{LOCATION_LABEL[location]}</span>
+                  <span className="text-[11px] leading-snug text-muted-foreground">
+                    {LOCATION_HINT[location]}
+                  </span>
+                </span>
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>
