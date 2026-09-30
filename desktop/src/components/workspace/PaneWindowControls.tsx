@@ -1,4 +1,4 @@
-import { Minus, PanelLeftDashed, PanelRightDashed, Square } from "lucide-react";
+import { Maximize2, Minus, PanelLeftDashed, PanelRightDashed } from "lucide-react";
 
 import { FocusButton } from "./FocusButton";
 
@@ -42,7 +42,7 @@ export function PaneWindowControls({
   }
   return (
     <>
-      <FocusButton focused={false} icon={Square} label={expandLabel} onClick={onExpand} />
+      <FocusButton focused={false} icon={Maximize2} label={expandLabel} onClick={onExpand} />
       <FocusButton focused={false} icon={Minus} label={hideLabel} onClick={onHide} />
     </>
   );
