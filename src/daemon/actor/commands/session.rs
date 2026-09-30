@@ -70,6 +70,39 @@ impl Daemon {
                     }
                 }
             }
+            Command::SessionRemoveQueued {
+                task_id,
+                queued_id,
+                reply,
+            } => {
+                // The queue lives in the session driver, so it decides whether
+                // that message is still waiting. Off the loop, like interrupt.
+                match self.sessions.get(&task_id).cloned() {
+                    Some(handle) => {
+                        tokio::spawn(async move {
+                            let _ = reply.send(handle.remove_queued(queued_id).await);
+                        });
+                    }
+                    None => {
+                        let _ = reply.send(Err("this task has no running agent session".into()));
+                    }
+                }
+            }
+            Command::SessionEditQueued {
+                task_id,
+                queued_id,
+                text,
+                reply,
+            } => match self.sessions.get(&task_id).cloned() {
+                Some(handle) => {
+                    tokio::spawn(async move {
+                        let _ = reply.send(handle.edit_queued(queued_id, text).await);
+                    });
+                }
+                None => {
+                    let _ = reply.send(Err("this task has no running agent session".into()));
+                }
+            },
             Command::SessionPrompt {
                 task_id,
                 text,

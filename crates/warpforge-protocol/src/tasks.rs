@@ -111,6 +111,10 @@ pub struct QueuedPrompt {
     /// `user`, `automation` or `system` — who submitted it. Only `user`
     /// messages are folded together by `session.interrupt`.
     pub initiator: String,
+    /// Attachment metadata, shown read-only while the message waits. Editing
+    /// the text keeps them; they cannot be re-attached from here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<PromptAttachmentSummary>,
 }
 
 /// A task's lifecycle. Deliberately **not** an axis for derived facts: whether

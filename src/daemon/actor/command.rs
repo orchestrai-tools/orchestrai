@@ -740,6 +740,20 @@ pub enum Command {
         task_id: String,
         reply: oneshot::Sender<Result<(), String>>,
     },
+    /// Drop one message that is still waiting in a session's queue.
+    SessionRemoveQueued {
+        task_id: String,
+        queued_id: String,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    /// Replace the text of one message that is still waiting in a session's
+    /// queue, keeping its attachments.
+    SessionEditQueued {
+        task_id: String,
+        queued_id: String,
+        text: String,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
     /// Answer a permission request the agent raised.
     SessionPermission {
         task_id: String,

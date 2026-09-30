@@ -38,6 +38,44 @@ impl DaemonHandle {
             .unwrap_or_else(|_| Err("daemon dropped the interrupt request".into()))
     }
 
+    /// Drop one message still waiting behind a task's running turn. `Err` when
+    /// it was already sent or is no longer waiting.
+    pub async fn session_remove_queued(
+        &self,
+        task_id: &str,
+        queued_id: &str,
+    ) -> Result<(), String> {
+        let (tx, rx) = oneshot::channel();
+        self.send(Command::SessionRemoveQueued {
+            task_id: task_id.into(),
+            queued_id: queued_id.into(),
+            reply: tx,
+        })
+        .await;
+        rx.await
+            .unwrap_or_else(|_| Err("daemon dropped the remove request".into()))
+    }
+
+    /// Replace the text of one message still waiting behind a task's running
+    /// turn. `Err` when it was already sent or is no longer waiting.
+    pub async fn session_edit_queued(
+        &self,
+        task_id: &str,
+        queued_id: &str,
+        text: &str,
+    ) -> Result<(), String> {
+        let (tx, rx) = oneshot::channel();
+        self.send(Command::SessionEditQueued {
+            task_id: task_id.into(),
+            queued_id: queued_id.into(),
+            text: text.into(),
+            reply: tx,
+        })
+        .await;
+        rx.await
+            .unwrap_or_else(|_| Err("daemon dropped the edit request".into()))
+    }
+
     pub async fn list_sessions(&self, project: &str) -> Vec<wire::ExternalSession> {
         let (tx, rx) = oneshot::channel();
         self.send(Command::ListSessions {

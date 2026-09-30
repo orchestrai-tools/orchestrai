@@ -551,6 +551,20 @@ pub enum Method {
     /// empty queue, since the click has then lost a race with it draining.
     #[serde(rename = "session.interrupt")]
     SessionInterrupt { task_id: String },
+    /// Drop one message that is still waiting in the queue, before the agent
+    /// has been given it. Errors when that prompt was already sent or is no
+    /// longer there — the click lost a race with the queue draining.
+    #[serde(rename = "session.removeQueued")]
+    SessionRemoveQueued { task_id: String, queued_id: String },
+    /// Replace the text of one message still waiting in the queue, keeping its
+    /// attachments. Errors when that prompt was already sent or is no longer
+    /// there.
+    #[serde(rename = "session.editQueued")]
+    SessionEditQueued {
+        task_id: String,
+        queued_id: String,
+        text: String,
+    },
     /// Answer a permission request raised by the agent.
     #[serde(rename = "session.permission")]
     SessionPermission {

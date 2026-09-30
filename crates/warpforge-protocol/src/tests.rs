@@ -618,3 +618,45 @@ fn old_daemon_endpoint_defaults_to_external_and_unknown_protocol() {
     assert_eq!(endpoint.owner, DaemonOwner::External);
     assert_eq!((endpoint.exe, endpoint.started_at), (None, None));
 }
+
+#[test]
+fn session_remove_queued_roundtrip() {
+    let json: serde_json::Value = serde_json::from_str(
+        r#"{"id":9,"method":"session.removeQueued","params":{"task_id":"t1","queued_id":"q2"}}"#,
+    )
+    .unwrap();
+    let req: Request = serde_json::from_value(json).unwrap();
+    assert!(
+        matches!(req.method, Method::SessionRemoveQueued { task_id, queued_id } if task_id == "t1" && queued_id == "q2")
+    );
+}
+
+#[test]
+fn session_edit_queued_roundtrip() {
+    let json: serde_json::Value = serde_json::from_str(
+        r#"{"id":10,"method":"session.editQueued","params":{"task_id":"t1","queued_id":"q2","text":"go on"}}"#,
+    )
+    .unwrap();
+    let req: Request = serde_json::from_value(json).unwrap();
+    assert!(
+        matches!(req.method, Method::SessionEditQueued { task_id, queued_id, text } if task_id == "t1" && queued_id == "q2" && text == "go on")
+    );
+}
+
+#[test]
+fn queued_prompt_keeps_its_id_and_attachments_across_a_wire_roundtrip() {
+    // The id is what a client keys its queue on and what a later edit/remove
+    // names, so it has to survive serialization unchanged.
+    let original = QueuedPrompt {
+        id: "q7".into(),
+        text: "rebase onto main".into(),
+        initiator: "user".into(),
+        attachments: vec![PromptAttachmentSummary::File {
+            path: "src/main.rs".into(),
+        }],
+    };
+    let json = serde_json::to_string(&original).unwrap();
+    let back: QueuedPrompt = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, original);
+    assert_eq!(back.id, "q7");
+}

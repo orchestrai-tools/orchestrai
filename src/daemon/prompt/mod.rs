@@ -108,6 +108,18 @@ impl PreparedPrompt {
         merged.text = texts.join("\n\n");
         merged
     }
+
+    /// Replace what the submitter typed, keeping every attachment block. The
+    /// text block always leads the content, so dropping the old one and
+    /// re-inserting keeps the order the preparer built.
+    pub fn set_text(&mut self, text: String) {
+        self.content
+            .retain(|block| !matches!(block, PromptContent::Text(_)));
+        if !text.is_empty() {
+            self.content.insert(0, PromptContent::Text(text.clone()));
+        }
+        self.text = text;
+    }
 }
 
 /// Running totals shared by the per-attachment preparers, so one budget

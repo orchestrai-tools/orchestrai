@@ -167,6 +167,19 @@ pub enum AcpCommand {
         /// for nothing.
         reply: oneshot::Sender<Result<(), String>>,
     },
+    /// Drop one still-waiting message. `Err` when it is not in the queue any
+    /// more — it was already dispatched, or never existed.
+    RemoveQueued {
+        id: String,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    /// Replace the text of one still-waiting message, keeping its attachments.
+    /// `Err` when it is not in the queue any more.
+    EditQueued {
+        id: String,
+        text: String,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
     AnswerPermission {
         request_id: String,
         outcome: String,

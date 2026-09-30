@@ -135,6 +135,8 @@ pub(super) async fn dispatch(
         TaskResume { project, agent, session_id, title, } => tasks::task_resume(handle, project, agent, session_id, title).await,
         SessionPrompt { task_id, text, attachments, } => sessions::session_prompt(handle, task_id, text, attachments).await,
         SessionInterrupt { task_id } => sessions::session_interrupt(handle, task_id).await,
+        SessionRemoveQueued { task_id, queued_id } => sessions::session_remove_queued(handle, task_id, queued_id).await,
+        SessionEditQueued { task_id, queued_id, text } => sessions::session_edit_queued(handle, task_id, queued_id, text).await,
         SessionSetConfigOption { task_id, config_id, value, } => sessions::session_set_config_option(handle, task_id, config_id, value).await,
         SessionPermission { task_id, request_id, outcome, } => sessions::session_permission(handle, task_id, request_id, outcome).await,
         PortForwardStop { project, name } => runtime::port_forward_stop(handle, project, name).await,

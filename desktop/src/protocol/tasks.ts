@@ -85,6 +85,9 @@ export interface QueuedPrompt {
   /** Who submitted it. Only `user` messages are folded together by
    *  `session.interrupt`. */
   initiator: "user" | "automation" | "system";
+  /** Attachment metadata, shown read-only while the message waits. Editing
+   *  the text keeps them; they cannot be re-attached from here. */
+  attachments?: PromptAttachmentSummary[];
 }
 
 export type ToolCallStatus = "pending" | "in_progress" | "completed" | "failed";

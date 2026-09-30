@@ -7,6 +7,7 @@
 //! read a spurious `TurnEnded` as the task finishing. `mock-acp-interrupt.mjs`
 //! holds one turn open until it is cancelled, for the force-send tests.
 
+mod editing;
 mod force_send;
 mod queueing;
 
@@ -150,6 +151,17 @@ async fn queued_texts(daemon: &DaemonHandle, task_id: &str) -> Vec<String> {
                 .map(|queued| queued.text.clone())
                 .collect()
         })
+        .unwrap_or_default()
+}
+
+/// Every waiting entry, ids included, in the order the agent will get them.
+async fn queued_entries(daemon: &DaemonHandle, task_id: &str) -> Vec<wire::QueuedPrompt> {
+    daemon
+        .tasks()
+        .await
+        .iter()
+        .find(|t| t.id == task_id)
+        .map(|t| t.queued_prompts.clone())
         .unwrap_or_default()
 }
 

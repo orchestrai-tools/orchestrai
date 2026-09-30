@@ -22,6 +22,11 @@ use super::{permissions, Session};
 /// agent that ignores `session/cancel` would swallow every queued message.
 const INTERRUPT_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// The refusal for an edit/remove that lost a race with the queue draining.
+/// The client shows it as "Already sent": the message is no longer a queue
+/// entry, so there is nothing left to change.
+const GONE_ALREADY_SENT: &str = "that message was already sent";
+
 /// The single outstanding turn.
 struct Active {
     handle: JoinHandle<()>,
@@ -48,6 +53,7 @@ impl Queued {
                 TurnInitiator::System => "system",
             }
             .into(),
+            attachments: self.prompt.summaries.clone(),
         }
     }
 }
@@ -220,6 +226,27 @@ pub(super) async fn run(
                     };
                     let _ = reply.send(verdict);
                 }
+                // Drop or rewrite one message that is still waiting. A
+                // force-sent batch counts as waiting until its turn starts, so
+                // it can be edited too; once dispatched, the entry is gone and
+                // the refusal tells the client it was already sent.
+                Some(AcpCommand::RemoveQueued { id, reply }) => {
+                    let verdict = match take_queued(&mut batched, &mut queued, &id) {
+                        Some(_) => Ok(()),
+                        None => Err(GONE_ALREADY_SENT.into()),
+                    };
+                    let _ = reply.send(verdict);
+                }
+                Some(AcpCommand::EditQueued { id, text, reply }) => {
+                    let verdict = match find_queued(&mut batched, &mut queued, &id) {
+                        Some(entry) => {
+                            entry.prompt.set_text(text);
+                            Ok(())
+                        }
+                        None => Err(GONE_ALREADY_SENT.into()),
+                    };
+                    let _ = reply.send(verdict);
+                }
                 Some(AcpCommand::AnswerPermission {
                     request_id,
                     outcome,
@@ -336,4 +363,32 @@ pub(super) async fn run(
     if !announced.is_empty() {
         update(AcpUpdate::QueueChanged { queued: Vec::new() });
     }
+}
+
+/// Borrow one waiting entry by id. A force-sent batch is still waiting, so it
+/// is searched too; the queue proper holds the rest.
+fn find_queued<'a>(
+    batched: &'a mut [Queued],
+    queued: &'a mut VecDeque<Queued>,
+    id: &str,
+) -> Option<&'a mut Queued> {
+    if let Some(entry) = batched.iter_mut().find(|entry| entry.id == id) {
+        return Some(entry);
+    }
+    queued.iter_mut().find(|entry| entry.id == id)
+}
+
+/// Remove and hand back one waiting entry by id, from wherever it waits.
+fn take_queued(
+    batched: &mut Vec<Queued>,
+    queued: &mut VecDeque<Queued>,
+    id: &str,
+) -> Option<Queued> {
+    if let Some(index) = batched.iter().position(|entry| entry.id == id) {
+        return Some(batched.remove(index));
+    }
+    if let Some(index) = queued.iter().position(|entry| entry.id == id) {
+        return queued.remove(index);
+    }
+    None
 }

@@ -44,6 +44,37 @@ pub(super) async fn session_interrupt(
         })
 }
 
+pub(super) async fn session_remove_queued(
+    handle: &DaemonHandle,
+    task_id: String,
+    queued_id: String,
+) -> Result<serde_json::Value, wire::RpcError> {
+    handle
+        .session_remove_queued(&task_id, &queued_id)
+        .await
+        .map(|()| json!(null))
+        .map_err(|message| wire::RpcError {
+            code: wire::ErrorCode::InvalidRequest,
+            message,
+        })
+}
+
+pub(super) async fn session_edit_queued(
+    handle: &DaemonHandle,
+    task_id: String,
+    queued_id: String,
+    text: String,
+) -> Result<serde_json::Value, wire::RpcError> {
+    handle
+        .session_edit_queued(&task_id, &queued_id, &text)
+        .await
+        .map(|()| json!(null))
+        .map_err(|message| wire::RpcError {
+            code: wire::ErrorCode::InvalidRequest,
+            message,
+        })
+}
+
 pub(super) async fn session_set_config_option(
     handle: &DaemonHandle,
     task_id: String,

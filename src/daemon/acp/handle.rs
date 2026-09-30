@@ -44,6 +44,40 @@ impl AcpHandle {
         rx.await
             .unwrap_or_else(|_| Err("agent session is no longer running".into()))
     }
+    /// Drop one message still waiting behind the running turn. `Err` when it is
+    /// no longer waiting — already dispatched, or never was.
+    pub async fn remove_queued(&self, id: String) -> Result<(), String> {
+        let (tx, rx) = oneshot::channel();
+        if self
+            .cmd_tx
+            .send(AcpCommand::RemoveQueued { id, reply: tx })
+            .is_err()
+        {
+            return Err("agent session is no longer running".into());
+        }
+        rx.await
+            .unwrap_or_else(|_| Err("agent session is no longer running".into()))
+    }
+
+    /// Replace the text of one message still waiting behind the running turn.
+    /// `Err` when it is no longer waiting — already dispatched, or never was.
+    pub async fn edit_queued(&self, id: String, text: String) -> Result<(), String> {
+        let (tx, rx) = oneshot::channel();
+        if self
+            .cmd_tx
+            .send(AcpCommand::EditQueued {
+                id,
+                text,
+                reply: tx,
+            })
+            .is_err()
+        {
+            return Err("agent session is no longer running".into());
+        }
+        rx.await
+            .unwrap_or_else(|_| Err("agent session is no longer running".into()))
+    }
+
     pub fn answer(&self, request_id: String, outcome: String) {
         let _ = self.cmd_tx.send(AcpCommand::AnswerPermission {
             request_id,

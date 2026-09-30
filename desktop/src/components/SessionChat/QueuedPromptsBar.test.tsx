@@ -1,16 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { QueuedPrompt } from "@/protocol";
 
-const { request, toastError } = vi.hoisted(() => ({
+const { request, toastError, toastSuccess } = vi.hoisted(() => ({
   request: vi.fn<(method: string, params: unknown) => Promise<unknown>>(),
   toastError: vi.fn<(message: string) => void>(),
+  toastSuccess: vi.fn<(message: string, options?: unknown) => void>(),
 }));
 vi.mock("@/daemon", () => ({ daemon: { request } }));
 vi.mock("../../daemon", () => ({ daemon: { request } }));
-vi.mock("sonner", () => ({ toast: { error: toastError } }));
+vi.mock("sonner", () => ({ toast: { error: toastError, success: toastSuccess } }));
 
 import { QueuedPromptsBar } from "./QueuedPromptsBar";
 
@@ -19,6 +20,15 @@ const waiting = (id: string, text: string, initiator: QueuedPrompt["initiator"] 
   initiator,
   text,
 });
+
+/** Run the Undo action attached to the "removed" toast. */
+function clickUndo() {
+  const calls = toastSuccess.mock.calls;
+  const options = calls[calls.length - 1]?.[1] as
+    | { action?: { onClick?: () => void } }
+    | undefined;
+  options?.action?.onClick?.();
+}
 
 describe("QueuedPromptsBar", () => {
   beforeEach(() => {
@@ -59,5 +69,100 @@ describe("QueuedPromptsBar", () => {
     render(<QueuedPromptsBar taskId="t1" queued={[waiting("q1", "a")]} />);
     await userEvent.click(screen.getByRole("button", { name: "Send now" }));
     expect(toastError).toHaveBeenCalledWith("nothing is waiting to be sent");
+  });
+
+  it("removes a waiting message and offers an undo", async () => {
+    render(<QueuedPromptsBar taskId="t1" queued={[waiting("q1", "rebase onto main")]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Remove queued message" }));
+    expect(request).toHaveBeenCalledWith("session.removeQueued", {
+      task_id: "t1",
+      queued_id: "q1",
+    });
+    expect(toastSuccess).toHaveBeenCalledWith(
+      "Queued message removed",
+      expect.objectContaining({ action: expect.anything() }),
+    );
+  });
+
+  it("puts the message back at the end when the removal is undone", async () => {
+    render(<QueuedPromptsBar taskId="t1" queued={[waiting("q1", "rebase onto main")]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Remove queued message" }));
+    request.mockClear();
+    clickUndo();
+    expect(request).toHaveBeenCalledWith("session.prompt", {
+      task_id: "t1",
+      text: "rebase onto main",
+      attachments: [],
+    });
+  });
+
+  it("reports an already-sent message on remove instead of a removal toast", async () => {
+    request.mockRejectedValue(new Error("that message was already sent"));
+    render(<QueuedPromptsBar taskId="t1" queued={[waiting("q1", "a")]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Remove queued message" }));
+    expect(toastError).toHaveBeenCalledWith("Already sent");
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("edits a waiting message and saves the new text", async () => {
+    render(<QueuedPromptsBar taskId="t1" queued={[waiting("q1", "rebase onto main")]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit queued message" }));
+    const editor = screen.getByRole("textbox");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "rebase onto release");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(request).toHaveBeenCalledWith("session.editQueued", {
+      task_id: "t1",
+      queued_id: "q1",
+      text: "rebase onto release",
+    });
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("saves the edit with the keyboard shortcut", async () => {
+    render(<QueuedPromptsBar taskId="t1" queued={[waiting("q1", "rebase onto main")]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit queued message" }));
+    const editor = screen.getByRole("textbox");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "rebase onto release");
+    fireEvent.keyDown(editor, { key: "Enter", metaKey: true });
+    expect(request).toHaveBeenCalledWith("session.editQueued", {
+      task_id: "t1",
+      queued_id: "q1",
+      text: "rebase onto release",
+    });
+  });
+
+  it("cancels an edit with Escape without saving", async () => {
+    render(<QueuedPromptsBar taskId="t1" queued={[waiting("q1", "rebase onto main")]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit queued message" }));
+    const editor = screen.getByRole("textbox");
+    fireEvent.keyDown(editor, { key: "Escape" });
+    expect(request).not.toHaveBeenCalledWith("session.editQueued", expect.anything());
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByText("rebase onto main")).toBeInTheDocument();
+  });
+
+  it("reports an already-sent message on save", async () => {
+    request.mockRejectedValue(new Error("that message was already sent"));
+    render(<QueuedPromptsBar taskId="t1" queued={[waiting("q1", "a")]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit queued message" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(toastError).toHaveBeenCalledWith("Already sent");
+  });
+
+  it("shows attachments on a waiting message read-only", () => {
+    render(
+      <QueuedPromptsBar
+        taskId="t1"
+        queued={[
+          {
+            ...waiting("q1", "see attached"),
+            attachments: [{ type: "file", path: "src/main.rs" }],
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("src/main.rs")).toBeInTheDocument();
   });
 });
