@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+
+import type { BacklogView } from "./migrate-warpforge";
 import {
   fileTaskId,
   persistedShell,
@@ -6,7 +8,6 @@ import {
   type ShellState,
   cycleOpenProject,
 } from "./shell-store";
-import type { BacklogView } from "./migrate-warpforge";
 
 const backlog: BacklogView = {
   search: "columns",
@@ -75,6 +76,19 @@ describe("persistedShell", () => {
 });
 
 describe("releaseProject", () => {
+  it("keeps Home selected when a background project tab is closed", () => {
+    useShell.setState({
+      home: true,
+      project: "demo",
+      openProjects: ["demo", "other"],
+      taskId: null,
+    });
+    useShell.getState().closeProject("demo");
+    expect(useShell.getState().home).toBe(true);
+    expect(useShell.getState().project).toBe("other");
+    expect(useShell.getState().openProjects).toEqual(["other"]);
+  });
+
   it("drops the removed project's pages and leaves the next project", () => {
     const values = new Map<string, string>();
     Object.defineProperty(globalThis, "localStorage", {

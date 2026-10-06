@@ -21,9 +21,15 @@ export function PageToolbar({
     <div className={cn("flex min-h-9 flex-wrap items-center gap-x-4 gap-y-2", className)}>
       <div className="flex min-w-0 items-baseline gap-2">
         <h1 className="truncate text-base font-semibold">{title}</h1>
-        {meta != null && meta !== false && <span className="text-xs text-muted-foreground">{meta}</span>}
+        {meta != null && meta !== false && (
+          <span className="text-xs text-muted-foreground">{meta}</span>
+        )}
       </div>
-      {children && <div className="ml-auto flex items-center gap-2">{children}</div>}
+      {children && (
+        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import type { ProjectInfo } from "@warpforge/protocol";
 import { cn } from "@warpforge/ui/lib/utils";
 import { SearchIcon } from "lucide-react";
 import { useState, type ComponentType } from "react";
+
 import { PageToolbar, SectionLabel } from "../components/common/page-toolbar";
 import { useShell } from "../lib/shell-store";
 import { useDaemon } from "../lib/use-daemon";
@@ -119,7 +120,7 @@ function NavList({
   onPick: (id: SectionId) => void;
 }) {
   return (
-    <ul className="flex flex-col gap-px">
+    <ul className="flex flex-wrap gap-px md:flex-col">
       {items.map((entry) => (
         <li key={entry.id}>
           <button
@@ -182,8 +183,11 @@ export function Settings() {
         </PageToolbar>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[13rem_minmax(0,1fr)] border-t">
-        <nav aria-label="Settings sections" className="min-h-0 overflow-y-auto border-r px-2 py-3">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,10rem)_minmax(0,1fr)] border-t md:grid-cols-[13rem_minmax(0,1fr)] md:grid-rows-1">
+        <nav
+          aria-label="Settings sections"
+          className="min-h-0 overflow-y-auto border-b px-2 py-3 md:border-r md:border-b-0"
+        >
           {project && projectItems.length > 0 && (
             <>
               <div className="px-2 pb-1">
@@ -214,7 +218,7 @@ export function Settings() {
 
         <div className="min-h-0 overflow-y-auto">
           {active && (
-            <div className="px-6 py-5">
+            <div className="px-4 py-5 md:px-6">
               {/* Project sections are only listed while a project is open. */}
               <active.Component key={`${key}/${active.id}`} project={project as ProjectInfo} />
             </div>

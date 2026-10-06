@@ -1,5 +1,6 @@
 import { daemon } from "@warpforge/daemon";
 import { Kbd } from "@warpforge/ui/components/kbd";
+import { useSidebar } from "@warpforge/ui/components/sidebar";
 import { cn } from "@warpforge/ui/lib/utils";
 import {
   ArrowUpCircleIcon,
@@ -8,11 +9,13 @@ import {
   SearchIcon,
   WifiOffIcon,
 } from "lucide-react";
+import { useEffect } from "react";
+
 import { openSettingsAt, toggleSidebar } from "../lib/actions";
 import { gitActivityLabel, useGitActivity } from "../lib/git-activity";
 import { plural } from "../lib/plural";
-import { useToolUpdateCounts } from "../lib/tool-updates";
 import { useShell } from "../lib/shell-store";
+import { useToolUpdateCounts } from "../lib/tool-updates";
 import { useDaemon } from "../lib/use-daemon";
 import { useProjectMarks } from "./project-marks";
 import { ProjectSwitcher } from "./project-switcher";
@@ -32,10 +35,10 @@ function ToolUpdatesChip() {
       type="button"
       onClick={() => openSettingsAt(updates.agents > 0 ? "agents" : "integrations")}
       title={`Updates available: ${parts.join(", ")}`}
-      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-amber-700 hover:bg-foreground/5 dark:text-amber-300"
+      className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-amber-700 hover:bg-foreground/5 dark:text-amber-300"
     >
       <ArrowUpCircleIcon className="size-3.5" />
-      <span className="tabular-nums">{plural(updates.total, "update")}</span>
+      <span className="hidden tabular-nums sm:inline">{plural(updates.total, "update")}</span>
     </button>
   );
 }
@@ -58,7 +61,7 @@ function TitleBarStatus() {
   };
 
   return (
-    <div className="ml-auto flex items-center gap-1.5" data-tauri-drag-region>
+    <div className="ml-auto flex shrink-0 items-center gap-1.5" data-tauri-drag-region>
       {activity && (
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <LoaderIcon className="size-3 animate-spin" />
@@ -104,7 +107,18 @@ function TitleBarStatus() {
 }
 
 function SidebarToggle() {
-  const open = useShell((state) => state.sidebar);
+  const { isMobile, openMobile, setOpenMobile } = useSidebar();
+  const desktopOpen = useShell((state) => state.sidebar);
+  const route = useShell(
+    (state) => `${state.home}:${state.project}:${state.pages[state.project ?? ""]}`,
+  );
+  useEffect(() => {
+    const toggle = () => setOpenMobile(!openMobile);
+    window.addEventListener("orc:toggle-mobile-sidebar", toggle);
+    return () => window.removeEventListener("orc:toggle-mobile-sidebar", toggle);
+  }, [openMobile, setOpenMobile]);
+  useEffect(() => setOpenMobile(false), [route, setOpenMobile]);
+  const open = isMobile ? openMobile : desktopOpen;
   return (
     <button
       type="button"
@@ -129,9 +143,12 @@ export function TitleBar({ className }: { className?: string }) {
     <div
       data-region="title-bar"
       data-tauri-drag-region
-      className={cn("flex h-10 shrink-0 items-stretch gap-3 border-b bg-muted pr-2 select-none", className)}
+      className={cn(
+        "flex h-10 shrink-0 items-stretch gap-1 border-b bg-muted sm:gap-3 pr-2 select-none",
+        className,
+      )}
     >
-      <div aria-hidden className="w-[70px] shrink-0" data-tauri-drag-region />
+      <div aria-hidden className="hidden w-[70px] shrink-0 sm:block" data-tauri-drag-region />
       <div className="-mx-1 flex items-center">
         <SidebarToggle />
       </div>

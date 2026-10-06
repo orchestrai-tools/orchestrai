@@ -10,6 +10,7 @@ import {
 import { cn } from "@warpforge/ui/lib/utils";
 import { HouseIcon, PlusIcon, XIcon } from "lucide-react";
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
+
 import { useShell } from "../lib/shell-store";
 import { ProjectBadge, ProjectStatus } from "./project-badge";
 import { useProjectMarks } from "./project-marks";
@@ -108,15 +109,21 @@ export function ProjectTabs() {
   };
 
   return (
-    <div className="flex min-w-0 items-stretch gap-1">
+    <div className="flex min-w-0 flex-1 items-stretch gap-1">
       <div
         ref={list}
         role="tablist"
         aria-label="Projects"
         onKeyDown={onKeyDown}
-        className="flex min-w-0 items-stretch"
+        className="flex min-w-0 items-stretch overflow-x-auto"
       >
-        <Tab tabKey={HOME} active={activeKey === HOME} divider={false} onSelect={shell.openHome} className="shrink-0">
+        <Tab
+          tabKey={HOME}
+          active={activeKey === HOME}
+          divider={false}
+          onSelect={shell.openHome}
+          className="shrink-0"
+        >
           <HouseIcon className="size-3.5" />
           <span className={cn(activeKey === HOME && "font-medium")}>Home</span>
           {waiting > 0 && (
@@ -141,7 +148,7 @@ export function ProjectTabs() {
                   divider={!active && keys[index] !== activeKey}
                   onSelect={() => shell.openProject(name)}
                   onClose={() => shell.closeProject(name)}
-                  className="@container w-56 min-w-24"
+                  className="@container w-56 min-w-24 shrink-0"
                 >
                   <ProjectBadge name={name} />
                   <span className={cn("truncate", active && "font-medium")}>{name}</span>
@@ -153,7 +160,9 @@ export function ProjectTabs() {
                   Open
                   <ContextMenuShortcut>⌃{index + 2}</ContextMenuShortcut>
                 </ContextMenuItem>
-                <ContextMenuItem onSelect={() => shell.closeProject(name)}>Close tab</ContextMenuItem>
+                <ContextMenuItem onSelect={() => shell.closeProject(name)}>
+                  Close tab
+                </ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem variant="destructive" onSelect={() => requestRemoveProject(name)}>
                   Remove project…

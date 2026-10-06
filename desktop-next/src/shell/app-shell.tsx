@@ -92,7 +92,6 @@ export function AppShell({ page, children }: { page: ReactNode; children?: React
   return (
     <TooltipProvider delayDuration={400}>
       <div className="flex h-svh flex-col overflow-hidden">
-        {!shell.focus && <TitleBar />}
         <SidebarProvider
           open={shell.sidebar}
           onOpenChange={(open) => useShell.setState({ sidebar: open })}
@@ -105,6 +104,7 @@ export function AppShell({ page, children }: { page: ReactNode; children?: React
             } as CSSProperties
           }
         >
+          {!shell.focus && <TitleBar />}
           <LayoutContextMenu>
             <div className="flex min-h-0 flex-1 flex-col">
               {home ? (

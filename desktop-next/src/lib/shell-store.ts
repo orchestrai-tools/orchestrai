@@ -1,9 +1,10 @@
 import type { TaskInfo } from "@warpforge/protocol";
-import { nextPinnedIds } from "./pin-group";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+
 import type { PageId } from "../model/pages";
 import type { BacklogView, InboxFilters } from "./migrate-warpforge";
+import { nextPinnedIds } from "./pin-group";
 import { repoTarget, type RepoTarget } from "./repo-target";
 
 export type InspectorId = "details" | "changes" | "checks" | "context" | "activity";
@@ -157,7 +158,7 @@ export const useShell = create<ShellState>()(
         set({
           openProjects: open,
           project,
-          home: project == null,
+          home: current.home || project == null,
           taskId: leaving ? null : current.taskId,
         });
       },

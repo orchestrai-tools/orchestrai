@@ -1,10 +1,11 @@
 import { toast } from "sonner";
+
 import { openSettingsSection, type SectionId } from "../pages/settings/nav-store";
 import { useAppearance } from "./appearance";
 import { openComposerAttach } from "./composer-commands";
 import { newChat } from "./quick-chat";
-import type { PaletteAction } from "./task-palette";
 import { useShell, type ShellState } from "./shell-store";
+import type { PaletteAction } from "./task-palette";
 import { requestQuit } from "./use-quit";
 
 /** One list for the palette and the shortcuts. */
@@ -44,7 +45,11 @@ export function openActionsPalette(): void {
 }
 
 export function toggleSidebar(): void {
-  useShell.getState().toggle("sidebar");
+  if (window.matchMedia("(max-width: 767px)").matches) {
+    window.dispatchEvent(new Event("orc:toggle-mobile-sidebar"));
+  } else {
+    useShell.getState().toggle("sidebar");
+  }
 }
 
 export function toggleFocus(): void {
