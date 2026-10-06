@@ -1,4 +1,5 @@
 import type { TaskInfo } from "@warpforge/protocol";
+
 import type { TokenEstimate } from "./tokenEstimate";
 
 /** How the old conversation reaches the new session. */
@@ -37,7 +38,7 @@ export function buildHandoffSeed(task: TaskInfo, document: string): string {
     : `This work runs in the main ${task.project} checkout.`;
 
   return [
-    `Continue the work described below. It comes from Warpforge task ${task.id}, whose session could not be carried over, so this handoff document is the only context you have.`,
+    `Continue the work described below. It comes from task ${task.id}, whose session could not be carried over, so this handoff document is the only context you have.`,
     `Original request: ${task.prompt}`,
     workspace,
     "Read the relevant files before changing anything — the document summarises the conversation, not the current state of the tree.",

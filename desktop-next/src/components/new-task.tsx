@@ -23,12 +23,13 @@ import { Textarea } from "@warpforge/ui/components/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@warpforge/ui/components/toggle-group";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
+
 import { linkedWorkItem, runPlace, useTaskDraft, type DraftWorkItem } from "../lib/new-task";
 import { useShell } from "../lib/shell-store";
 import { useDaemon } from "../lib/use-daemon";
 import { SelectMenu } from "./common/select-menu";
-import { FactoryFields } from "./new-task/factory-fields";
 import type { BatchScope } from "./new-task/factory-batch";
+import { FactoryFields } from "./new-task/factory-fields";
 import { runPreview } from "./new-task/run-preview";
 import { ContinueSessions } from "./new-task/sessions";
 import { SingleFields } from "./new-task/single-fields";
@@ -55,7 +56,7 @@ export function NewTaskDialog() {
   const shell = useShell();
   const state = useDaemon();
   const [prompt, setPrompt] = useState("");
-  const [agent, setAgent] = useState("claude");
+  const [preferredAgent, setAgent] = useState("claude");
   const [mode, setMode] = useState<Mode>("single");
   const [base, setBase] = useState("");
   const [shareServices, setShareServices] = useState(true);
@@ -83,6 +84,7 @@ export function NewTaskDialog() {
   const worktree = shell.newTaskWorktree;
   const enabled = (state.snapshot.agents ?? []).filter((item) => item.enabled);
   const agents = enabled.length > 0 ? enabled : FALLBACK_AGENTS;
+  const agent = agents.some((item) => item.id === preferredAgent) ? preferredAgent : agents[0].id;
   const models = enabled.find((item) => item.id === agent)?.models ?? [];
   const running = state.snapshot.services.filter(
     (service) =>

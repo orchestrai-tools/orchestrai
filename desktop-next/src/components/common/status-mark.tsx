@@ -1,11 +1,13 @@
+import { isSettledTask } from "@warpforge/core/taskShelf";
 import type { TaskInfo } from "@warpforge/protocol";
 import { cn } from "@warpforge/ui/lib/utils";
-import { isSettledTask } from "@warpforge/core/taskShelf";
+
 import { isChat } from "../../model/chat";
 import { needsPerson } from "../../model/tasks";
 
 export type RunStatus =
   | "running"
+  | "waiting"
   | "needs-you"
   | "stopped"
   | "failed"
@@ -16,6 +18,7 @@ export type RunStatus =
 
 const TONE: Record<RunStatus, string> = {
   running: "bg-emerald-500",
+  waiting: "bg-muted-foreground/40",
   "needs-you": "bg-amber-500",
   stopped: "bg-amber-500",
   failed: "bg-red-500",
@@ -27,6 +30,7 @@ const TONE: Record<RunStatus, string> = {
 
 export const STATUS_LABEL: Record<RunStatus, string> = {
   running: "Running",
+  waiting: "Waiting",
   "needs-you": "Needs you",
   stopped: "Stopped",
   failed: "Failed",
@@ -49,7 +53,7 @@ export function runStatus(task: TaskInfo, hasPullRequest = false): RunStatus {
   if (isSettledTask(task)) return "done";
   if (task.workflowRun?.stage === "review" || hasPullRequest) return "review";
   if (task.status === "queued") return "queued";
-  return "running";
+  return task.status === "waiting" ? "waiting" : "running";
 }
 
 /** A dot is often enough; the label is there for anyone who needs words. */
@@ -70,7 +74,9 @@ export function StatusDot({ status, className }: { status: RunStatus; className?
 
 export function StatusMark({ status, className }: { status: RunStatus; className?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-xs text-muted-foreground", className)}>
+    <span
+      className={cn("inline-flex items-center gap-1.5 text-xs text-muted-foreground", className)}
+    >
       <StatusDot status={status} />
       {STATUS_LABEL[status]}
     </span>

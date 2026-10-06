@@ -71,7 +71,7 @@ export function buildConversationBranchPrompt(
       : "";
 
   return [
-    `Continue a branched conversation from Warpforge task ${task.id}.`,
+    `Continue a branched conversation from task ${task.id}.`,
     `Original task: ${task.prompt}`,
     workspace,
     ...(files ? [files] : []),

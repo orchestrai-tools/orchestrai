@@ -10,7 +10,7 @@ export type ColumnId = "needs-you" | "running" | "review" | "done";
 
 export const COLUMNS: { id: ColumnId; title: string }[] = [
   { id: "needs-you", title: "Needs you" },
-  { id: "running", title: "Running" },
+  { id: "running", title: "Active" },
   { id: "review", title: "In review" },
   { id: "done", title: "Done" },
 ];

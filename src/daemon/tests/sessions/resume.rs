@@ -68,9 +68,11 @@ async fn stale_handle_prompt_triggers_resume() {
 
     daemon.shutdown().await;
     let store = Store::open_at(&db_path).unwrap();
-    let user_messages = store
-        .load_session_updates(&task_id)
-        .unwrap()
+    let updates = store.load_session_updates(&task_id).unwrap();
+    assert!(!updates.iter().any(|update| matches!(update,
+        warpforge_protocol::SessionUpdate::AgentText { text } if text.contains("Reconnecting to the saved agent session"))),
+        "connection progress must not become agent-authored transcript text");
+    let user_messages = updates
         .into_iter()
         .filter(|update| matches!(update, warpforge_protocol::SessionUpdate::UserMessage { text, .. } if text == "follow up after recovery"))
         .count();

@@ -171,12 +171,9 @@ impl Daemon {
 
                         if let Some((project, agent, session_id, default_model)) = resume {
                             self.mark_task_running(&task_id);
-                            self.emit_session(
-                                &task_id,
-                                wire::SessionUpdate::AgentText {
-                                    text: "Reconnecting to the saved agent session…".into(),
-                                },
-                            );
+                            // Running already gives the UI a progress signal.
+                            // Connection status is not agent-authored text: it
+                            // would be persisted and appended to the last turn.
                             // The replay guard is built from the persisted
                             // transcript, which must be read off the loop
                             // (write-behind flush + store read). Start the
