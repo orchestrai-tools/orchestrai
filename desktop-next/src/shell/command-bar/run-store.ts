@@ -1,11 +1,19 @@
 import { daemon } from "@warpforge/daemon";
 import type { RunCommand, RunCommands } from "@warpforge/protocol";
 import { create } from "zustand";
+
 import { readHistory, writeHistory } from "../../lib/shell-commands";
 import { fileTaskId, useShell } from "../../lib/shell-store";
 import { needsInput, runPlace, type BarItem, type RunPlace } from "./model";
 
+export interface RunContext {
+  project: string;
+  taskId: string;
+  scope: string;
+}
+
 export interface RunResult {
+  context: RunContext;
   command: string;
   text: string;
   code?: number | null;
@@ -18,6 +26,7 @@ export interface RunResult {
 export interface PendingRun {
   command: RunCommand;
   flipped: boolean;
+  context: RunContext;
 }
 
 interface RunState {
@@ -29,15 +38,17 @@ interface RunState {
   history: string[];
   busy: boolean;
   result: RunResult | null;
+  results: Record<string, RunResult>;
+  running: string[];
   pending: PendingRun | null;
   load: () => void;
   choose: (item: BarItem, flipped: boolean) => void;
-  execute: (line: string, place: RunPlace) => Promise<void>;
+  execute: (line: string, place: RunPlace, context?: RunContext) => Promise<void>;
   cancel: () => void;
   dismiss: () => void;
 }
 
-function where(): { project: string; taskId: string; scope: string } {
+function where(): RunContext {
   const shell = useShell.getState();
   const project = shell.project ?? "";
   const taskId = fileTaskId(shell, daemon.getState().snapshot.tasks);
@@ -55,13 +66,23 @@ export const useCommandRun = create<RunState>()((set, get) => ({
   history: [],
   busy: false,
   result: null,
+  results: {},
+  running: [],
   pending: null,
 
   load: () => {
     const { project, taskId, scope } = where();
     if (!project) return;
     if (scope !== get().scope)
-      set({ scope, detected: null, loadError: null, history: readHistory(project) });
+      set({
+        scope,
+        detected: null,
+        loadError: null,
+        history: readHistory(project),
+        result: get().results[scope] ?? null,
+        busy: get().running.includes(scope),
+        pending: null,
+      });
     set({ loading: true });
     void daemon
       .request("shell.commands", { project, task_id: taskId || null })
@@ -69,57 +90,76 @@ export const useCommandRun = create<RunState>()((set, get) => ({
         if (where().scope === scope) set({ detected: found as RunCommands, loadError: null });
       })
       .catch((err: unknown) => {
-        if (where().scope === scope) set({ loadError: message(err, "Could not read the project's commands") });
+        if (where().scope === scope)
+          set({ loadError: message(err, "Could not read the project's commands") });
       })
-      .finally(() => set({ loading: false }));
+      .finally(() => {
+        if (where().scope === scope) set({ loading: false });
+      });
   },
 
   choose: (item, flipped) => {
     const command = item.command;
     if (command && (needsInput(command) || command.confirm != null)) {
-      set({ pending: { command, flipped } });
+      set({ pending: { command, flipped, context: where() } });
       return;
     }
     void get().execute(item.line, runPlace(command, flipped));
   },
 
-  execute: async (raw, place) => {
+  execute: async (raw, place, context = where()) => {
     const line = raw.trim();
-    const { project, taskId } = where();
-    if (!project || !line || get().busy) return;
-    set({ pending: null, history: writeHistory(project, [line, ...get().history.filter((h) => h !== line)]) });
+    const { project, taskId, scope } = context;
+    if (!project || !line || get().running.includes(scope)) return;
+    const history = writeHistory(project, [
+      line,
+      ...readHistory(project).filter((h) => h !== line),
+    ]);
+    set({ pending: null, ...(where().scope === scope ? { history } : {}) });
+    const finish = (result: Omit<RunResult, "context">) => {
+      const scoped = { ...result, context };
+      set({
+        results: { ...get().results, [scope]: scoped },
+        ...(where().scope === scope ? { result: scoped } : {}),
+      });
+    };
     if (place === "terminal") {
       try {
         const id = await daemon.runInTerminal(project, line, taskId || undefined);
-        if (id) useShell.getState().openTerminal(id);
+        if (id && where().scope === scope) useShell.getState().openTerminal(id);
       } catch (err) {
-        set({ result: { command: line, text: message(err, "Could not open a terminal") } });
+        finish({ command: line, text: message(err, "Could not open a terminal") });
       }
       return;
     }
-    set({ busy: true });
+    set({ running: [...get().running, scope], ...(where().scope === scope ? { busy: true } : {}) });
     try {
       const out = (await daemon.request("shell.run", {
         project,
         command: line,
         task_id: taskId || null,
       })) as { code?: number | null; cwd?: string; stdout?: string; stderr?: string };
-      set({
-        result: {
-          command: line,
-          code: out.code,
-          cwd: out.cwd,
-          text: [out.stdout, out.stderr].filter(Boolean).join("\n") || `exit ${out.code ?? "?"}`,
-        },
+      finish({
+        command: line,
+        code: out.code,
+        cwd: out.cwd,
+        text: [out.stdout, out.stderr].filter(Boolean).join("\n") || `exit ${out.code ?? "?"}`,
       });
     } catch (err) {
       const text = message(err, "Could not run the command");
-      set({ result: { command: line, text, timedOut: /longer than 30 seconds/.test(text) } });
+      finish({ command: line, text, timedOut: /longer than 30 seconds/.test(text) });
     } finally {
-      set({ busy: false });
+      set({
+        running: get().running.filter((item) => item !== scope),
+        ...(where().scope === scope ? { busy: false } : {}),
+      });
     }
   },
 
   cancel: () => set({ pending: null }),
-  dismiss: () => set({ result: null }),
+  dismiss: () => {
+    const results = { ...get().results };
+    delete results[where().scope];
+    set({ result: null, results });
+  },
 }));

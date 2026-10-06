@@ -11,6 +11,7 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@warpforge/ui/components/field";
 import { Input } from "@warpforge/ui/components/input";
 import { useEffect, useState } from "react";
+
 import { commandLine, missingValue, runPlace } from "./model";
 import { useCommandRun } from "./run-store";
 
@@ -47,7 +48,7 @@ export function RunDialog() {
   const place = runPlace(command, flipped);
   const confirm = command.confirm != null;
   const run = (where: typeof place) => {
-    if (!missing) void execute(line, where);
+    if (!missing) void execute(line, where, pending.context);
   };
 
   return (

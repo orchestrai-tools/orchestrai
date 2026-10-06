@@ -68,6 +68,9 @@ export function CommandBar() {
   const sidebar = useSidebar();
 
   useEffect(() => {
+    setValue("");
+    setOpen(false);
+    shift.current = false;
     setSaved(project ? readSaved(project) : []);
     if (project) load();
   }, [project, taskId, load]);

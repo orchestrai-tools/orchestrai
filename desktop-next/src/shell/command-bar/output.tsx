@@ -1,5 +1,6 @@
 import type { TerminalInfo } from "@warpforge/protocol";
 import { XIcon } from "lucide-react";
+
 import { terminalLabel } from "../../lib/running-terminals";
 import { useShell } from "../../lib/shell-store";
 import { useCommandRun } from "./run-store";
@@ -65,7 +66,7 @@ export function RunOutput() {
       {result.timedOut && (
         <button
           type="button"
-          onClick={() => void execute(result.command, "terminal")}
+          onClick={() => void execute(result.command, "terminal", result.context)}
           className="w-full border-t px-2 py-1 text-left text-[11px] text-foreground hover:bg-muted"
         >
           Run in a terminal instead
