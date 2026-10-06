@@ -186,6 +186,7 @@ impl std::fmt::Display for ProjectRemovalError {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct ProjectLiveResources {
+    pub(crate) sessions: usize,
     pub(crate) services: usize,
     pub(crate) portforwards: usize,
     pub(crate) terminals: usize,
@@ -193,11 +194,18 @@ pub(crate) struct ProjectLiveResources {
 
 impl ProjectLiveResources {
     pub(crate) fn any(&self) -> bool {
-        self.services + self.portforwards + self.terminals > 0
+        self.sessions + self.services + self.portforwards + self.terminals > 0
     }
 
     pub(crate) fn conflict_message(&self, project: &str) -> String {
         let mut counts = Vec::new();
+        if self.sessions > 0 {
+            counts.push(format!(
+                "{} live agent session{}",
+                self.sessions,
+                plural(self.sessions)
+            ));
+        }
         if self.services > 0 {
             counts.push(format!(
                 "{} live service{}",

@@ -1,14 +1,14 @@
+mod removal;
+
 use std::collections::HashSet;
 
 use anyhow::Result;
 
 use crate::config::{load_workspace_config, WorkspaceConfig};
-use crate::portforward::PfStatus;
 use crate::registry::ProjectEntry;
 use crate::service::{kill_listeners_on_ports, ServiceStatus};
 
-use crate::daemon::actor::event::ProjectLiveResources;
-use crate::daemon::actor::{Daemon, Event, ProjectRemovalError};
+use crate::daemon::actor::{Daemon, Event};
 
 impl Daemon {
     pub(crate) async fn open_project(&mut self, name: &str) {
@@ -102,125 +102,6 @@ impl Daemon {
         self.broadcast_project_config(&affected);
 
         Ok(entry)
-    }
-
-    /// Stop and forget all project-owned runtime resources, then unregister the
-    /// project. The actor serializes this operation so starts cannot interleave.
-    pub(crate) async fn remove_project(
-        &mut self,
-        name: &str,
-        stop_resources: bool,
-    ) -> Result<(), ProjectRemovalError> {
-        let Some(_) = self
-            .projects
-            .iter()
-            .position(|project| project.name == name)
-        else {
-            return Err(ProjectRemovalError::NotFound(format!(
-                "Project \"{name}\" is not registered"
-            )));
-        };
-
-        let live = ProjectLiveResources {
-            services: self
-                .services
-                .list_for_project(name)
-                .iter()
-                .filter(|service| {
-                    service.process_alive()
-                        || matches!(
-                            service.status,
-                            ServiceStatus::Starting | ServiceStatus::Running
-                        )
-                })
-                .count(),
-            portforwards: self
-                .portforwards
-                .list_for_project(name)
-                .iter()
-                .filter(|forward| {
-                    matches!(
-                        forward.status,
-                        PfStatus::Starting | PfStatus::Active | PfStatus::Restarting
-                    )
-                })
-                .count(),
-            terminals: self
-                .agents
-                .list_for_project(name)
-                .iter()
-                .filter(|agent| agent.status.is_live_terminal())
-                .count(),
-        };
-        if live.any() && !stop_resources {
-            return Err(ProjectRemovalError::Conflict(live.conflict_message(name)));
-        }
-
-        let service_names: Vec<String> = self
-            .services
-            .list_for_project(name)
-            .into_iter()
-            .map(|service| service.name.clone())
-            .collect();
-        for service in service_names {
-            self.services
-                .remove(name, &service)
-                .await
-                .map_err(|error| {
-                    ProjectRemovalError::Internal(format!(
-                        "Failed to stop service \"{service}\" for project \"{name}\": {error}"
-                    ))
-                })?;
-        }
-
-        let portforward_names: Vec<String> = self
-            .portforwards
-            .list_for_project(name)
-            .into_iter()
-            .map(|forward| forward.name.clone())
-            .collect();
-        for forward in portforward_names {
-            self.portforwards.remove(name, &forward);
-        }
-
-        // Only ports this daemon handed out — a declared range can hold
-        // processes warpforge never started (ADR 0006 invariant 3).
-        if stop_resources {
-            if let Some(range) = self.port_range_for(name) {
-                kill_listeners_on_ports(&crate::ports::allocated_in_ranges(&[range])).await;
-            }
-        }
-
-        let terminal_ids: Vec<String> = self
-            .agents
-            .list_for_project(name)
-            .into_iter()
-            .map(|agent| agent.id.clone())
-            .collect();
-        for id in terminal_ids {
-            self.agents.kill(&id);
-            self.emit(Event::AgentExited { id });
-        }
-
-        crate::registry::remove_project(name).map_err(|error| {
-            ProjectRemovalError::Internal(format!(
-                "Resources were stopped, but project registration removal failed: {error}"
-            ))
-        })?;
-
-        self.projects.retain(|p| p.name != name);
-        self.config_observer.untrack(name);
-        self.port_ranges.remove(name);
-        // Removing a project frees its range; relocated neighbours must be
-        // broadcast, not just the removal itself.
-        let affected = self.recompute_port_ranges();
-
-        self.emit(Event::ProjectRemoved {
-            name: name.to_string(),
-        });
-        self.broadcast_project_config(&affected);
-
-        Ok(())
     }
 
     /// Start every declared port-forward for a project (no services).

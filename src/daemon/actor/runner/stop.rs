@@ -8,7 +8,10 @@ use crate::daemon::actor::Daemon;
 use crate::daemon::workflow::WorkflowOutcome;
 
 impl Daemon {
-    pub(super) async fn runner_stop(&mut self, project: &str) -> Result<(), String> {
+    pub(in crate::daemon::actor) async fn runner_stop(
+        &mut self,
+        project: &str,
+    ) -> Result<(), String> {
         self.runner_require_project(project)?;
         let (queued, running): (Vec<_>, Vec<_>) = self
             .runner
