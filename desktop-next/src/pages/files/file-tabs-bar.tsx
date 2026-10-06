@@ -5,19 +5,23 @@ import { XIcon } from "lucide-react";
 export function FileTabsBar({
   tabs,
   active,
-  dirty,
+  dirtyPaths,
   onSelect,
   onClose,
 }: {
   tabs: string[];
   active: string | null;
-  dirty: boolean;
+  dirtyPaths: string[];
   onSelect: (path: string) => void;
   onClose: (path: string) => void;
 }) {
   if (tabs.length === 0) return null;
   return (
-    <div role="tablist" aria-label="Open files" className="flex shrink-0 items-stretch overflow-x-auto border-b">
+    <div
+      role="tablist"
+      aria-label="Open files"
+      className="flex shrink-0 items-stretch overflow-x-auto border-b"
+    >
       {tabs.map((tab) => {
         const on = tab === active;
         return (
@@ -27,7 +31,9 @@ export function FileTabsBar({
             data-active={on ? "true" : "false"}
             className={cn(
               "group/tab flex shrink-0 items-center gap-1 border-r pr-1 pl-3 text-xs",
-              on ? "bg-background text-foreground" : "bg-muted/30 text-muted-foreground hover:text-foreground",
+              on
+                ? "bg-background text-foreground"
+                : "bg-muted/30 text-muted-foreground hover:text-foreground",
             )}
           >
             <button
@@ -39,7 +45,9 @@ export function FileTabsBar({
               className="flex items-center gap-1.5 py-1.5"
             >
               {tab.split("/").pop()}
-              {on && dirty && <span className="size-1.5 rounded-full bg-amber-500" aria-label="Unsaved" />}
+              {dirtyPaths.includes(tab) && (
+                <span className="size-1.5 rounded-full bg-amber-500" aria-label="Unsaved" />
+              )}
             </button>
             <button
               type="button"
@@ -47,7 +55,9 @@ export function FileTabsBar({
               onClick={() => onClose(tab)}
               className={cn(
                 "rounded-sm p-0.5 hover:bg-muted",
-                on ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100",
+                on
+                  ? "opacity-100"
+                  : "opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100",
               )}
             >
               <XIcon className="size-3" />

@@ -1,5 +1,6 @@
 mod automation;
 mod delete_settled;
+mod file_scope;
 mod lifecycle_action;
 mod merge_worktree;
 mod pending_permissions;

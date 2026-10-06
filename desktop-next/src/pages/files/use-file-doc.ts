@@ -2,7 +2,9 @@ import { daemon } from "@warpforge/daemon";
 import type { FileDoc, SymbolMatch } from "@warpforge/protocol";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
 import { jumpChangeIndex } from "../../lib/editor-session";
+import { draftScope, useFileDrafts } from "../../lib/file-drafts";
 import { useFileTabs } from "../../lib/file-tabs";
 import { reportGitFailure } from "../../lib/git-result";
 import { changedLineNumbers, changedLineText, revertChangedLine } from "../../lib/line-changes";
@@ -16,7 +18,11 @@ export interface Jump {
 
 /** A search or definition hit, 1-based, as a 0-based editor jump. */
 export function jumpTo(match: SymbolMatch): Jump {
-  return { path: match.path, line: Math.max(0, match.line - 1), character: Math.max(0, match.column - 1) };
+  return {
+    path: match.path,
+    line: Math.max(0, match.line - 1),
+    character: Math.max(0, match.column - 1),
+  };
 }
 
 /**
@@ -27,13 +33,19 @@ export function jumpTo(match: SymbolMatch): Jump {
 export function useFileDoc(project: string, taskId: string, worktree: string | undefined) {
   const [path, setPath] = useState<string | null>(null);
   const [tabs, setTabs] = useState<string[]>([]);
-  const [doc, setDoc] = useState<FileDoc | null>(null);
-  const [draft, setDraft] = useState("");
-  const [saved, setSaved] = useState<string | null>(null);
+  const [loadedDoc, setDoc] = useState<(FileDoc & { scope: string }) | null>(null);
+  const [draft, updateDraft] = useState("");
+  const [savedFile, setSaved] = useState<{ scope: string; path: string; text: string } | null>(
+    null,
+  );
   const [jump, setJump] = useState<Jump | null>(null);
   const [changeAt, setChangeAt] = useState(-1);
   const [committing, setCommitting] = useState(false);
   const fileJump = useShell((state) => state.fileJump);
+  const scope = draftScope(project, taskId, worktree);
+  const drafts = useFileDrafts((state) => state.scopes[scope]);
+  const doc = loadedDoc?.path === path && loadedDoc.scope === scope ? loadedDoc : null;
+  const saved = savedFile?.scope === scope && savedFile.path === path ? savedFile.text : null;
   useFileTabs({ taskId, project, worktree, path, tabs, setPath, setTabs });
 
   useEffect(() => {
@@ -56,8 +68,8 @@ export function useFileDoc(project: string, taskId: string, worktree: string | u
       .then((result) => {
         if (cancel) return;
         const next = result as FileDoc;
-        setDoc(next);
-        setDraft(next.newText);
+        setDoc({ ...next, scope });
+        updateDraft(useFileDrafts.getState().scopes[scope]?.[path]?.text ?? next.newText);
         setSaved(null);
         setChangeAt(-1);
       })
@@ -67,9 +79,14 @@ export function useFileDoc(project: string, taskId: string, worktree: string | u
     return () => {
       cancel = true;
     };
-  }, [path, project, taskId]);
+  }, [path, project, taskId, scope]);
 
-  const dirty = doc ? draft !== (saved ?? doc.newText) : false;
+  function setDraft(text: string) {
+    updateDraft(text);
+    if (path && doc) useFileDrafts.getState().edit(scope, path, text, saved ?? doc.newText);
+  }
+
+  const dirty = path ? Boolean(drafts?.[path]) : false;
   const changes = doc ? changedLineNumbers(doc.oldText, draft) : [];
   const changeLine = changes[changeAt];
 
@@ -84,22 +101,30 @@ export function useFileDoc(project: string, taskId: string, worktree: string | u
     if (path && gone(path)) setPath(rest.at(-1) ?? null);
   }
 
-  const close = (tab: string) => closeWhere((item) => item === tab);
+  const close = (tab: string) => {
+    useFileDrafts.getState().forget(scope, tab);
+    closeWhere((item) => item === tab);
+  };
   /** Close every tab at or under a deleted path. */
-  const forget = (gone: string) => closeWhere((item) => item === gone || item.startsWith(`${gone}/`));
+  const forget = (gone: string) => {
+    useFileDrafts.getState().forget(scope, gone);
+    closeWhere((item) => item === gone || item.startsWith(`${gone}/`));
+  };
 
   function renamed(from: string, to: string) {
+    useFileDrafts.getState().rename(scope, from, to);
     const move = (tab: string) =>
       tab === from ? to : tab.startsWith(`${from}/`) ? `${to}${tab.slice(from.length)}` : tab;
-    setTabs((current) => current.map(move));
+    setTabs((current) => [...new Set(current.map(move))]);
     if (path) setPath(move(path));
   }
 
   async function save(): Promise<boolean> {
-    if (!path || !project) return false;
+    if (!path || !project || !doc) return false;
     try {
       await daemon.request("file.save", { project, path, content: draft, task_id: taskId });
-      setSaved(draft);
+      setSaved({ scope, path, text: draft });
+      useFileDrafts.getState().saved(scope, path, draft);
       toast.success(`Saved ${path}`);
       return true;
     } catch (err) {
@@ -137,10 +162,15 @@ export function useFileDoc(project: string, taskId: string, worktree: string | u
     try {
       if (dirty) {
         await daemon.request("file.save", { project, path, content: draft, task_id: taskId });
-        setSaved(draft);
+        setSaved({ scope, path, text: draft });
+        useFileDrafts.getState().saved(scope, path, draft);
       }
       await daemon.request("git.commit", { task_id: taskId, project, message, files: [path] });
-      setDoc({ ...doc, oldText: draft, newText: draft });
+      setDoc((current) =>
+        current?.scope === scope && current.path === path
+          ? { ...doc, oldText: draft, newText: draft }
+          : current,
+      );
       setChangeAt(-1);
       toast.success(`Committed ${path}`);
       return true;
@@ -161,6 +191,7 @@ export function useFileDoc(project: string, taskId: string, worktree: string | u
     setDraft,
     saved,
     dirty,
+    dirtyPaths: Object.keys(drafts ?? {}),
     jump,
     setJump,
     changes,

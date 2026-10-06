@@ -2,10 +2,21 @@ import { daemon } from "@warpforge/daemon";
 import type { SymbolMatch } from "@warpforge/protocol";
 import { Button } from "@warpforge/ui/components/button";
 import { Input } from "@warpforge/ui/components/input";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@warpforge/ui/components/resizable";
-import { FilePlusIcon, FileTextIcon, FolderPlusIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@warpforge/ui/components/resizable";
+import {
+  FilePlusIcon,
+  FileTextIcon,
+  FolderPlusIcon,
+  RefreshCwIcon,
+  SearchIcon,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+
 import { ConfirmRequestDialog, type ConfirmRequest } from "../components/common/confirm-dialog";
 import { PageToolbar } from "../components/common/page-toolbar";
 import { activeTheme, useAppearance } from "../lib/appearance";
@@ -35,7 +46,8 @@ export function Files() {
   const taskId = fileTaskId(shell, snapshot.tasks);
   const task = snapshot.tasks.find((item) => item.id === taskId);
   const worktree = task?.worktree || undefined;
-  const root = (taskId && task?.worktree) || snapshot.projects.find((item) => item.name === project)?.path;
+  const root =
+    (taskId && task?.worktree) || snapshot.projects.find((item) => item.name === project)?.path;
   const dark = useAppearance((state) => activeTheme(state.themeId).mode === "dark");
 
   const list = useProjectFiles(project, taskId);
@@ -46,7 +58,12 @@ export function Files() {
   const [naming, setNaming] = useState<NameRequest | null>(null);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const askSelection = useRef<(() => boolean) | null>(null);
-  const lsp = useEditorLsp({ project, taskId, path: shell.lspEnabled ? file.path : null, text: file.draft });
+  const lsp = useEditorLsp({
+    project,
+    taskId,
+    path: shell.lspEnabled ? file.path : null,
+    text: file.draft,
+  });
 
   if (!project) {
     return (
@@ -82,8 +99,14 @@ export function Files() {
   async function submitName(request: NameRequest, path: string): Promise<boolean> {
     const ok =
       request.kind === "rename"
-        ? await fileAct(project, taskId, "Renamed", "file.rename", { path: request.path, new_path: path })
-        : await fileAct(project, taskId, "Created", "file.create", { path, directory: request.kind === "folder" });
+        ? await fileAct(project, taskId, "Renamed", "file.rename", {
+            path: request.path,
+            new_path: path,
+          })
+        : await fileAct(project, taskId, "Created", "file.create", {
+            path,
+            directory: request.kind === "folder",
+          });
     if (!ok) return false;
     list.load();
     if (request.kind === "rename") file.renamed(request.path, path);
@@ -94,7 +117,8 @@ export function Files() {
   const askDelete = (path: string) =>
     setConfirm({
       title: `Delete ${path.split("/").pop()}?`,
-      description: "It is removed from disk. Committed files can be brought back from git; anything else is gone.",
+      description:
+        "It is removed from disk. Committed files can be brought back from git; anything else is gone.",
       items: [path],
       confirmLabel: "Delete",
       destructive: true,
@@ -150,11 +174,23 @@ export function Files() {
                   className="h-7 pl-7 text-xs"
                 />
               </div>
-              <Button type="button" variant="ghost" size="icon-xs" title="New file" onClick={() => setNaming({ kind: "file", path: "" })}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                title="New file"
+                onClick={() => setNaming({ kind: "file", path: "" })}
+              >
                 <FilePlusIcon />
                 <span className="sr-only">New file…</span>
               </Button>
-              <Button type="button" variant="ghost" size="icon-xs" title="New folder" onClick={() => setNaming({ kind: "folder", path: "" })}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                title="New folder"
+                onClick={() => setNaming({ kind: "folder", path: "" })}
+              >
                 <FolderPlusIcon />
                 <span className="sr-only">New folder…</span>
               </Button>
@@ -206,11 +242,30 @@ export function Files() {
               void file.save();
             }}
           >
-            <FileTabsBar tabs={file.tabs} active={file.path} dirty={file.dirty} onSelect={file.setPath} onClose={file.close} />
+            <FileTabsBar
+              tabs={file.tabs}
+              active={file.path}
+              dirtyPaths={file.dirtyPaths}
+              onSelect={file.setPath}
+              onClose={(path) => {
+                if (!file.dirtyPaths.includes(path)) return file.close(path);
+                setConfirm({
+                  title: "Discard unsaved edits?",
+                  description:
+                    "Closing this file discards its unsaved text. Cancel to keep editing or save it first.",
+                  items: [path],
+                  confirmLabel: "Discard and close",
+                  destructive: true,
+                  onConfirm: () => file.close(path),
+                });
+              }}
+            />
             {!doc ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
                 <FileTextIcon className="size-5 text-muted-foreground" />
-                <p className="text-sm font-medium">{file.path ? `Opening ${file.path}…` : "No file open"}</p>
+                <p className="text-sm font-medium">
+                  {file.path ? `Opening ${file.path}…` : "No file open"}
+                </p>
                 {!file.path && (
                   <p className="max-w-sm text-xs text-muted-foreground">
                     Pick a file in the tree, or find one by its contents.
@@ -251,7 +306,11 @@ export function Files() {
                     </Button>
                   </div>
                 ) : (
-                  lsp.status && <p className="shrink-0 border-b px-3 py-1 text-xs text-muted-foreground">{lsp.status}</p>
+                  lsp.status && (
+                    <p className="shrink-0 border-b px-3 py-1 text-xs text-muted-foreground">
+                      {lsp.status}
+                    </p>
+                  )
                 )}
                 {changeLine != null && !preview && (
                   <ChangeStrip

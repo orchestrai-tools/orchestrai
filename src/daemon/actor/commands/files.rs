@@ -103,13 +103,7 @@ impl Daemon {
                 project,
                 reply,
             } => {
-                // Same fallback as `ListFiles`: no task means read the
-                // project's own checkout, so a tree and its preview agree.
-                let repo = self
-                    .tasks
-                    .get(&task_id)
-                    .and_then(|_| self.task_repo_path(&task_id))
-                    .or_else(|| project.as_deref().and_then(|name| self.project_path(name)));
+                let repo = self.file_op_root(&task_id, project.as_deref()).ok();
                 tokio::spawn(async move {
                     let doc = match repo {
                         Some(p) => crate::daemon::diff::file_doc(&p, &path).await.ok(),
@@ -124,11 +118,7 @@ impl Daemon {
                 include_ignored,
                 reply,
             } => {
-                let repo = self
-                    .tasks
-                    .get(&task_id)
-                    .and_then(|_| self.task_repo_path(&task_id))
-                    .or_else(|| project.as_deref().and_then(|name| self.project_path(name)));
+                let repo = self.file_op_root(&task_id, project.as_deref()).ok();
                 tokio::spawn(async move {
                     let files = match repo {
                         Some(p) => crate::daemon::diff::list_files(&p, include_ignored)
@@ -146,11 +136,7 @@ impl Daemon {
                 project,
                 reply,
             } => {
-                let repo = self
-                    .tasks
-                    .get(&task_id)
-                    .and_then(|t| self.project_path(&t.project))
-                    .or_else(|| project.as_deref().and_then(|name| self.project_path(name)));
+                let repo = self.file_op_root(&task_id, project.as_deref()).ok();
                 match repo {
                     // A synchronous walk that reads every file in the project.
                     // Run inline it freezes the whole daemon for the length of
@@ -174,25 +160,14 @@ impl Daemon {
                 project,
                 reply,
             } => {
-                let repo: Option<std::path::PathBuf> = if let Some(proj) = project.clone() {
-                    self.projects
-                        .iter()
-                        .find(|p| p.name == proj)
-                        .map(|p| std::path::PathBuf::from(&p.path))
-                } else {
-                    self.tasks
-                        .get(&task_id)
-                        .and_then(|_| self.task_repo_path(&task_id).map(std::path::PathBuf::from))
-                };
+                let repo = self.file_op_root(&task_id, project.as_deref());
                 let cmd_tx = self.cmd_tx.clone();
-                let is_project = project.is_some();
+                let is_project = task_id.is_empty();
                 tokio::task::spawn_blocking(move || {
                     let result = match repo {
-                        Some(p) => {
-                            crate::daemon::diff::save_file(&p.to_string_lossy(), &path, &content)
-                                .map_err(|e| e.to_string())
-                        }
-                        None => Err(format!("no checkout to save {path} in")),
+                        Ok(p) => crate::daemon::diff::save_file(&p, &path, &content)
+                            .map_err(|e| e.to_string()),
+                        Err(err) => Err(err),
                     };
                     let saved = result.is_ok();
                     let _ = reply.send(result);

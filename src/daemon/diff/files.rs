@@ -179,6 +179,11 @@ pub fn create_file(repo: &str, path: &str, directory: bool) -> Result<()> {
 pub fn rename_file(repo: &str, path: &str, new_path: &str) -> Result<()> {
     let from = resolve_in_root(repo, path)?;
     let to = resolve_in_root(repo, new_path)?;
+    match std::fs::symlink_metadata(&to) {
+        Ok(_) => bail!("cannot rename to {new_path}: that path already exists"),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err.into()),
+    }
     if let Some(parent) = to.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -244,16 +249,32 @@ mod tests {
     }
 
     #[test]
-    fn renames_inside_the_root_and_overwrites_an_existing_target() {
+    fn renames_inside_the_root_and_preserves_an_existing_target() {
         let fx = Fixture::new();
         std::fs::write(fx.repo.path().join("from.txt"), "new").unwrap();
         std::fs::write(fx.repo.path().join("onto.txt"), "old").unwrap();
         rename_file(&fx.root(), "from.txt", "nested/moved.txt").unwrap();
         assert!(fx.repo.path().join("nested/moved.txt").is_file());
 
-        rename_file(&fx.root(), "nested/moved.txt", "onto.txt").unwrap();
+        assert!(rename_file(&fx.root(), "nested/moved.txt", "onto.txt").is_err());
         let onto = std::fs::read_to_string(fx.repo.path().join("onto.txt")).unwrap();
-        assert_eq!(onto, "new");
+        assert_eq!(onto, "old");
+        assert_eq!(
+            std::fs::read_to_string(fx.repo.path().join("nested/moved.txt")).unwrap(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn rename_preserves_an_existing_dangling_symlink() {
+        let fx = Fixture::new();
+        std::fs::write(fx.repo.path().join("from.txt"), "source").unwrap();
+        std::os::unix::fs::symlink("missing.txt", fx.repo.path().join("link.txt")).unwrap();
+        assert!(rename_file(&fx.root(), "from.txt", "link.txt").is_err());
+        assert!(fx.repo.path().join("from.txt").is_file());
+        assert!(std::fs::symlink_metadata(fx.repo.path().join("link.txt"))
+            .unwrap()
+            .is_symlink());
     }
 
     #[test]
