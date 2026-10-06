@@ -1,8 +1,9 @@
 import { appendCoalescedUpdate, coalesceUpdates } from "@warpforge/core/sessionStream";
 import { stampSessionHistoryStartTimes } from "@warpforge/core/sessionTiming";
 import type { DaemonEvent, SessionUpdate, TaskInfo } from "@warpforge/protocol";
-import { emitInvalidate, emitTaskRemoved } from "./listeners";
+
 import { base64ToBytes } from "./base64";
+import { emitInvalidate, emitTaskRemoved } from "./listeners";
 import { DaemonStore } from "./store";
 import { MAX_PORTFORWARD_LOGS, MAX_SERVICE_LOGS } from "./types";
 
@@ -225,6 +226,7 @@ export class DaemonEvents extends DaemonStore {
       case "service.log": {
         const key = `${ev.data.project}/${ev.data.service}`;
         const existing = this.state.serviceLogs[key] ?? [];
+        if (existing.some((entry) => entry.seq === ev.data.seq)) break;
         // The event carries no capture time; arrival is within milliseconds of it.
         const entry = { at: Date.now(), line: ev.data.line, seq: ev.data.seq };
         const trimmed = [...existing, entry].slice(-MAX_SERVICE_LOGS);
@@ -234,6 +236,7 @@ export class DaemonEvents extends DaemonStore {
       case "portforward.log": {
         const key = `${ev.data.project}/${ev.data.name}`;
         const existing = this.state.portforwardLogs[key] ?? [];
+        if (existing.some((entry) => entry.seq === ev.data.seq)) break;
         const entry = { at: Date.now(), line: ev.data.line, seq: ev.data.seq };
         const trimmed = [...existing, entry].slice(-MAX_PORTFORWARD_LOGS);
         this.setState({ portforwardLogs: { ...this.state.portforwardLogs, [key]: trimmed } });

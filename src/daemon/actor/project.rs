@@ -318,6 +318,18 @@ impl Daemon {
                 status: svc.status.clone(),
                 allocated_port: svc.allocated_port,
             });
+            // Refused starts and dependency failures write directly to the log
+            // ring rather than through a reader. Send their diagnostic too.
+            if svc.status == crate::service::ServiceStatus::Failed {
+                if let Some(last) = svc.logs.last() {
+                    self.emit(Event::ServiceLog {
+                        project: project.to_string(),
+                        service: service.to_string(),
+                        seq: last.seq,
+                        line: last.line.clone(),
+                    });
+                }
+            }
             self.emit_port_warning(project, service);
         }
     }

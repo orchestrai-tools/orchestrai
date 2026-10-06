@@ -18,7 +18,15 @@ use crate::ports;
 pub(super) async fn kill_group(pgid: Option<u32>) {
     #[cfg(unix)]
     if let Some(id) = pgid {
-        crate::signal::signal_group(id, libc::SIGKILL);
+        if crate::signal::signal_group(id, libc::SIGKILL) {
+            // Sending a signal does not wait for the kernel to close the
+            // listener. Yield to the exit waiter before a restart claims the
+            // same pinned port. Bound this for orphaned/zombie group members.
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+            while crate::signal::signal_group(id, 0) && tokio::time::Instant::now() < deadline {
+                sleep(Duration::from_millis(10)).await;
+            }
+        }
     }
     #[cfg(not(unix))]
     let _ = pgid;

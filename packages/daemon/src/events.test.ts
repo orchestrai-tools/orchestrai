@@ -40,3 +40,20 @@ describe("project.configError", () => {
     expect(c.getState().snapshot!.projects[0].configError).toBeUndefined();
   });
 });
+
+describe("runtime diagnostic replay", () => {
+  it("keeps one line per sequence when status and log refresh replay a diagnostic", () => {
+    const c = client();
+    const ev: DaemonEvent = {
+      event: "service.log",
+      data: { project: "demo", service: "web", seq: 0, line: "failed" },
+    };
+    c.apply(ev);
+    c.apply(ev);
+    c.apply({
+      event: "service.log",
+      data: { project: "demo", service: "web", seq: 1, line: "failed" },
+    });
+    expect(c.getState().serviceLogs["demo/web"].map((entry) => entry.seq)).toEqual([0, 1]);
+  });
+});

@@ -47,3 +47,28 @@ async fn live_log_lines_carry_their_ring_seq() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn refused_start_broadcasts_its_diagnostic_without_a_reload() {
+    bounded(async {
+        let (_dir, entry) = project(
+            "name: x\nservices:\n  web:\n    command: sleep 30\n    healthcheck:\n      url: http://127.0.0.1:${missing.port}/\n",
+        );
+        let handle = Daemon::spawn(vec![entry], None);
+        let mut events = handle.subscribe();
+        start_all(&handle).await;
+        let logs = wait_for_log(&handle, "web", "missing.port").await;
+        let diagnostic = logs.iter().find(|line| line.contains("missing.port")).unwrap();
+        let mut found = false;
+        while let Ok(event) = events.try_recv() {
+            if let Event::ServiceLog { line, seq, .. } = event {
+                if &line == diagnostic {
+                    assert_eq!(seq, 0);
+                    found = true;
+                }
+            }
+        }
+        assert!(found, "startup diagnostic must reach subscribed clients");
+        stop_all(&handle).await;
+    }).await;
+}

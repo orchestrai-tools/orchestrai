@@ -5,6 +5,7 @@ mod deps;
 mod liveness;
 mod port_watch;
 mod readiness;
+mod restart;
 
 use super::ready::{spawn_readiness, Probe, RunHandle};
 use super::*;

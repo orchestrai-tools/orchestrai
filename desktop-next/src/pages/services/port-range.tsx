@@ -14,6 +14,7 @@ import {
 import { TriangleAlertIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { portRangeSourceLabel, portRangeSourceTitle } from "../../components/port-range-conflict";
 import { normalizePortRange, portRangeInputError } from "../../lib/port-range";
 import { Notice } from "./status";
@@ -120,8 +121,8 @@ export function ConfigErrors({ project }: { project: ProjectInfo }) {
         <Notice tone="warn">
           <TriangleAlertIcon className="mt-px size-3.5 shrink-0" />
           <span>
-            The workspace file (<span className="font-mono">{PROJECT_DIR}/workspace.yaml</span>) has an
-            error and is not applied until it is fixed:{" "}
+            The workspace file (<span className="font-mono">{PROJECT_DIR}/workspace.yaml</span>) has
+            an error and is not applied until it is fixed:{" "}
             <span className="font-mono">{project.configError}</span>
           </span>
         </Notice>
@@ -134,8 +135,8 @@ export function ConfigErrors({ project }: { project: ProjectInfo }) {
       <Notice tone="warn">
         <TriangleAlertIcon className="mt-px size-3.5 shrink-0" />
         <span>
-          Your local config (<span className="font-mono">{PROJECT_DIR}/workspace.local.yaml</span>) has
-          an error and is ignored, so this shows the shared config only:{" "}
+          Your local config (<span className="font-mono">{PROJECT_DIR}/workspace.local.yaml</span>)
+          has an error and is ignored, so this shows the shared config only:{" "}
           <span className="font-mono">{project.localConfigError}</span>
         </span>
       </Notice>
@@ -155,7 +156,7 @@ export function PortRangeFooter({
   const [start, end] = project.portRange;
   const size = end - start + 1;
   const used = services.filter(
-    (svc) => svc.allocatedPort >= start && svc.allocatedPort <= end,
+    (svc) => svc.status !== "stopped" && svc.allocatedPort >= start && svc.allocatedPort <= end,
   ).length;
   const source = portRangeSourceLabel(project.portRangeSource);
 

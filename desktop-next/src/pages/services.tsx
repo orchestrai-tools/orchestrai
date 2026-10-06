@@ -1,6 +1,7 @@
-import { Button } from "@warpforge/ui/components/button";
 import { PROJECT_DIR } from "@warpforge/protocol";
+import { Button } from "@warpforge/ui/components/button";
 import { useEffect } from "react";
+
 import { PageToolbar } from "../components/common/page-toolbar";
 import { useSelectedService } from "../lib/selected-service";
 import { useShell } from "../lib/shell-store";
@@ -48,7 +49,7 @@ export function ServicesPage() {
 
   useEffect(() => {
     if (projectName && selected) fetchLogs(projectName, selected);
-  }, [projectName, selected?.kind, selected?.name]);
+  }, [projectName, selected?.kind, selected?.name, service?.status, forward?.status]);
 
   if (!projectName || !project) {
     return <p className="p-4 text-sm text-muted-foreground">Open a project to see its services.</p>;
@@ -87,7 +88,7 @@ export function ServicesPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(15rem,19rem)_minmax(0,1fr)] border-t">
+        <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,2fr)] border-t md:grid-cols-[minmax(15rem,19rem)_minmax(0,1fr)] md:grid-rows-1">
           <RuntimeList
             project={project}
             services={services}
@@ -95,7 +96,10 @@ export function ServicesPage() {
             selected={selected}
             onSelect={select}
           />
-          <section aria-label={selected?.name} className="min-h-0 min-w-0 border-l">
+          <section
+            aria-label={selected?.name}
+            className="min-h-0 min-w-0 border-t md:border-t-0 md:border-l"
+          >
             {service && (
               <ServiceDetail
                 key={`${projectName}/${service.name}`}
