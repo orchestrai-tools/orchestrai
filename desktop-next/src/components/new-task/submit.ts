@@ -1,5 +1,7 @@
 import { daemon } from "@warpforge/daemon";
-import type { ConfigOption, EntryRunLocation } from "@warpforge/protocol";
+import type { ConfigOption, EntryRunLocation, PromptAttachment } from "@warpforge/protocol";
+
+import { autoNameCreatedTask } from "../../lib/auto-name-task";
 import { collectBacklogIds } from "../../lib/factory-batch";
 import { splitConfigPicks, worktreeBaseFrom } from "../../lib/new-task";
 import type { BatchScope } from "./factory-batch";
@@ -9,6 +11,7 @@ export type Mode = "single" | "orchestrator" | "factory";
 export interface NewTaskInput {
   project: string;
   prompt: string;
+  attachments?: PromptAttachment[];
   agent: string;
   models: ConfigOption[];
   picks: Record<string, string>;
@@ -96,6 +99,7 @@ export async function startNewTask(input: NewTaskInput): Promise<NewTaskResult> 
   const result = (await daemon.request("task.create", {
     project,
     prompt: input.prompt.trim(),
+    attachments: input.attachments ?? [],
     agent: input.agent,
     tags: [...userTags, ...modeTags],
     worktree: isolated,
@@ -110,12 +114,17 @@ export async function startNewTask(input: NewTaskInput): Promise<NewTaskResult> 
   })) as { taskId?: string } | null;
   const id = result?.taskId;
   if (!id) throw new Error("the daemon created no task");
+  void autoNameCreatedTask(id);
   // A delivering Factory task is linked by the runner itself.
   if (!input.workItemId || delivers) return { kind: "task", taskId: id };
   try {
     await daemon.linkWorkItemTask(input.workItemId, id);
     return { kind: "task", taskId: id };
   } catch (err) {
-    return { kind: "task", taskId: id, linkError: err instanceof Error ? err.message : String(err) };
+    return {
+      kind: "task",
+      taskId: id,
+      linkError: err instanceof Error ? err.message : String(err),
+    };
   }
 }

@@ -19,17 +19,20 @@ import {
 } from "@warpforge/ui/components/field";
 import { Input } from "@warpforge/ui/components/input";
 import { Kbd } from "@warpforge/ui/components/kbd";
-import { Textarea } from "@warpforge/ui/components/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@warpforge/ui/components/toggle-group";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
+import { extractFileReferences, splitFileReference } from "../lib/mention-path";
 import { linkedWorkItem, runPlace, useTaskDraft, type DraftWorkItem } from "../lib/new-task";
 import { useShell } from "../lib/shell-store";
 import { useDaemon } from "../lib/use-daemon";
+import { usePromptAttachments } from "../lib/use-prompt-attachments";
+import { useTaskFiles } from "../pages/task/use-task-files";
 import { SelectMenu } from "./common/select-menu";
 import type { BatchScope } from "./new-task/factory-batch";
 import { FactoryFields } from "./new-task/factory-fields";
+import { TaskGoal } from "./new-task/goal";
 import { runPreview } from "./new-task/run-preview";
 import { ContinueSessions } from "./new-task/sessions";
 import { SingleFields } from "./new-task/single-fields";
@@ -82,6 +85,8 @@ export function NewTaskDialog() {
   const tagsId = useId();
   const project = shell.project ?? state.snapshot.projects[0]?.name;
   const worktree = shell.newTaskWorktree;
+  const uploads = usePromptAttachments(true);
+  const files = useTaskFiles(shell.newTask ? project : undefined, undefined);
   const enabled = (state.snapshot.agents ?? []).filter((item) => item.enabled);
   const agents = enabled.length > 0 ? enabled : FALLBACK_AGENTS;
   const agent = agents.some((item) => item.id === preferredAgent) ? preferredAgent : agents[0].id;
@@ -117,7 +122,8 @@ export function NewTaskDialog() {
   const selectedWorkflow = workflows.find((item) => item.id === workflow) ?? null;
   const batchCount = scope.all ? scope.total : batch.length;
   const batching = mode === "factory" && deliver && batchCount > 0;
-  const canStart = Boolean(project) && !busy && (batching || Boolean(prompt.trim()));
+  const canStart =
+    Boolean(project) && !busy && !uploads.reading && (batching || Boolean(prompt.trim()));
   const place = runPlace({
     mode,
     worktree: worktree && mode === "single",
@@ -134,6 +140,17 @@ export function NewTaskDialog() {
       const result = await startNewTask({
         project,
         prompt,
+        attachments: [
+          ...extractFileReferences(prompt)
+            .map(splitFileReference)
+            .filter((file) => files.known.has(file.path))
+            .map((file) => ({
+              type: "file" as const,
+              path: file.path,
+              ...(file.range ? { range: file.range } : {}),
+            })),
+          ...uploads.attachments,
+        ],
         agent,
         models,
         picks,
@@ -155,6 +172,7 @@ export function NewTaskDialog() {
         return;
       }
       setPrompt("");
+      uploads.clear();
       close();
       if (result.kind === "queued") {
         toast.success(`Queued ${result.count} in Factory`);
@@ -258,27 +276,20 @@ export function NewTaskDialog() {
                 })}
               </ToggleGroup>
             </Field>
-            <Field>
-              <FieldLabel htmlFor={goalId}>Goal</FieldLabel>
-              <Textarea
+            {!batching && (
+              <TaskGoal
+                disabled={busy}
                 id={goalId}
-                autoFocus
-                rows={4}
-                value={prompt}
-                placeholder={
-                  mode === "orchestrator"
-                    ? "What should the orchestrator coordinate?"
-                    : "What should be true when this is done?"
-                }
-                onChange={(event) => setPrompt(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && event.metaKey) {
-                    event.preventDefault();
-                    void submit();
-                  }
-                }}
+                prompt={prompt}
+                onPrompt={setPrompt}
+                orchestrator={mode === "orchestrator"}
+                files={files}
+                attachments={uploads.attachments}
+                onAttach={uploads.add}
+                onRemove={uploads.remove}
+                onSubmit={() => void submit()}
               />
-            </Field>
+            )}
             <Field>
               <FieldLabel>Agent</FieldLabel>
               <ToggleGroup

@@ -87,3 +87,11 @@ Applies to `src/daemon/prompt/` and `desktop/src/lib/fileAttachments.ts`.
    the daemon side — but the demo-mode mapper in `desktop/src/daemon/demo.ts` and
    the transcript label in `StreamLine.tsx` are TypeScript unions with a
    fallback arm, and will silently mislabel a new variant.
+
+## OrchestrAI UI replacement (2026-10-06)
+
+The original file and image validators now live in
+`packages/core/src/fileAttachments.ts` and `imageAttachments.ts`. The retained
+frontend re-exports them, and both new prompt editors use them through
+`usePromptAttachments`. The limits and all-or-nothing validation remain the
+same; serializing file picks also keeps overlapping drops within aggregate limits.

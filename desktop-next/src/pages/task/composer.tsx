@@ -1,5 +1,5 @@
 import { daemon } from "@warpforge/daemon";
-import type { CommandInfo, PromptAttachment, SessionUpdate, TaskInfo } from "@warpforge/protocol";
+import type { CommandInfo, SessionUpdate, TaskInfo } from "@warpforge/protocol";
 import { Button } from "@warpforge/ui/components/button";
 import { Kbd } from "@warpforge/ui/components/kbd";
 import { Textarea } from "@warpforge/ui/components/textarea";
@@ -7,6 +7,7 @@ import { cn } from "@warpforge/ui/lib/utils";
 import { ArrowUpIcon, AtSignIcon, PaperclipIcon, SquareIcon } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
+
 import { contextImages, messageWithChips, useComposerChips } from "../../lib/composer-chips";
 import { bindComposerCommands } from "../../lib/composer-commands";
 import { useComposerInsert } from "../../lib/composer-insert";
@@ -20,13 +21,14 @@ import {
   replaceMention,
   splitFileReference,
 } from "../../lib/mention-path";
+import { usePromptAttachments } from "../../lib/use-prompt-attachments";
 import {
   deliverComposerMessage,
   workflowDelivery,
   workflowPlaceholder,
 } from "../../lib/workflow-send";
 import { AgentOptions } from "./agent-options";
-import { CommandMenu, ComposerChips, MentionMenu, attachmentFromFile } from "./composer-parts";
+import { CommandMenu, ComposerChips, MentionMenu } from "./composer-parts";
 import { ContextRing } from "./context-ring";
 import type { TaskFiles } from "./use-task-files";
 
@@ -53,7 +55,11 @@ export function Composer({
   insert?: { id: number; text: string } | null;
 }) {
   const [draft, setDraft] = useState("");
-  const [attachments, setAttachments] = useState<PromptAttachment[]>([]);
+  const capability = [...updates].reverse().find((update) => update.kind === "prompt_capabilities");
+  const uploads = usePromptAttachments(
+    capability?.kind === "prompt_capabilities" && capability.image,
+  );
+  const attachments = uploads.attachments;
   const [dragging, setDragging] = useState(false);
   const [pathDrag, setPathDrag] = useState(false);
   const [menuIndex, setMenuIndex] = useState(0);
@@ -103,12 +109,6 @@ export function Composer({
     setDraft(replaceMention(draft, at, draft.length, path).value);
   }
 
-  function attach(file: File) {
-    void attachmentFromFile(file)
-      .then((next) => setAttachments((current) => [...current, next]))
-      .catch(() => toast.error(`Could not read ${file.name}`));
-  }
-
   function startMention() {
     const node = textArea.current;
     const caret = node?.selectionStart ?? draft.length;
@@ -129,12 +129,11 @@ export function Composer({
       setDraft(insertFileRef(draft, caret, ref).value);
       return;
     }
-    const file = event.dataTransfer.files[0];
-    if (file) attach(file);
+    uploads.add([...event.dataTransfer.files]);
   }
 
   async function send() {
-    if (sending) return;
+    if (sending || blocked || uploads.reading) return;
     const text = draft.trim();
     const mentioned = extractFileReferences(draft)
       .map(splitFileReference)
@@ -155,7 +154,7 @@ export function Composer({
     try {
       await deliverComposerMessage(task, task.id, body, [...mentioned, ...attachments, ...shots]);
       setDraft("");
-      setAttachments([]);
+      uploads.clear();
     } catch (error) {
       useComposerChips.setState(chips);
       toast.error(error instanceof Error ? error.message : "Could not send");
@@ -257,20 +256,21 @@ export function Composer({
             {pathDrag ? "Drop to attach the file as context" : "Drop files to attach"}
           </p>
         )}
-        <ComposerChips
-          attachments={attachments}
-          onRemoveAttachment={(index) =>
-            setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))
-          }
-        />
+        <ComposerChips attachments={attachments} onRemoveAttachment={uploads.remove} />
         <Textarea
           ref={textArea}
           rows={2}
           value={draft}
           placeholder={placeholder}
           aria-label={`Message ${agentName}`}
-          disabled={blocked}
+          disabled={blocked || sending}
           onChange={(event) => setDraft(event.target.value)}
+          onPaste={(event) => {
+            if (event.clipboardData.files.length) {
+              event.preventDefault();
+              uploads.add([...event.clipboardData.files]);
+            }
+          }}
           onKeyDown={onKeyDown}
           className="max-h-60 min-h-0 resize-none rounded-none border-0 bg-transparent px-3 pt-2.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
@@ -280,7 +280,7 @@ export function Composer({
             variant="ghost"
             size="icon-xs"
             aria-label="Mention a file"
-            disabled={blocked}
+            disabled={blocked || sending}
             onClick={startMention}
           >
             <AtSignIcon />
@@ -290,7 +290,7 @@ export function Composer({
             variant="ghost"
             size="icon-xs"
             aria-label="Attach a file"
-            disabled={blocked}
+            disabled={blocked || sending}
             onClick={() => fileInput.current?.click()}
           >
             <PaperclipIcon />
@@ -298,11 +298,12 @@ export function Composer({
           <input
             ref={fileInput}
             type="file"
+            multiple
+            disabled={blocked || sending}
             aria-label="Attach a file"
             className="hidden"
             onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) attach(file);
+              uploads.add([...(event.target.files ?? [])]);
               event.target.value = "";
             }}
           />
@@ -334,7 +335,7 @@ export function Composer({
               type="submit"
               size="icon-xs"
               aria-label="Send"
-              disabled={running || blocked || sending}
+              disabled={blocked || sending || uploads.reading}
             >
               <ArrowUpIcon />
             </Button>

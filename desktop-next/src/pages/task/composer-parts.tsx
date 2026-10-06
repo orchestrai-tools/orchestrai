@@ -3,6 +3,7 @@ import { Button } from "@warpforge/ui/components/button";
 import { cn } from "@warpforge/ui/lib/utils";
 import { FileIcon, FileDiffIcon, ImageIcon, StickyNoteIcon, XIcon } from "lucide-react";
 import type { ReactNode } from "react";
+
 import { useComposerChips } from "../../lib/composer-chips";
 
 /** The pop-up list over the composer: slash commands or matching files, with the keyboard row marked. */
@@ -211,29 +212,4 @@ export function ComposerChips({
       })}
     </ul>
   );
-}
-
-function readBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const value = String(reader.result ?? "");
-      resolve(value.slice(value.indexOf(",") + 1));
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-/** PNG and JPEG go as images; anything else is read as a text document. */
-export async function attachmentFromFile(file: File): Promise<PromptAttachment> {
-  if (file.type === "image/png" || file.type === "image/jpeg") {
-    return { type: "image", name: file.name, mimeType: file.type, data: await readBase64(file) };
-  }
-  return {
-    type: "document",
-    name: file.name,
-    mimeType: file.type || "text/plain",
-    text: await file.text(),
-  };
 }

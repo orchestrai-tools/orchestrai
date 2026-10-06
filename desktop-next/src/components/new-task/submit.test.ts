@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const daemon = vi.hoisted(() => ({
   request: vi.fn(),
+  generateText: vi.fn(),
+  setTaskTitle: vi.fn(),
   linkWorkItemTask: vi.fn(),
   listBacklog: vi.fn(),
   runnerEnqueue: vi.fn(),
 }));
 vi.mock("@warpforge/daemon", () => ({ daemon }));
 
+import { useShell } from "../../lib/shell-store";
 import { startNewTask, type NewTaskInput } from "./submit";
 
 const base: NewTaskInput = {
@@ -33,6 +36,7 @@ const base: NewTaskInput = {
 describe("startNewTask with a backlog item", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useShell.setState({ autoNameTasks: false, textGenAgentId: "" });
     daemon.request.mockResolvedValue({ taskId: "t1" });
     daemon.linkWorkItemTask.mockResolvedValue(undefined);
   });
@@ -47,9 +51,33 @@ describe("startNewTask with a backlog item", () => {
     expect(result).toEqual({ kind: "task", taskId: "t1" });
   });
 
+  it("runs configured automatic naming after the task is created", async () => {
+    useShell.setState({ autoNameTasks: true, textGenAgentId: "codex", textGenModel: "" });
+    daemon.generateText.mockResolvedValue("A short title");
+    await startNewTask(base);
+    await vi.waitFor(() => expect(daemon.setTaskTitle).toHaveBeenCalledWith("t1", "A short title"));
+  });
+
   it("links nothing without an item", async () => {
     await startNewTask(base);
     expect(daemon.linkWorkItemTask).not.toHaveBeenCalled();
+  });
+
+  it("delivers project references and uploaded documents with the initial prompt", async () => {
+    const attachments = [
+      { type: "file" as const, path: "app.ts", range: { start: 2, end: 4 } },
+      {
+        type: "document" as const,
+        name: "brief.md",
+        mimeType: "text/markdown",
+        text: "Build a todo app",
+      },
+    ];
+    await startNewTask({ ...base, attachments });
+    expect(daemon.request).toHaveBeenCalledWith(
+      "task.create",
+      expect.objectContaining({ attachments }),
+    );
   });
 
   it("leaves a delivering Factory task to the runner's own link", async () => {
