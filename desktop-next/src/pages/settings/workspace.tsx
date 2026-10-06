@@ -7,6 +7,7 @@ import { cn } from "@warpforge/ui/lib/utils";
 import { TriangleAlertIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
 import { portRangeSourceLabel, portRangeSourceTitle } from "../../components/port-range-conflict";
 import { normalizePortRange, portRangeInputError } from "../../lib/port-range";
 import { useShell } from "../../lib/shell-store";
@@ -153,7 +154,9 @@ export function WorkspaceSection({ project }: { project: ProjectInfo }) {
             description={<span className="font-mono">{svc.command}</span>}
             control={
               <span className="font-mono text-xs text-muted-foreground">
-                {svc.allocatedPort > 0 ? `:${svc.allocatedPort}` : "no port"}
+                {svc.allocatedPort > 0 || svc.originalPort > 0
+                  ? `:${svc.allocatedPort || svc.originalPort}`
+                  : "no port"}
               </span>
             }
           />

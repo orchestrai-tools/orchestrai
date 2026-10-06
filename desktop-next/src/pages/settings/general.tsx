@@ -3,6 +3,7 @@ import { PROJECT_DIR, DATA_DIR } from "@warpforge/protocol";
 import { Button } from "@warpforge/ui/components/button";
 import { TriangleAlertIcon } from "lucide-react";
 import { useState } from "react";
+
 import { BootstrapWizard } from "../../components/bootstrap-wizard";
 import { Group, Row, SectionHeader } from "./primitives";
 import { useFlash } from "./use-flash";
@@ -52,7 +53,7 @@ export function GeneralSection({ project }: { project: ProjectInfo }) {
       <Group title="Configuration files">
         <Row
           title="Shared config"
-          description="Committed with the code, so everyone on the team runs the same services. Older root-level names still load."
+          description="Committed with the code, so everyone on the team runs the same services."
           control={<code className="font-mono text-xs">{PROJECT_DIR}/workspace.yaml</code>}
         >
           {project.configError && (
