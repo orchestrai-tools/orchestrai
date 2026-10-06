@@ -8,7 +8,7 @@ use warpforge_protocol as wire;
 
 use super::bookkeeping::TICK_SECS;
 use super::now_secs;
-use crate::daemon::actor::{Command, Daemon};
+use crate::daemon::actor::{Command, Daemon, Event};
 use crate::daemon::automations as sched;
 use crate::daemon::runtime::Write as PersistWrite;
 
@@ -41,6 +41,14 @@ impl Daemon {
         };
         match result {
             Ok(task_id) => {
+                if !reused {
+                    if let Some(task) = self.tasks.get_mut(&task_id) {
+                        task.title = format!("{} · Run #{}", a.name, run.run_number);
+                        let updated = task.clone();
+                        self.persist(&updated);
+                        self.emit(Event::TaskUpdated(updated));
+                    }
+                }
                 // start_session reports prompt-preparation and spawn failures
                 // by blocking the task and inserting no handle — the same
                 // shape a workflow stage child fails on. Without a session

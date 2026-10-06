@@ -1,8 +1,12 @@
 import { PROJECT_DIR, type TaskInfo } from "@warpforge/protocol";
+
 import { demoGitFixture } from "./demo-git";
 
 /** Drop finished tasks that have no local changes. Dirty worktrees stay. */
-export function demoDeleteSettled(tasks: TaskInfo[], project: string): { tasks: TaskInfo[]; deleted: number; kept: number } {
+export function demoDeleteSettled(
+  tasks: TaskInfo[],
+  project: string,
+): { tasks: TaskInfo[]; deleted: number; kept: number } {
   let deleted = 0;
   let kept = 0;
   const next = tasks.filter((task) => {
@@ -22,7 +26,8 @@ export function demoFixture(method: string, params?: unknown): Promise<unknown> 
   const p = (params ?? {}) as Record<string, unknown>;
   if (method === "file.contents" && p.path === `${PROJECT_DIR}/workflows/review-loop.yaml`) {
     return Promise.resolve({
-      newText: "review:\n  on_limit: ask\n  reviewers:\n    - agent: codex\n      prompt: Review {{diff}} in round {{round}}.\n",
+      newText:
+        "review:\n  on_limit: ask\n  reviewers:\n    - agent: codex\n      prompt: Review {{diff}} in round {{round}}.\n",
       oldText: "",
       path: p.path,
       status: "unchanged",
@@ -62,7 +67,7 @@ export function demoFixture(method: string, params?: unknown): Promise<unknown> 
           project: "demo",
           prompt: "Sketch the next slice of the shell.",
           reuseSession: false,
-          trigger: { cron: "0 9 * * 1-5", preset: "weekdays" },
+          trigger: { cron: "0 9 * * MON-FRI", preset: "weekdays" },
           timezone: "",
           updatedAt: now - 120,
           worktree: false,
@@ -230,7 +235,9 @@ export function demoFixture(method: string, params?: unknown): Promise<unknown> 
       reviewRequests: draft ? [] : ["linus"],
       state: "open",
       title: draft ? "Notes for later" : "Sketch the shell",
-      url: draft ? "https://github.com/orchestrai/demo/pull/8" : "https://github.com/orchestrai/demo/pull/7",
+      url: draft
+        ? "https://github.com/orchestrai/demo/pull/8"
+        : "https://github.com/orchestrai/demo/pull/7",
     });
   }
   if (method === "tracker.pulls.diff" && Number(p.number) === 8) {
@@ -318,7 +325,12 @@ export function demoFixture(method: string, params?: unknown): Promise<unknown> 
     });
   }
   if (method === "tracker.pulls.thread" && Number(p.number) === 8) {
-    return Promise.resolve({ baseRefName: "main", comments: [], headRefName: "notes", truncated: false });
+    return Promise.resolve({
+      baseRefName: "main",
+      comments: [],
+      headRefName: "notes",
+      truncated: false,
+    });
   }
   if (method === "tracker.pulls.thread") {
     return Promise.resolve({
@@ -338,7 +350,8 @@ export function demoFixture(method: string, params?: unknown): Promise<unknown> 
           author: { login: "ada" },
           body: "Name this.",
           createdAt: "2026-10-01T00:01:00Z",
-          id: "c1", threadId: "th-name",
+          id: "c1",
+          threadId: "th-name",
           kind: "review_comment",
           line: 2,
           path: "src/board.tsx",

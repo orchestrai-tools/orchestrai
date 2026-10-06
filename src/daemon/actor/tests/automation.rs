@@ -212,6 +212,15 @@ async fn run_now_creates_a_task_and_completes_the_run() {
     .await
     .unwrap_or_else(|_| panic!("timed out; saw: {seen:?}"));
     let task_id = run.task_id.expect("run links its task");
+    let (tx, rx) = oneshot::channel();
+    daemon.send(Command::Snapshot(tx)).await;
+    let snapshot = rx.await.unwrap();
+    let task = snapshot
+        .tasks
+        .iter()
+        .find(|task| task.id == task_id)
+        .unwrap();
+    assert_eq!(task.title, "Nightly sweep · Run #1");
 
     let (tx, rx) = oneshot::channel();
     daemon
