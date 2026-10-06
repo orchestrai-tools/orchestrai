@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { annotationLabel, formatAnnotation, type BrowserAnnotation } from "../../lib/annotation";
+import { onAgentTab } from "../../lib/browser-agent-tabs";
 import {
   browserNavOnState,
   canGoBack,
@@ -61,11 +62,13 @@ function useBrowserEvent<T>(name: string, handler: (payload: T) => void, deps: u
  */
 export function useBrowserTabs({
   taskId,
+  project,
   host,
   address,
   onPick,
 }: {
   taskId: string;
+  project: string;
   host: RefObject<HTMLDivElement | null>;
   address: RefObject<HTMLInputElement | null>;
   onPick: (text: string, label: string) => string | null;
@@ -101,6 +104,17 @@ export function useBrowserTabs({
     setUrls((current) => ({ ...current, [next]: "" }));
     setActive(next);
   }
+
+  useEffect(
+    () =>
+      onAgentTab(project, (tab) => {
+        setTabs((current) => (current.includes(tab.id) ? current : [...current, tab.id]));
+        setUrls((current) => ({ ...current, [tab.id]: tab.url }));
+        if (tab.title) setTitles((current) => ({ ...current, [tab.id]: tab.title! }));
+        setActive(tab.id);
+      }),
+    [project],
+  );
 
   useEffect(() => setDraft(urls[active] ?? ""), [active, urls]);
   useEffect(

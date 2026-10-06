@@ -37,7 +37,7 @@ export function BrowserPane({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const address = useRef<HTMLInputElement>(null);
-  const browser = useBrowserTabs({ taskId, host, address, onPick });
+  const browser = useBrowserTabs({ taskId, project, host, address, onPick });
   const services = useDaemon().snapshot.services.filter(
     (service) =>
       service.project === project &&

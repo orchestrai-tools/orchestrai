@@ -7,8 +7,10 @@ import { toast } from "sonner";
 
 import { App } from "@/App";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { installBrowserAgent } from "@/lib/browser-agent";
 import { clearBrowserSession } from "@/lib/browser-session";
 import { bootDemo } from "@/lib/demo";
+
 import "@/index.css";
 
 const queryClient = new QueryClient();
@@ -27,6 +29,8 @@ onNotice(({ tone, message, duration }) => {
 
 if (new URLSearchParams(location.search).has("demo")) bootDemo();
 else {
+  const stopBrowserAgent = installBrowserAgent(daemon);
+  import.meta.hot?.dispose(stopBrowserAgent);
   void daemon.connect().catch(() => {
     /* The client reconnects on its own. */
   });
