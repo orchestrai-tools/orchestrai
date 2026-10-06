@@ -326,8 +326,10 @@ export function cycleOpenProject(state: ShellState, direction: 1 | -1): string |
 }
 export function fileTaskId(state: ShellState, tasks: { id: string; project: string }[]): string {
   if (!state.project) return "";
-  if (Object.hasOwn(state.fileContext, state.project))
-    return state.fileContext[state.project] ?? "";
+  if (Object.hasOwn(state.fileContext, state.project)) {
+    const selected = state.fileContext[state.project];
+    return tasks.find((task) => task.id === selected && task.project === state.project)?.id ?? "";
+  }
   const open = tasks.find((task) => task.id === state.taskId && task.project === state.project);
   return open?.id ?? "";
 }

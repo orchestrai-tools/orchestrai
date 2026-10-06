@@ -29,6 +29,14 @@ function shell(patch: Partial<ShellState>): ShellState {
 }
 
 describe("fileTaskId", () => {
+  it("falls back to the checkout when the remembered task was removed or belongs elsewhere", () => {
+    expect(fileTaskId(shell({ fileContext: { demo: "deleted" } }), [])).toBe("");
+    expect(
+      fileTaskId(shell({ fileContext: { demo: "elsewhere" } }), [
+        { id: "elsewhere", project: "other" },
+      ]),
+    ).toBe("");
+  });
   const tasks = [
     { id: "open", project: "demo" },
     { id: "wt", project: "demo" },
