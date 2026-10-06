@@ -94,7 +94,7 @@ pub async fn serve(handle: DaemonHandle, dev: bool, owner: wire::DaemonOwner) ->
         Uuid::new_v4().to_string()
     };
     write_endpoint(addr, &token, owner)?;
-    eprintln!("warpforge daemon listening on ws://{addr}");
+    eprintln!("orchestrai daemon listening on ws://{addr}");
 
     let lifecycle = Arc::new(ServerLifecycle {
         origins: OriginPolicy::new(dev),
@@ -113,13 +113,13 @@ pub async fn serve(handle: DaemonHandle, dev: bool, owner: wire::DaemonOwner) ->
                 r
             },
             _ = sigterm.recv() => {
-                eprintln!("warpforge daemon: SIGTERM — stopping services");
+                eprintln!("orchestrai daemon: SIGTERM — stopping services");
                 handle.shutdown().await;
                 remove_endpoint();
                 Ok(())
             }
             _ = sigint.recv() => {
-                eprintln!("warpforge daemon: SIGINT — stopping services");
+                eprintln!("orchestrai daemon: SIGINT — stopping services");
                 handle.shutdown().await;
                 remove_endpoint();
                 Ok(())

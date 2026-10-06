@@ -53,7 +53,7 @@ Runtime facts:
 - The schema has no variant condition. Include clearly named services for each requested variant and add short YAML comments; never invent conditional fields.
 - Treat files explicitly named in user notes as primary evidence: inspect them with repository tools before deciding services, ports, or dependencies.
 
-Write the result to `.warpforge.yaml` in the repository root, then output the exact file contents with no Markdown fence or explanation. Do not guess commands, ports, Kubernetes names, or dependencies; omit unsupported optional fields and preserve useful existing values when evidence is inconclusive.
+Write the result to `.orchestrai/workspace.yaml`, then output the exact file contents with no Markdown fence or explanation. Do not guess commands, ports, Kubernetes names, or dependencies; omit unsupported optional fields and preserve useful existing values when evidence is inconclusive.
 "#
     )
 }
@@ -124,7 +124,7 @@ Discovery checklist:
 
 Before writing, verify the file against the schema above and the repository evidence.
 
-Create or update `.warpforge.yaml`, then return its complete contents only. Keep proven useful fields from the current config; remove invalid or unsupported fields. Before responding, parse-check the file, verify services is a map and portforwards is a list, verify every dependency exists, verify the service graph is acyclic, and verify fixed port-forward local ports are unique.
+Create or update `.orchestrai/workspace.yaml`, then return its complete contents only. Keep proven useful fields from the current config; remove invalid or unsupported fields. Before responding, parse-check the file, verify services is a map and portforwards is a list, verify every dependency exists, verify the service graph is acyclic, and verify fixed port-forward local ports are unique.
 "#,
         project_path = ctx.project_path,
         repo_summary = ctx.repo_summary,

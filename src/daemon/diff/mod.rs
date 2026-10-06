@@ -55,7 +55,7 @@ pub(crate) const HEAVY_DIRS: &[&str] = &[
 ];
 
 /// True for a project-relative path that is a task-worktree directory or lives
-/// inside one: the current `.warpforge/worktrees` or the legacy `.worktrees`.
+/// inside one: the current `.orchestrai/worktrees` or the legacy `.worktrees`.
 /// Matched as a full path, never by the bare name `worktrees` — [`HEAVY_DIRS`]
 /// matches names at any depth, so a bare `worktrees` entry would hide every
 /// unrelated `worktrees/` folder in a project.

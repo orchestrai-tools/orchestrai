@@ -42,7 +42,7 @@ async fn an_exhausted_stage_agent_parks_the_pipeline_until_resumed() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!("name: Quota flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
     )
     .unwrap();
@@ -96,7 +96,7 @@ async fn an_exhausted_reviewer_parks_before_the_review_round() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!("name: Quota flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
     )
     .unwrap();

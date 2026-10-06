@@ -109,7 +109,7 @@ async fn quit_check_counts_active_tasks() {
 #[tokio::test]
 async fn quit_check_counts_running_services() {
     let dir = tempfile::tempdir().unwrap();
-    let config = dir.path().join(".warpforge");
+    let config = dir.path().join(warpforge_protocol::identity::DIR);
     std::fs::create_dir_all(&config).unwrap();
     // Reaches `Running` through the readiness heuristic on stdout, so the test
     // binds no port and cannot collide with the global port allocation other

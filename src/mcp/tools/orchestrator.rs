@@ -153,7 +153,7 @@ pub(super) fn defs() -> Value {
                 "properties": {
                     "workflow_id": {
                         "type": "string",
-                        "description": "Id of a workflow template available to the project (see the project's .warpforge/workflows/ or ask the user which pipelines exist)."
+                        "description": "Id of a workflow template available to the project (see the project's .orchestrai/workflows/ or ask the user which pipelines exist)."
                     },
                     "goal": {
                         "type": "string",

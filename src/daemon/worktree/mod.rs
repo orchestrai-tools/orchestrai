@@ -1,7 +1,7 @@
 //! Git worktree isolation: each task can optionally run in its own worktree so
 //! parallel tasks don't conflict on the same working tree.
 //!
-//! A worktree is created under `<project>/.warpforge/worktrees/<task_id>` on a
+//! A worktree is created under `<project>/.orchestrai/worktrees/<task_id>` on a
 //! branch `warpforge/task/<task_id>` (derived from the current HEAD). When the
 //! task completes the worktree can be merged back and removed, or left for
 //! manual inspection. Older tasks may still have checkouts under the legacy
@@ -68,9 +68,9 @@ pub(crate) fn owns_branch(branch: &str) -> bool {
 }
 
 /// Project-relative directory new task worktrees live under. One constant so
-/// the location is named once; `.warpforge/` is committed project config, and
+/// the location is named once; `.orchestrai/` is committed project config, and
 /// a `.gitignore` inside `worktrees/` keeps the checkouts out of git.
-pub(crate) const WORKTREES_REL: &str = ".warpforge/worktrees";
+pub(crate) const WORKTREES_REL: &str = ".orchestrai/worktrees";
 
 /// The directory a task's isolated checkout is created at. Legacy tasks keep
 /// whatever path was recorded on them; this is only for new creations.

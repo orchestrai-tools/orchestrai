@@ -290,7 +290,7 @@ fn duplicate_stems_warn_and_first_wins() {
 fn eject_writes_once() {
     let dir = tempfile::tempdir().unwrap();
     let path = eject_builtin(dir.path(), "review-loop").unwrap();
-    assert!(path.ends_with(".warpforge/workflows/review-loop.yaml"));
+    assert!(path.ends_with(".orchestrai/workflows/review-loop.yaml"));
     let text = fs::read_to_string(&path).unwrap();
     assert!(parse_workflow("review-loop", &text).0.is_ok());
     // Second eject refuses to overwrite.

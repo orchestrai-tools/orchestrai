@@ -1,0 +1,379 @@
+{
+ "assignments": {},
+ "first": "default",
+ "doc": null,
+ "groups": [],
+ "module_path": "",
+ "modules": {
+  "db": {
+   "assignments": {},
+   "first": "migrate",
+   "doc": null,
+   "groups": [],
+   "module_path": "db",
+   "modules": {},
+   "aliases": {},
+   "recipes": {
+    "migrate": {
+     "attributes": [],
+     "body": [
+      [
+       "echo migrate ",
+       [
+        [
+         "variable",
+         "env"
+        ]
+       ]
+      ]
+     ],
+     "dependencies": [],
+     "doc": "Apply migrations",
+     "name": "migrate",
+     "parameters": [
+      {
+       "default": "dev",
+       "export": false,
+       "flag": false,
+       "help": null,
+       "kind": "singular",
+       "long": null,
+       "max": null,
+       "min": null,
+       "multiple": false,
+       "name": "env",
+       "pattern": null,
+       "short": null,
+       "value": null
+      }
+     ],
+     "priors": 0,
+     "private": false,
+     "quiet": false,
+     "namepath": "db::migrate",
+     "shebang": false
+    }
+   },
+   "settings": {
+    "allow_duplicate_recipes": false,
+    "allow_duplicate_variables": false,
+    "default_list": false,
+    "default_script": false,
+    "dotenv_command": [],
+    "dotenv_filename": null,
+    "dotenv_load": false,
+    "dotenv_override": false,
+    "dotenv_path": null,
+    "dotenv_required": false,
+    "export": false,
+    "fallback": false,
+    "guards": false,
+    "ignore_comments": false,
+    "indentation": null,
+    "lazy": false,
+    "lists": false,
+    "no_cd": false,
+    "no_exit_message": false,
+    "positional_arguments": false,
+    "quiet": false,
+    "shell": null,
+    "tempdir": null,
+    "unstable": false,
+    "windows_powershell": false,
+    "windows_shell": null,
+    "working_directory": null
+   },
+   "unexports": [],
+   "warnings": []
+  }
+ },
+ "aliases": {
+  "t": {
+   "attributes": [],
+   "name": "t",
+   "target": "test"
+  }
+ },
+ "recipes": {
+  "_secret": {
+   "attributes": [],
+   "body": [
+    [
+     "echo hidden"
+    ]
+   ],
+   "dependencies": [],
+   "doc": null,
+   "name": "_secret",
+   "parameters": [],
+   "priors": 0,
+   "private": true,
+   "quiet": false,
+   "namepath": "_secret",
+   "shebang": false
+  },
+  "default": {
+   "attributes": [],
+   "body": [
+    [
+     "@just --list"
+    ]
+   ],
+   "dependencies": [],
+   "doc": "Show the recipes",
+   "name": "default",
+   "parameters": [],
+   "priors": 0,
+   "private": false,
+   "quiet": false,
+   "namepath": "default",
+   "shebang": false
+  },
+  "deploy": {
+   "attributes": [
+    {
+     "confirm": null
+    }
+   ],
+   "body": [
+    [
+     "echo deploy"
+    ]
+   ],
+   "dependencies": [],
+   "doc": null,
+   "name": "deploy",
+   "parameters": [],
+   "priors": 0,
+   "private": false,
+   "quiet": false,
+   "namepath": "deploy",
+   "shebang": false
+  },
+  "dev": {
+   "attributes": [
+    {
+     "group": "run"
+    }
+   ],
+   "body": [
+    [
+     "bun run dev --port ",
+     [
+      [
+       "variable",
+       "port"
+      ]
+     ]
+    ]
+   ],
+   "dependencies": [],
+   "doc": "Start the dev server",
+   "name": "dev",
+   "parameters": [
+    {
+     "default": null,
+     "export": false,
+     "flag": false,
+     "help": null,
+     "kind": "singular",
+     "long": null,
+     "max": null,
+     "min": null,
+     "multiple": false,
+     "name": "port",
+     "pattern": null,
+     "short": null,
+     "value": null
+    }
+   ],
+   "priors": 0,
+   "private": false,
+   "quiet": false,
+   "namepath": "dev",
+   "shebang": false
+  },
+  "helper": {
+   "attributes": [
+    "private"
+   ],
+   "body": [
+    [
+     "echo hidden"
+    ]
+   ],
+   "dependencies": [],
+   "doc": null,
+   "name": "helper",
+   "parameters": [],
+   "priors": 0,
+   "private": true,
+   "quiet": false,
+   "namepath": "helper",
+   "shebang": false
+  },
+  "lint": {
+   "attributes": [
+    {
+     "doc": "Lint everything"
+    },
+    {
+     "group": "check"
+    }
+   ],
+   "body": [
+    [
+     "cargo clippy"
+    ]
+   ],
+   "dependencies": [],
+   "doc": "Lint everything",
+   "name": "lint",
+   "parameters": [],
+   "priors": 0,
+   "private": false,
+   "quiet": false,
+   "namepath": "lint",
+   "shebang": false
+  },
+  "test": {
+   "attributes": [
+    {
+     "group": "check"
+    }
+   ],
+   "body": [
+    [
+     "cargo test ",
+     [
+      [
+       "variable",
+       "filter"
+      ]
+     ],
+     " ",
+     [
+      [
+       "variable",
+       "flags"
+      ]
+     ]
+    ]
+   ],
+   "dependencies": [],
+   "doc": "Run the test suite",
+   "name": "test",
+   "parameters": [
+    {
+     "default": "",
+     "export": false,
+     "flag": false,
+     "help": null,
+     "kind": "singular",
+     "long": null,
+     "max": null,
+     "min": null,
+     "multiple": false,
+     "name": "filter",
+     "pattern": null,
+     "short": null,
+     "value": null
+    },
+    {
+     "default": null,
+     "export": false,
+     "flag": false,
+     "help": null,
+     "kind": "star",
+     "long": null,
+     "max": null,
+     "min": null,
+     "multiple": false,
+     "name": "flags",
+     "pattern": null,
+     "short": null,
+     "value": null
+    }
+   ],
+   "priors": 0,
+   "private": false,
+   "quiet": false,
+   "namepath": "test",
+   "shebang": false
+  },
+  "wipe": {
+   "attributes": [
+    {
+     "confirm": "Really wipe the database?"
+    }
+   ],
+   "body": [
+    [
+     "rm -rf ",
+     [
+      [
+       "variable",
+       "targets"
+      ]
+     ]
+    ]
+   ],
+   "dependencies": [],
+   "doc": null,
+   "name": "wipe",
+   "parameters": [
+    {
+     "default": null,
+     "export": false,
+     "flag": false,
+     "help": null,
+     "kind": "plus",
+     "long": null,
+     "max": null,
+     "min": null,
+     "multiple": false,
+     "name": "targets",
+     "pattern": null,
+     "short": null,
+     "value": null
+    }
+   ],
+   "priors": 0,
+   "private": false,
+   "quiet": false,
+   "namepath": "wipe",
+   "shebang": false
+  }
+ },
+ "settings": {
+  "allow_duplicate_recipes": false,
+  "allow_duplicate_variables": false,
+  "default_list": false,
+  "default_script": false,
+  "dotenv_command": [],
+  "dotenv_filename": null,
+  "dotenv_load": false,
+  "dotenv_override": false,
+  "dotenv_path": null,
+  "dotenv_required": false,
+  "export": false,
+  "fallback": false,
+  "guards": false,
+  "ignore_comments": false,
+  "indentation": null,
+  "lazy": false,
+  "lists": false,
+  "no_cd": false,
+  "no_exit_message": false,
+  "positional_arguments": false,
+  "quiet": false,
+  "shell": null,
+  "tempdir": null,
+  "unstable": false,
+  "windows_powershell": false,
+  "windows_shell": null,
+  "working_directory": null
+ },
+ "unexports": [],
+ "warnings": []
+}

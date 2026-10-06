@@ -52,6 +52,8 @@ pub(super) fn method_runs_concurrently(method: &wire::Method) -> bool {
             | WorktreeReclaim { .. }
             | WorktreeRemoveOrphan { .. }
             | SessionsList { .. }
+            | ChannelList { .. }
+            | DocsList { .. }
             | SessionHistory { .. }
             | OrchestratorListAgents { .. }
             | AgentsDetect {}
@@ -91,6 +93,8 @@ pub(super) fn method_is_mutation(method: &wire::Method) -> bool {
             | WorktreeSetupLog { .. }
             | TaskPullRequests { .. }
             | SessionsList { .. }
+            | ChannelList { .. }
+            | DocsList { .. }
             | SessionHistory { .. }
             | HistoryGetSettings {}
             | OrchestratorListAgents { .. }

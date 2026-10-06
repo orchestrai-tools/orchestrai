@@ -10,7 +10,7 @@ async fn spawn_workflow_with_a_pull_request_delivers_through_the_factory() {
     let repo = factory_repo("name: placeholder\n").await;
     let reviewer = wf_agent(&repo.dir, "rev.state", "approve");
     let workflow = format!("name: Factory flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n");
-    std::fs::write(repo.work.join(".warpforge/workflows/test.yaml"), workflow).unwrap();
+    std::fs::write(repo.work.join(".orchestrai/workflows/test.yaml"), workflow).unwrap();
     let daemon = Daemon::spawn(
         repo.projects.clone(),
         Store::open_at(std::path::Path::new(":memory:")).ok(),

@@ -13,11 +13,17 @@ const APP_ORIGINS: &[&str] = if cfg!(windows) {
     &["tauri://localhost"]
 };
 
-/// The Vite dev server (`desktop/vite.config.ts`, `server.port`).
-const VITE_ORIGINS: [&str; 2] = ["http://localhost:5173", "http://127.0.0.1:5173"];
+/// The Vite dev servers: the window's (`desktop-next/vite.config.ts`, 5174)
+/// and the previous frontend's (`desktop/vite.config.ts`, 5173).
+const VITE_ORIGINS: [&str; 4] = [
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+];
 
 /// Comma-separated origins that replace [`VITE_ORIGINS`] when set.
-const DEV_ORIGINS_ENV: &str = "WARPFORGE_DEV_ORIGINS";
+const DEV_ORIGINS_ENV: &str = "ORCHESTRAI_DEV_ORIGINS";
 
 #[derive(Debug, Clone)]
 pub(super) struct OriginPolicy {
@@ -126,7 +132,7 @@ mod tests {
 
     #[test]
     fn the_vite_server_is_allowed_only_with_dev_origins() {
-        for origin in ["http://localhost:5173", "http://127.0.0.1:5173"] {
+        for origin in VITE_ORIGINS {
             assert!(origin_allowed(Some(origin), &vite()), "{origin}");
             assert!(!origin_allowed(Some(origin), &[]), "{origin}");
         }

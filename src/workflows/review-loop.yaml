@@ -2,7 +2,7 @@
 #
 # This workflow ALWAYS starts with implementation. Omitting `implement` only
 # selects Warpforge's built-in implementation settings/prompt; it never removes
-# this fixed stage. Copy the file into <project>/.warpforge/workflows/ (or use
+# this fixed stage. Copy the file into <project>/.orchestrai/workflows/ (or use
 # "Copy to project" in the New Task dialog) to customize it.
 version: 1
 name: Implement + review loop

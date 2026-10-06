@@ -1,6 +1,6 @@
 //! VCS shelf ("Shelve Silently" / "Shelve…"): named bundles of uncommitted
-//! changes, stored OUTSIDE the repo under `~/.warpforge/shelf/<repo-slug>/`.
-//! Inside the worktree is not an option — `.warpforge/` is not gitignored, so
+//! changes, stored OUTSIDE the repo under `~/.orchestrai/shelf/<repo-slug>/`.
+//! Inside the worktree is not an option — `.orchestrai/` is not gitignored, so
 //! shelf patches would show up as untracked files themselves.
 //!
 //! Layout per entry `<root>/<id>/`: `meta.json`, `tracked.patch` (raw
@@ -84,7 +84,7 @@ fn slug(repo: &str) -> String {
 }
 
 fn shelf_root(home: &Path, repo: &str) -> PathBuf {
-    home.join(".warpforge").join("shelf").join(slug(repo))
+    home.join("shelf").join(slug(repo))
 }
 
 fn entry_dir(home: &Path, repo: &str, id: &str) -> PathBuf {

@@ -1,0 +1,99 @@
+/*
+ * The separator between a sidebar and the content. The frame keeps an
+ * upright box (used for pointer maths); everything visible lives in the
+ * skewed surface so it follows the edge angle.
+ *
+ * "Engaged" means hovered, close enough that the magnet pulls (both from our
+ * pointer tracking), or being dragged (react-resizable-panels sets
+ * data-separator="active").
+ *
+ * The border is drawn either as the straight line below or, with the water
+ * or magnet on, along the live surface in surface.css. Both read the --line-*
+ * state variables set here, so every border setting applies to either.
+ */
+@layer components {
+  .sidebar-edge {
+    --line-color: var(--border-color);
+    --line-shadow: 0 0 0 transparent;
+    --line-filter: none;
+    --line-opacity: var(--border-idle-opacity);
+    --line-duration: var(--border-fadeout-duration);
+
+    position: relative;
+    z-index: 3;
+    width: var(--border-width);
+    height: 100%;
+    outline: none;
+    cursor: var(--edge-cursor);
+  }
+
+  .theme-root[data-lightsaber='true'] .sidebar-edge {
+    --line-color: var(--saber-color);
+    --line-shadow: 0 0 var(--saber-idle-glow) var(--saber-color);
+    --line-filter: drop-shadow(0 0 var(--saber-idle-glow) var(--saber-color));
+  }
+
+  .sidebar-edge:is([data-pointer='over'], [data-pointer='near'], [data-separator='active']) {
+    --line-color: var(--border-hover-color);
+    --line-shadow: 0 0 var(--border-glow-blur) var(--border-glow-color);
+    --line-filter: var(--border-glow-filter);
+    --line-opacity: 1;
+    --line-duration: var(--border-fadein-duration);
+  }
+
+  .theme-root[data-lightsaber='true']
+    .sidebar-edge:is([data-pointer='over'], [data-pointer='near'], [data-separator='active']) {
+    --line-color: var(--saber-core-color);
+    --line-shadow: var(--saber-shadow);
+    --line-filter: var(--saber-filter);
+  }
+
+  .sidebar-edge__frame {
+    position: absolute;
+    inset: 0;
+  }
+
+  .sidebar-edge__surface {
+    position: absolute;
+    inset: 0;
+    transform: skewX(var(--edge-skew, 0deg));
+    transition: transform var(--collapse-duration) var(--collapse-easing);
+  }
+
+  .sidebar-edge:focus-visible .sidebar-edge__surface {
+    outline: 2px solid var(--edge-focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* Widens the cursor area to the configured grab target. */
+  .sidebar-edge__handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    z-index: 4;
+    width: max(var(--edge-hit-width), 100%);
+    transform: translateX(-50%);
+  }
+
+  .sidebar-edge__line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: var(--border-line-width);
+    border-radius: var(--border-line-radius);
+    transform: translateX(-50%);
+    background-color: var(--line-color);
+    box-shadow: var(--line-shadow);
+    opacity: var(--line-opacity);
+    transition:
+      opacity var(--line-duration) var(--border-easing),
+      background-color var(--line-duration) var(--border-easing),
+      box-shadow var(--line-duration) var(--border-easing);
+  }
+
+  .theme-root[data-border-hidden='true'] :is(.sidebar-edge__line, .edge-surface__border) {
+    visibility: hidden;
+  }
+}

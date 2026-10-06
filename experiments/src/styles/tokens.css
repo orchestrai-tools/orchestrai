@@ -1,0 +1,86 @@
+/*
+ * Design tokens. Values that settings control are overridden inline on
+ * .theme-root (see lib/themeVariables.ts); the rest are static tuning knobs.
+ * Tokens that reference other tokens are declared on .theme-root, not :root,
+ * so they resolve against the runtime overrides.
+ */
+@layer base {
+  .theme-root {
+    /* Surfaces */
+    --bg-main: hsl(222 18% 6%);
+    --bg-sidebar-left: hsl(222 16% 10%);
+    --bg-sidebar-right: hsl(222 16% 10%);
+    --accent: hsl(222 85% 65%);
+
+    /* Border line */
+    --border-width: 10px;
+    --border-color: hsl(222 20% 16%);
+    --border-hover-color: hsl(222 48% 36%);
+    --border-idle-opacity: 1;
+    --border-fadein-duration: 160ms;
+    --border-fadeout-duration: 450ms;
+    --border-easing: linear;
+    --border-glow-blur: 0px;
+    --border-glow-color: hsl(222 85% 65% / 0.45);
+    --border-glow-filter: none;
+    --border-line-width: 100%;
+    --border-line-radius: 0px;
+
+    /* Edge interaction */
+    --edge-cursor: col-resize;
+    --edge-hit-width: 14px;
+    --edge-focus-ring: color-mix(in oklab, var(--accent) 70%, white);
+
+    /* Lightsaber */
+    --saber-color: #00f0ff;
+    --saber-core-color: #e6ffff;
+    --saber-shadow: 0 0 3px #e6ffff, 0 0 8px #00f0ff, 0 0 20px #00f0ff, 0 0 38px #00f0ff;
+    --saber-idle-glow: 6px;
+    /* Chained drop-shadows compound, so this uses fewer, tighter layers than --saber-shadow. */
+    --saber-filter: drop-shadow(0 0 3px var(--saber-core-color)) drop-shadow(0 0 12px var(--saber-color));
+
+    /* Hover badge */
+    --edge-badge-size: 26px;
+    --edge-badge-offset: 0px;
+    --edge-badge-radius: 9999px;
+    --edge-badge-color: var(--accent);
+    --edge-badge-bg: hsl(222 28% 10%);
+    --edge-badge-border: hsl(222 20% 25%);
+    --edge-badge-shadow: 0 4px 12px rgb(0 0 0 / 0.45);
+    --edge-badge-transition: opacity 220ms linear, transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    /* Background grid */
+    --grid-left-image: none;
+    --grid-main-image: none;
+    --grid-right-image: none;
+    --grid-left-size: auto;
+    --grid-main-size: auto;
+    --grid-right-size: auto;
+    --grid-attachment: fixed;
+
+    /* Layout */
+    --sidebar-collapsed-width: 0px;
+    --collapse-duration: 280ms;
+    --collapse-easing: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* Inspector */
+    --inspector-accent: var(--accent);
+    --inspector-trigger-size: 30px;
+    --inspector-trigger-icon-size: 14px;
+    --inspector-trigger-bg: hsl(222 22% 14%);
+    --inspector-trigger-border: hsl(222 30% 30%);
+    --inspector-trigger-shadow: 0 2px 6px rgb(0 0 0 / 0.4);
+    --inspector-panel-width: 540px;
+    --inspector-panel-bg: hsl(222 28% 9%);
+    --inspector-panel-border: hsl(222 20% 20%);
+    --inspector-panel-max-height: calc(85vh - 120px);
+    --inspector-scroll-thumb: hsl(222 18% 28%);
+    --inspector-scroll-thumb-hover: hsl(222 24% 38%);
+    --inspector-scroll-track: rgb(0 0 0 / 0.25);
+    --inspector-scroll-width: 5px;
+  }
+
+  .theme-root[data-hover-only='true'],
+  .theme-root[data-border-hidden='true'] {
+    --border-idle-opacity: 0;
+  }
+}

@@ -55,7 +55,7 @@ fn git_last_commit_message_roundtrip() {
     )
     .unwrap();
     let req: Request = serde_json::from_value(json).unwrap();
-    assert!(matches!(req.method, Method::GitLastCommitMessage { task_id } if task_id == "t1"));
+    assert!(matches!(req.method, Method::GitLastCommitMessage { task_id, .. } if task_id == "t1"));
 }
 
 #[test]
@@ -85,6 +85,23 @@ fn diff_get_defaults_to_skipping_ignored_files() {
 }
 
 #[test]
+fn diff_get_parses_a_project_without_a_task() {
+    let json: serde_json::Value =
+        serde_json::from_str(r#"{"id":9,"method":"diff.get","params":{"project":"demo"}}"#)
+            .unwrap();
+    let req: Request = serde_json::from_value(json).unwrap();
+    match req.method {
+        Method::DiffGet {
+            task_id, project, ..
+        } => {
+            assert!(task_id.is_empty());
+            assert_eq!(project.as_deref(), Some("demo"));
+        }
+        other => panic!("unexpected method {other:?}"),
+    }
+}
+
+#[test]
 fn git_ignored_parses_task_or_project_params() {
     let json: serde_json::Value =
         serde_json::from_str(r#"{"id":8,"method":"git.ignored","params":{"project":"demo"}}"#)
@@ -103,7 +120,7 @@ fn git_add_and_ignore_carry_paths_on_the_wire() {
     .unwrap();
     let req: Request = serde_json::from_value(json).unwrap();
     assert!(
-        matches!(req.method, Method::GitAdd { task_id, paths } if task_id == "t1" && paths == vec!["new.txt"])
+        matches!(req.method, Method::GitAdd { task_id, paths, .. } if task_id == "t1" && paths == vec!["new.txt"])
     );
 
     let json: serde_json::Value = serde_json::from_str(
@@ -112,7 +129,7 @@ fn git_add_and_ignore_carry_paths_on_the_wire() {
     .unwrap();
     let req: Request = serde_json::from_value(json).unwrap();
     assert!(
-        matches!(req.method, Method::GitIgnore { task_id, paths } if task_id == "t1" && paths == vec!["*.log"])
+        matches!(req.method, Method::GitIgnore { task_id, paths, .. } if task_id == "t1" && paths == vec!["*.log"])
     );
 }
 
@@ -144,7 +161,7 @@ fn shelf_methods_parse_and_default_sensibly() {
             .unwrap();
     let req: Request = serde_json::from_value(json).unwrap();
     assert!(
-        matches!(req.method, Method::ShelfCreate { task_id, name, paths } if task_id == "t1" && name.is_empty() && paths.is_none())
+        matches!(req.method, Method::ShelfCreate { task_id, name, paths, .. } if task_id == "t1" && name.is_empty() && paths.is_none())
     );
 
     // `drop` defaults to true: unshelving cleans up unless asked not to.
@@ -161,6 +178,37 @@ fn shelf_methods_parse_and_default_sensibly() {
             .unwrap();
     assert!(entry.branch.is_none());
     assert!(entry.files.is_empty());
+}
+
+/// The Changes page on the project's own checkout sends `project` with no
+/// task, the same shape `git.commit` and `diff.get` already accept.
+#[test]
+fn shelf_stash_push_and_branch_methods_take_a_project_without_a_task() {
+    for body in [
+        r#"{"id":1,"method":"shelf.create","params":{"project":"demo"}}"#,
+        r#"{"id":2,"method":"stash.push","params":{"project":"demo"}}"#,
+        r#"{"id":3,"method":"git.push","params":{"project":"demo"}}"#,
+        r#"{"id":4,"method":"git.switchBranch","params":{"project":"demo","branch":"main"}}"#,
+    ] {
+        let req: Request = serde_json::from_str(body).unwrap();
+        let (task_id, project) = match req.method {
+            Method::ShelfCreate {
+                task_id, project, ..
+            }
+            | Method::StashPush {
+                task_id, project, ..
+            }
+            | Method::GitPush {
+                task_id, project, ..
+            }
+            | Method::GitSwitchBranch {
+                task_id, project, ..
+            } => (task_id, project),
+            other => panic!("unexpected method {other:?}"),
+        };
+        assert!(task_id.is_empty(), "{body}");
+        assert_eq!(project.as_deref(), Some("demo"), "{body}");
+    }
 }
 
 #[test]
@@ -517,6 +565,7 @@ fn project_config_changed_event_roundtrip() {
             declared_services: vec!["web".into()],
             agent_templates: HashMap::new(),
             local_config_error: None,
+            config_error: None,
         },
         services: vec![ServiceInfo {
             project: "demo".into(),

@@ -1,0 +1,80 @@
+# Built-in workflow: implement → review ⇄ fix.
+#
+# This workflow ALWAYS starts with implementation. Omitting `implement` only
+# selects Warpforge's built-in implementation settings/prompt; it never removes
+# this fixed stage. Copy the file into <project>/.orchestrai/workflows/ (or use
+# "Copy to project" in the New Task dialog) to customize it.
+version: 1
+name: Implement + review loop
+description: Implement the task, then loop reviews and fixes until reviewers approve.
+
+# Uncomment agent/model to pin this stage. When omitted, they fall back to the
+# lead agent/model picked in the New Task dialog.
+implement:
+  # agent: claude
+  # model: claude-opus-5
+  prompt: |
+    You are the implementation stage of a workflow pipeline. Implement the task
+    completely: write the code, keep the change focused, and verify your work
+    with builds/tests where feasible. Your final message must summarize what
+    you did because it is passed to the reviewers.
+
+    ## Task
+    {{task_prompt}}
+
+# Optional QA stage. Uncomment to have an agent start the project's dev
+# services, walk the task's flow in the in-app browser and report pass/fail
+# with screenshots after implementation and after each fix. A failure goes to
+# the fix stage before any review. Needs the desktop app open; tasks in their
+# own worktree cannot use it yet (services run from the main checkout).
+# verify:
+#   # agent: claude
+#   # model: claude-opus-5
+#   instructions: | # logins, seed data, where the feature lives
+#     Sign in as demo@example.com / demo.
+#   required: true # true: no review without a pass; false: note it and move on
+#   max_attempts: 2 # failed verifications in a row before asking you
+
+review:
+  max_rounds: 2 # review ⇄ fix iterations before asking you what to do
+  on_limit: ask # ask | finish — behaviour when the limit is hit
+  context: [prompt, implementer_summary, diff]
+  reviewers:
+    # Each reviewer may use a different agent/model. Omitted values use Lead.
+    - agent: opencode
+      model: opencode-go/glm-5.3-flash
+      # focus: correctness and edge cases
+      prompt: |
+        You are a code reviewer in workflow round {{round}}/{{max_rounds}}.
+        Review the implementation against the task. Do not edit files. Verify
+        claims against the diff and report only concrete, actionable problems.
+
+        ## Task
+        {{task_prompt}}
+
+        ## Implementer's summary
+        {{implementer_summary}}
+
+        ## Working-copy diff
+        {{diff}}
+
+fix:
+  # Uncomment to override the implementation stage. Omitted values inherit it.
+  # agent: claude
+  # model: claude-opus-5
+  prompt: |
+    You are the repair stage of workflow round {{round}}/{{max_rounds}}.
+    Address every reviewer finding: fix it or, if it is factually wrong,
+    explain why in your final summary. Do not change unrelated code. Verify the
+    result where feasible and summarize what changed for the next review.
+
+    ## Task
+    {{task_prompt}}
+
+    ## Findings to address
+    {{findings}}
+
+    ## Current working-copy diff
+    {{diff}}
+
+# Warpforge appends the need_user_input/verdict JSON protocols to these prompts.

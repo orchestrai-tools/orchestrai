@@ -75,7 +75,7 @@ pub(super) async fn fork_detached(
             "--no-track",
             "-b",
             &branch,
-            wt_dir.to_str().unwrap_or(".warpforge/worktrees/task"),
+            wt_dir.to_str().unwrap_or(".orchestrai/worktrees/task"),
             start,
         ])
         .current_dir(base_repo)
@@ -100,7 +100,7 @@ pub(super) async fn fork_detached(
 /// briefly visible.
 pub(super) async fn prepare_worktrees_dir(base_repo: &Path) {
     if let Err(e) = ensure_worktrees_gitignore(base_repo).await {
-        eprintln!("[daemon] could not write .warpforge/worktrees/.gitignore: {e:#}");
+        eprintln!("[daemon] could not write .orchestrai/worktrees/.gitignore: {e:#}");
     }
     // Legacy tasks may still have checkouts under `.worktrees/`; hide those
     // via info/exclude, but only when that directory actually exists.
@@ -111,7 +111,7 @@ pub(super) async fn prepare_worktrees_dir(base_repo: &Path) {
     }
 }
 
-/// Write `.warpforge/worktrees/.gitignore` (content `*`) so new task checkouts
+/// Write `.orchestrai/worktrees/.gitignore` (content `*`) so new task checkouts
 /// never show as untracked in the user's checkout. Uses a `.gitignore` inside
 /// the worktrees folder — never the user's root `.gitignore` or `.git`
 /// (ADR 0015). Idempotent; the caller treats failure as best-effort.
@@ -298,7 +298,7 @@ pub(super) async fn copy_working_state(source: &Path, target: &Path) -> Result<(
         let src = source.join(line);
         // `git ls-files --others` reports a nested checkout as one directory
         // entry rather than its contents, and every worktree lives inside the
-        // project under `.warpforge/worktrees/<task>` (or the legacy
+        // project under `.orchestrai/worktrees/<task>` (or the legacy
         // `.worktrees/<task>`). So when the source is the project checkout
         // itself, its own worktrees show up here — copying one would fail
         // outright, and copying it successfully would be worse. Nothing that is

@@ -4,7 +4,9 @@ use std::time::{Duration, Instant};
 
 use warpforge_protocol as wire;
 
-use crate::config::{find_config_file, sorted_services, WorkspaceConfig};
+use crate::config::{
+    find_config_file, sorted_services, try_load_workspace_config, WorkspaceConfig,
+};
 use crate::config_local::{ensure_local_ignored, find_local_config_file};
 use crate::registry::ProjectEntry;
 use crate::service::ServiceStatus;
@@ -126,6 +128,14 @@ impl ConfigObserver {
         self.applied.insert(project.to_string(), fingerprint);
         self.pending.remove(project);
     }
+}
+
+/// Why the shared workspace file is being ignored, if it exists but does not
+/// load.
+fn workspace_config_error(project_path: &Path) -> Option<String> {
+    try_load_workspace_config(project_path)
+        .err()
+        .map(|error| format!("{error:#}"))
 }
 
 impl Daemon {
@@ -290,6 +300,10 @@ impl Daemon {
                 declared_services,
                 agent_templates,
                 local_config_error: config.and_then(|c| c.local_error.clone()),
+                config_error: config
+                    .is_none()
+                    .then(|| workspace_config_error(Path::new(&project.path)))
+                    .flatten(),
             },
             services,
             portforwards,

@@ -21,10 +21,10 @@ const WF_FIXTURE: &str = concat!(
 );
 
 /// A tempdir project with one workflow file at
-/// `.warpforge/workflows/test.yaml` and a registered `demo` project entry.
+/// `.orchestrai/workflows/test.yaml` and a registered `demo` project entry.
 fn workflow_project(yaml: &str) -> (tempfile::TempDir, Vec<ProjectEntry>) {
     let dir = tempfile::tempdir().unwrap();
-    let wf_dir = dir.path().join(".warpforge/workflows");
+    let wf_dir = dir.path().join(".orchestrai/workflows");
     std::fs::create_dir_all(&wf_dir).unwrap();
     std::fs::write(wf_dir.join("test.yaml"), yaml).unwrap();
     let projects = vec![ProjectEntry {

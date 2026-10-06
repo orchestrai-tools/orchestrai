@@ -1,4 +1,4 @@
-//! Memory configuration: the `memory:` section of `~/.warpforge/config.yaml`.
+//! Memory configuration: the `memory:` section of `~/.orchestrai/config.yaml`.
 //! Loaded once at daemon start; the dreaming subsection is parsed and stored
 //! but never executed in v1.
 
@@ -85,7 +85,7 @@ impl MemoryConfig {
     }
 }
 
-/// Persist the embedding mode to `~/.warpforge/config.yaml`, preserving any
+/// Persist the embedding mode to `~/.orchestrai/config.yaml`, preserving any
 /// unrelated top-level keys. Best-effort: callers treat failure as non-fatal.
 pub fn save_embedding(mode: &str) -> Result<()> {
     let path = config_path();
@@ -124,10 +124,7 @@ struct RawConfig {
 }
 
 fn config_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".warpforge")
-        .join("config.yaml")
+    crate::registry::data_dir().join("config.yaml")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

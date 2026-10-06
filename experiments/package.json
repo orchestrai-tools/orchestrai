@@ -1,0 +1,39 @@
+{
+  "name": "experiments",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "culori": "^4.0.2",
+    "d3-path": "^3.1.0",
+    "es-toolkit": "^1.52.0",
+    "lucide-react": "^1.49.0",
+    "motion": "^13.4.6",
+    "radix-ui": "^1.6.7",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-resizable-panels": "^4.14.1",
+    "tailwind-merge": "^3.7.0",
+    "usehooks-ts": "^3.1.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/culori": "^4.0.1",
+    "@types/d3-path": "^3.1.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0"
+  }
+}

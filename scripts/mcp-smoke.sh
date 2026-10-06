@@ -4,8 +4,8 @@
 #
 # Prereqs:
 #   1. Build:  cargo build
-#   2. Run the daemon in another terminal:  ./target/debug/warpforge daemon
-#      (publishes ~/.warpforge/daemon.json — the bridge connects back to it)
+#   2. Run the daemon in another terminal:  ./target/debug/orchestrai daemon
+#      (publishes ~/.orchestrai/daemon.json — the bridge connects back to it)
 #
 # Usage:
 #   scripts/mcp-smoke.sh [project]            # read-only: initialize, tools/list, read_inbox
@@ -14,12 +14,12 @@
 # Env overrides: WF_BIN (path to the binary).
 set -euo pipefail
 
-BIN="${WF_BIN:-./target/debug/warpforge}"
+BIN="${WF_BIN:-./target/debug/orchestrai}"
 PROJECT="${1:-demo}"
 SPAWN="${2:-}"
 
-if [ ! -f "$HOME/.warpforge/daemon.json" ]; then
-  echo "✗ no ~/.warpforge/daemon.json — start the daemon first: $BIN daemon" >&2
+if [ ! -f "$HOME/.orchestrai/daemon.json" ]; then
+  echo "✗ no ~/.orchestrai/daemon.json — start the daemon first: $BIN daemon" >&2
   exit 1
 fi
 if [ ! -x "$BIN" ]; then

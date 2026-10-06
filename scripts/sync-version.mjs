@@ -92,6 +92,10 @@ const targets = [
     () => setJsonVersion("desktop/src-tauri/tauri.conf.json"),
   ],
   ["desktop/package.json", () => setJsonVersion("desktop/package.json")],
+  ["desktop-next/package.json", () => setJsonVersion("desktop-next/package.json")],
+  ["packages/protocol/package.json", () => setJsonVersion("packages/protocol/package.json")],
+  ["packages/daemon/package.json", () => setJsonVersion("packages/daemon/package.json")],
+  ["packages/core/package.json", () => setJsonVersion("packages/core/package.json")],
   ["Cargo.lock", () => setCargoLockVersions("Cargo.lock")],
   [
     "desktop/src-tauri/Cargo.lock",

@@ -5,7 +5,7 @@ use warpforge_protocol as wire;
 
 use crate::registry::ProjectEntry;
 
-use crate::daemon::actor::{ChildResult, GitEffect, ProjectRemovalError};
+use crate::daemon::actor::{ChildResult, GitEffect, ProjectRemovalError, RepoScope};
 use crate::daemon::task::{Task, TaskStatus};
 
 /// What a probe needs to spawn an agent: the ACP command, a representative cwd
@@ -334,6 +334,11 @@ pub enum Command {
         id: String,
         title: String,
     },
+    /// Change a task's `origin`, persist, and emit TaskUpdated.
+    SetTaskOrigin {
+        id: String,
+        origin: Option<String>,
+    },
     /// Merge a task's worktree branch back into its base branch. When
     /// `remove_worktree` is true, remove the checkout and delete the branch
     /// after a successful merge.
@@ -386,10 +391,12 @@ pub enum Command {
         title: String,
         reply: oneshot::Sender<String>,
     },
-    /// Compute the task's working-tree diff (git).
+    /// Compute the working-tree diff (git) of a task, or of the project's
+    /// checkout when no task is named.
     GetDiff {
         task_id: String,
         include_ignored: bool,
+        project: Option<String>,
         reply: oneshot::Sender<wire::TaskDiff>,
     },
     /// Old (HEAD) + new (working-tree) text of one file.
@@ -444,28 +451,27 @@ pub enum Command {
     },
     /// Accept (keep) or reject (revert) a single hunk in the working tree.
     ResolveHunk {
-        task_id: String,
+        scope: RepoScope,
         file: String,
         hunk_index: u32,
         resolution: wire::HunkResolution,
     },
     /// Stage (optionally a subset of) files and commit them in the task's repo.
     GitCommit {
-        task_id: String,
+        scope: RepoScope,
         message: String,
         files: Option<Vec<String>>,
         amend: bool,
-        project: Option<String>,
         reply: oneshot::Sender<Result<(), String>>,
     },
     /// Read the task repo's latest commit message (for pre-filling an amend).
     GitLastCommitMessage {
-        task_id: String,
+        scope: RepoScope,
         reply: oneshot::Sender<Result<String, String>>,
     },
     /// Fetch + rebase the task's repo onto its upstream (autostash, rollback).
     GitUpdate {
-        task_id: String,
+        scope: RepoScope,
         reply: oneshot::Sender<wire::GitOpResult>,
     },
     /// List local branches of a repo, located by task or by project name.
@@ -482,82 +488,82 @@ pub enum Command {
     },
     /// `git add` paths without committing (unversioned → tracked).
     GitAdd {
-        task_id: String,
+        scope: RepoScope,
         paths: Vec<String>,
         reply: oneshot::Sender<Result<(), String>>,
     },
     /// Append paths to the repo's root `.gitignore`.
     GitIgnorePaths {
-        task_id: String,
+        scope: RepoScope,
         paths: Vec<String>,
         reply: oneshot::Sender<Result<(), String>>,
     },
     /// List the task repo's shelf bundles, newest first.
     ShelfList {
-        task_id: String,
+        scope: RepoScope,
         reply: oneshot::Sender<wire::ShelfList>,
     },
     /// Shelve paths (or every change) and revert the worktree.
     ShelfCreate {
-        task_id: String,
+        scope: RepoScope,
         name: String,
         paths: Option<Vec<String>>,
         reply: oneshot::Sender<Result<wire::ShelfEntry, String>>,
     },
     /// One shelf bundle with its files as diffs.
     ShelfGet {
-        task_id: String,
+        scope: RepoScope,
         id: String,
         reply: oneshot::Sender<Result<wire::ShelfDiff, String>>,
     },
     /// Unshelve a bundle back into the worktree.
     ShelfApply {
-        task_id: String,
+        scope: RepoScope,
         id: String,
         drop: bool,
         reply: oneshot::Sender<Result<(), String>>,
     },
     /// Delete a shelf bundle.
     ShelfDrop {
-        task_id: String,
+        scope: RepoScope,
         id: String,
         reply: oneshot::Sender<Result<(), String>>,
     },
     /// List the task repo's stash entries, newest first.
     StashList {
-        task_id: String,
+        scope: RepoScope,
         reply: oneshot::Sender<wire::StashList>,
     },
     /// Stash paths (or everything) with `git stash push`.
     StashPush {
-        task_id: String,
+        scope: RepoScope,
         message: String,
         paths: Option<Vec<String>>,
         reply: oneshot::Sender<Result<wire::StashEntry, String>>,
     },
     /// One stash entry with its files as diffs.
     StashGet {
-        task_id: String,
+        scope: RepoScope,
         id: String,
         reply: oneshot::Sender<Result<wire::StashDiff, String>>,
     },
     /// Apply or pop a whole stash entry.
     StashApply {
-        task_id: String,
+        scope: RepoScope,
         id: String,
         pop: bool,
         reply: oneshot::Sender<Result<(), String>>,
     },
     /// Restore paths out of a stash entry into the worktree.
     StashFile {
-        task_id: String,
+        scope: RepoScope,
         id: String,
         paths: Vec<String>,
         reply: oneshot::Sender<Result<(), String>>,
     },
     /// Drop a stash entry.
     StashDrop {
-        task_id: String,
+        scope: RepoScope,
         id: String,
         reply: oneshot::Sender<Result<(), String>>,
     },
@@ -570,27 +576,27 @@ pub enum Command {
     },
     /// Switch the task's repo to `branch` (smart checkout, rollback on conflict).
     GitSwitchBranch {
-        task_id: String,
+        scope: RepoScope,
         branch: String,
         reply: oneshot::Sender<wire::GitOpResult>,
     },
     /// Rename a local branch.
     GitBranchRename {
-        task_id: String,
+        scope: RepoScope,
         branch: String,
         new_name: String,
         reply: oneshot::Sender<wire::GitOpResult>,
     },
     /// Delete a local branch.
     GitBranchDelete {
-        task_id: String,
+        scope: RepoScope,
         branch: String,
         force: bool,
         reply: oneshot::Sender<wire::GitOpResult>,
     },
     /// Create a branch from a ref and check it out.
     GitBranchCreate {
-        task_id: String,
+        scope: RepoScope,
         name: String,
         from: Option<String>,
         checkout: bool,
@@ -599,23 +605,23 @@ pub enum Command {
     },
     /// Rebase the current branch onto `target`.
     GitRebase {
-        task_id: String,
+        scope: RepoScope,
         branch: String,
         target: String,
         reply: oneshot::Sender<wire::GitOpResult>,
     },
     /// Merge `target` into the current branch.
     GitMerge {
-        task_id: String,
+        scope: RepoScope,
         target: String,
         reply: oneshot::Sender<wire::GitOpResult>,
     },
     GitPushInfo {
-        task_id: String,
+        scope: RepoScope,
         reply: oneshot::Sender<Result<wire::GitPushInfo, String>>,
     },
     GitPush {
-        task_id: String,
+        scope: RepoScope,
         force: bool,
         reply: oneshot::Sender<wire::GitOpResult>,
     },
@@ -900,7 +906,7 @@ pub enum Command {
         path: String,
         name: Option<String>,
         /// Optional sticky port range assigned at registration, like the
-        /// CLI's `warpforge add --ports`. Not a local override — a declared
+        /// CLI's `orchestrai add --ports`. Not a local override — a declared
         /// config range outranks it (ADR 0006).
         port_range: Option<crate::registry::PortRange>,
         reply: oneshot::Sender<Result<ProjectEntry, String>>,

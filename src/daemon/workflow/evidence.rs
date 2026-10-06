@@ -1,5 +1,5 @@
 //! Screenshots a verify stage keeps as evidence, one directory per pipeline
-//! under `~/.warpforge/evidence/<parent task id>/`. Outside the project on
+//! under `~/.orchestrai/evidence/<parent task id>/`. Outside the project on
 //! purpose: a file in the checkout would show up in the diff under review.
 
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ fn root() -> PathBuf {
     if cfg!(test) {
         return std::env::temp_dir().join(format!("warpforge-evidence-{}", std::process::id()));
     }
-    crate::registry::warpforge_dir().join("evidence")
+    crate::registry::data_dir().join("evidence")
 }
 
 /// Task ids and evidence names are single path components from our own

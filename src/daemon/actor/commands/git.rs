@@ -1,6 +1,7 @@
 use warpforge_protocol as wire;
 
 use crate::daemon::actor::{Command, Daemon, Event, GitEffect};
+use crate::daemon::diff;
 
 impl Daemon {
     pub(crate) async fn handle_git_command(&mut self, cmd: Command) {
@@ -28,97 +29,39 @@ impl Daemon {
             },
 
             Command::GitCommit {
-                task_id,
+                scope,
                 message,
                 files,
                 amend,
-                project,
                 reply,
             } => {
                 // git shells out; resolve the repo here and run it off the loop,
                 // reporting what changed back as GitOpFinished (ADR 0002).
-                let repo: Option<String> = if let Some(proj) = project.clone() {
-                    self.projects
-                        .iter()
-                        .find(|p| p.name == proj)
-                        .map(|p| p.path.clone())
-                } else {
-                    self.task_repo_path(&task_id)
-                };
+                let repo = self.scope_repo_path(&scope);
                 let cmd_tx = self.cmd_tx.clone();
-                let is_project = project.is_some();
                 tokio::spawn(async move {
                     let result = match repo {
-                        Some(p) => {
-                            crate::daemon::diff::commit(&p, &message, files.as_deref(), amend)
-                                .await
-                                .map_err(|e| e.to_string())
-                        }
-                        None => Err(if is_project {
-                            format!("no repo for project {}", project.unwrap_or_default())
-                        } else {
-                            format!("no repo for task {task_id}")
-                        }),
-                    };
-                    if result.is_ok() {
-                        let _ = cmd_tx
-                            .send(Command::GitOpFinished {
-                                task_id,
-                                effect: GitEffect::Committed,
-                            })
-                            .await;
-                    }
-                    let _ = reply.send(result);
-                });
-            }
-            Command::GitLastCommitMessage { task_id, reply } => {
-                // Read-only, but still shells out — resolve here, run off the loop.
-                let repo = self.task_repo_path(&task_id);
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::last_commit_message(&p)
+                        Some(p) => diff::commit(&p, &message, files.as_deref(), amend)
                             .await
                             .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
+                        None => Err(scope.missing()),
                     };
-                    let _ = reply.send(result);
-                });
-            }
-            Command::GitUpdate { task_id, reply } => {
-                // git shells out; resolve the repo here and run it off
-                // the loop, reporting what changed back as
-                // GitOpFinished (ADR 0002).
-                let repo = self.task_repo_path(&task_id);
-                let cmd_tx = self.cmd_tx.clone();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::update_project(&p)
-                            .await
-                            .unwrap_or_else(|e| wire::GitOpResult {
-                                status: wire::GitOpStatus::Error,
-                                message: e.to_string(),
-                                conflicts: Vec::new(),
-                                branch: None,
-                            }),
-                        None => wire::GitOpResult {
-                            status: wire::GitOpStatus::Error,
-                            message: format!("no repo for task {task_id}"),
-                            conflicts: Vec::new(),
-                            branch: None,
-                        },
-                    };
-                    // A clean update changed HEAD/tree — nudge clients to refetch.
-                    if result.status == wire::GitOpStatus::Ok {
-                        let _ = cmd_tx
-                            .send(Command::GitOpFinished {
-                                task_id,
-                                effect: GitEffect::Bump,
-                            })
-                            .await;
+                    if result.is_ok() {
+                        scope.finished(&cmd_tx, GitEffect::Committed).await;
                     }
                     let _ = reply.send(result);
                 });
             }
+            Command::GitLastCommitMessage { scope, reply } => self.spawn_git_call(
+                &scope,
+                |p| async move { diff::last_commit_message(&p).await },
+                reply,
+            ),
+            Command::GitUpdate { scope, reply } => self.spawn_git_op(
+                scope,
+                |p| async move { diff::update_project(&p).await },
+                reply,
+            ),
             Command::GitBranches {
                 task_id,
                 project,
@@ -132,9 +75,7 @@ impl Daemon {
                 };
                 tokio::spawn(async move {
                     let list = match repo {
-                        Some(p) => crate::daemon::diff::list_branches(&p)
-                            .await
-                            .unwrap_or_default(),
+                        Some(p) => diff::list_branches(&p).await.unwrap_or_default(),
                         None => wire::GitBranchList::default(),
                     };
                     let _ = reply.send(list);
@@ -151,7 +92,7 @@ impl Daemon {
                 };
                 tokio::spawn(async move {
                     let roots = match repo {
-                        Some(p) => crate::daemon::diff::git_roots(&p).await.unwrap_or_default(),
+                        Some(p) => diff::git_roots(&p).await.unwrap_or_default(),
                         None => Vec::new(),
                     };
                     let _ = reply.send(wire::GitRoots { roots });
@@ -170,7 +111,7 @@ impl Daemon {
                 };
                 tokio::spawn(async move {
                     let res = match repo {
-                        Some(p) => match crate::daemon::diff::ignored_files(&p).await {
+                        Some(p) => match diff::ignored_files(&p).await {
                             Ok((ignored, truncated)) => wire::GitIgnoredFiles {
                                 ignored,
                                 truncated,
@@ -193,341 +134,38 @@ impl Daemon {
                     let _ = reply.send(res);
                 });
             }
+            // "Add to VCS" stages without committing; "Add to .gitignore"
+            // appends to the root .gitignore. Both off the loop (ADR 0002).
             Command::GitAdd {
-                task_id,
+                scope,
                 paths,
                 reply,
-            } => {
-                // "Add to VCS": stage without committing, so unversioned files
-                // move to Changes on the next diff. Off the loop (ADR 0002).
-                let repo = self.task_repo_path(&task_id);
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::stage_paths(&p, &paths)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
-            }
+            } => self.spawn_git_call(
+                &scope,
+                move |p| async move { diff::stage_paths(&p, &paths).await },
+                reply,
+            ),
             Command::GitIgnorePaths {
-                task_id,
+                scope,
                 paths,
                 reply,
-            } => {
-                // "Add to .gitignore": appends to the root .gitignore, off the
-                // loop like every other tree-mutating op.
-                let repo = self.task_repo_path(&task_id);
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::ignore_paths(&p, &paths)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
-            }
-            Command::GitSwitchBranch {
-                task_id,
-                branch,
+            } => self.spawn_git_call(
+                &scope,
+                move |p| async move { diff::ignore_paths(&p, &paths).await },
                 reply,
-            } => {
-                // git shells out; resolve the repo here and run it off
-                // the loop, reporting what changed back as
-                // GitOpFinished (ADR 0002).
-                let repo = self.task_repo_path(&task_id);
-                let cmd_tx = self.cmd_tx.clone();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::switch_branch(&p, &branch)
-                            .await
-                            .unwrap_or_else(|e| wire::GitOpResult {
-                                status: wire::GitOpStatus::Error,
-                                message: e.to_string(),
-                                conflicts: Vec::new(),
-                                branch: None,
-                            }),
-                        None => wire::GitOpResult {
-                            status: wire::GitOpStatus::Error,
-                            message: format!("no repo for task {task_id}"),
-                            conflicts: Vec::new(),
-                            branch: None,
-                        },
-                    };
-                    // Switching branches changes the whole working tree — refetch.
-                    if result.status == wire::GitOpStatus::Ok {
-                        let _ = cmd_tx
-                            .send(Command::GitOpFinished {
-                                task_id,
-                                effect: GitEffect::Bump,
-                            })
-                            .await;
-                    }
-                    let _ = reply.send(result);
-                });
-            }
-            Command::GitBranchRename {
-                task_id,
-                branch,
-                new_name,
-                reply,
-            } => {
-                // git shells out; resolve the repo here and run it off
-                // the loop, reporting what changed back as
-                // GitOpFinished (ADR 0002).
-                let repo = self.task_repo_path(&task_id);
-                let cmd_tx = self.cmd_tx.clone();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::rename_branch(&p, &branch, &new_name)
-                            .await
-                            .unwrap_or_else(|e| wire::GitOpResult {
-                                status: wire::GitOpStatus::Error,
-                                message: e.to_string(),
-                                conflicts: Vec::new(),
-                                branch: None,
-                            }),
-                        None => wire::GitOpResult {
-                            status: wire::GitOpStatus::Error,
-                            message: format!("no repo for task {task_id}"),
-                            conflicts: Vec::new(),
-                            branch: None,
-                        },
-                    };
-                    if result.status == wire::GitOpStatus::Ok {
-                        let _ = cmd_tx
-                            .send(Command::GitOpFinished {
-                                task_id,
-                                effect: GitEffect::Bump,
-                            })
-                            .await;
-                    }
-                    let _ = reply.send(result);
-                });
-            }
-            Command::GitBranchDelete {
-                task_id,
-                branch,
-                force,
-                reply,
-            } => {
-                // git shells out; resolve the repo here and run it off
-                // the loop, reporting what changed back as
-                // GitOpFinished (ADR 0002).
-                let repo = self.task_repo_path(&task_id);
-                let cmd_tx = self.cmd_tx.clone();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::delete_branch(&p, &branch, force)
-                            .await
-                            .unwrap_or_else(|e| wire::GitOpResult {
-                                status: wire::GitOpStatus::Error,
-                                message: e.to_string(),
-                                conflicts: Vec::new(),
-                                branch: None,
-                            }),
-                        None => wire::GitOpResult {
-                            status: wire::GitOpStatus::Error,
-                            message: format!("no repo for task {task_id}"),
-                            conflicts: Vec::new(),
-                            branch: None,
-                        },
-                    };
-                    if result.status == wire::GitOpStatus::Ok {
-                        let _ = cmd_tx
-                            .send(Command::GitOpFinished {
-                                task_id,
-                                effect: GitEffect::Bump,
-                            })
-                            .await;
-                    }
-                    let _ = reply.send(result);
-                });
-            }
-            Command::GitBranchCreate {
-                task_id,
-                name,
-                from,
-                checkout,
-                overwrite,
-                reply,
-            } => {
-                // git shells out; resolve the repo here and run it off
-                // the loop, reporting what changed back as
-                // GitOpFinished (ADR 0002).
-                let repo = self.task_repo_path(&task_id);
-                let cmd_tx = self.cmd_tx.clone();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::branch_create(
-                            &p,
-                            &name,
-                            from.as_deref(),
-                            checkout,
-                            overwrite,
-                        )
-                        .await
-                        .unwrap_or_else(|e| wire::GitOpResult {
-                            status: wire::GitOpStatus::Error,
-                            message: e.to_string(),
-                            conflicts: Vec::new(),
-                            branch: None,
-                        }),
-                        None => wire::GitOpResult {
-                            status: wire::GitOpStatus::Error,
-                            message: format!("no repo for task {task_id}"),
-                            conflicts: Vec::new(),
-                            branch: None,
-                        },
-                    };
-                    if result.status == wire::GitOpStatus::Ok {
-                        let _ = cmd_tx
-                            .send(Command::GitOpFinished {
-                                task_id,
-                                effect: GitEffect::Bump,
-                            })
-                            .await;
-                    }
-                    let _ = reply.send(result);
-                });
-            }
-            Command::GitRebase {
-                task_id,
-                branch,
-                target,
-                reply,
-            } => {
-                // git shells out; resolve the repo here and run it off
-                // the loop, reporting what changed back as
-                // GitOpFinished (ADR 0002).
-                let repo = self.task_repo_path(&task_id);
-                let cmd_tx = self.cmd_tx.clone();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::rebase(&p, &branch, &target)
-                            .await
-                            .unwrap_or_else(|e| wire::GitOpResult {
-                                status: wire::GitOpStatus::Error,
-                                message: e.to_string(),
-                                conflicts: Vec::new(),
-                                branch: None,
-                            }),
-                        None => wire::GitOpResult {
-                            status: wire::GitOpStatus::Error,
-                            message: format!("no repo for task {task_id}"),
-                            conflicts: Vec::new(),
-                            branch: None,
-                        },
-                    };
-                    if result.status == wire::GitOpStatus::Ok {
-                        let _ = cmd_tx
-                            .send(Command::GitOpFinished {
-                                task_id,
-                                effect: GitEffect::Bump,
-                            })
-                            .await;
-                    }
-                    let _ = reply.send(result);
-                });
-            }
-            Command::GitMerge {
-                task_id,
-                target,
-                reply,
-            } => {
-                // git shells out; resolve the repo here and run it off
-                // the loop, reporting what changed back as
-                // GitOpFinished (ADR 0002).
-                let repo = self.task_repo_path(&task_id);
-                let cmd_tx = self.cmd_tx.clone();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::merge(&p, &target)
-                            .await
-                            .unwrap_or_else(|e| wire::GitOpResult {
-                                status: wire::GitOpStatus::Error,
-                                message: e.to_string(),
-                                conflicts: Vec::new(),
-                                branch: None,
-                            }),
-                        None => wire::GitOpResult {
-                            status: wire::GitOpStatus::Error,
-                            message: format!("no repo for task {task_id}"),
-                            conflicts: Vec::new(),
-                            branch: None,
-                        },
-                    };
-                    if result.status == wire::GitOpStatus::Ok {
-                        let _ = cmd_tx
-                            .send(Command::GitOpFinished {
-                                task_id,
-                                effect: GitEffect::Bump,
-                            })
-                            .await;
-                    }
-                    let _ = reply.send(result);
-                });
-            }
-            Command::GitPushInfo { task_id, reply } => {
-                let repo = self.tasks.get(&task_id).and_then(|task| {
-                    task.worktree
-                        .clone()
-                        .or_else(|| self.project_path(&task.project))
-                });
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(path) => crate::daemon::diff::push_info(&path)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
+            ),
+            Command::GitPushInfo { scope, reply } => {
+                self.spawn_git_call(&scope, |p| async move { diff::push_info(&p).await }, reply)
             }
             Command::GitPush {
-                task_id,
+                scope,
                 force,
                 reply,
-            } => {
-                // git shells out; resolve the repo here and run it off
-                // the loop, reporting what changed back as
-                // GitOpFinished (ADR 0002).
-                let repo = self.tasks.get(&task_id).and_then(|task| {
-                    task.worktree
-                        .clone()
-                        .or_else(|| self.project_path(&task.project))
-                });
-                let cmd_tx = self.cmd_tx.clone();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(path) => crate::daemon::diff::push(&path, force)
-                            .await
-                            .unwrap_or_else(|e| wire::GitOpResult {
-                                status: wire::GitOpStatus::Error,
-                                message: e.to_string(),
-                                conflicts: Vec::new(),
-                                branch: None,
-                            }),
-                        None => wire::GitOpResult {
-                            status: wire::GitOpStatus::Error,
-                            message: format!("no repo for task {task_id}"),
-                            conflicts: Vec::new(),
-                            branch: None,
-                        },
-                    };
-                    if result.status == wire::GitOpStatus::Ok {
-                        let _ = cmd_tx
-                            .send(Command::GitOpFinished {
-                                task_id,
-                                effect: GitEffect::Bump,
-                            })
-                            .await;
-                    }
-                    let _ = reply.send(result);
-                });
-            }
+            } => self.spawn_git_op(
+                scope,
+                move |p| async move { diff::push(&p, force).await },
+                reply,
+            ),
             Command::GitCreatePr {
                 task_id,
                 title,
@@ -545,18 +183,16 @@ impl Daemon {
                 // task of its own (ADR 0002).
                 tokio::spawn(async move {
                     let result = match repo {
-                        Some(path) => {
-                            crate::daemon::diff::create_pr(&path, &title, &body, base.as_deref())
-                                .await
-                                .map_err(|e| e.to_string())
-                        }
+                        Some(path) => diff::create_pr(&path, &title, &body, base.as_deref())
+                            .await
+                            .map_err(|e| e.to_string()),
                         None => Err(format!("no repo for task {task_id}")),
                     };
                     let _ = reply.send(result);
                 });
             }
 
-            other => self.handle_shelf_command(other).await,
+            other => self.handle_branch_command(other).await,
         }
     }
 }

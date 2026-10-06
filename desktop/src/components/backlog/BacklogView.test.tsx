@@ -72,6 +72,7 @@ beforeEach(() => {
     };
   });
   vi.spyOn(daemon, "importExternalWorkItems").mockResolvedValue({ items: [], synced: [] });
+  vi.spyOn(daemon, "syncExternalWorkItems").mockResolvedValue([]);
   // No identity and no assignee on any row by default, which is the case where
   // the assignee filter has nothing to offer.
   vi.spyOn(daemon, "trackerStatus").mockResolvedValue({});

@@ -213,7 +213,7 @@ impl Daemon {
                     Some(store) => {
                         let store = store.lock().unwrap_or_else(|e| e.into_inner());
                         // YAML mode keeps backlog item rows project-local in
-                        // `…/.warpforge/backlog/`; SQLite mode keeps them in the
+                        // `…/.orchestrai/backlog/`; SQLite mode keeps them in the
                         // `backlog_items` table. `adopt_imported` is told which
                         // so it never writes a shadow row to the other backend.
                         let yaml_path = if store.backlog_storage_mode().ok()

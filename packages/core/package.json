@@ -1,0 +1,13 @@
+{
+  "name": "@warpforge/core",
+  "version": "0.23.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@warpforge/protocol": "workspace:*",
+    "idb": "^8.0.3"
+  }
+}

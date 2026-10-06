@@ -1,0 +1,80 @@
+@layer components {
+  /* Drag bounds for the trigger; Motion constrains the trigger to this box. */
+  .inspector-bounds {
+    position: fixed;
+    inset: 10px;
+    z-index: 50;
+    pointer-events: none;
+  }
+
+  .inspector-trigger {
+    position: absolute;
+    left: calc(50% - var(--inspector-trigger-size) / 2);
+    top: calc(50% - var(--inspector-trigger-size) / 2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--inspector-trigger-size);
+    height: var(--inspector-trigger-size);
+    border: 1px solid var(--inspector-trigger-border);
+    border-radius: 9999px;
+    background-color: var(--inspector-trigger-bg);
+    box-shadow: var(--inspector-trigger-shadow);
+    color: var(--inspector-accent);
+    cursor: grab;
+    pointer-events: auto;
+  }
+
+  .inspector-trigger:active {
+    cursor: grabbing;
+  }
+
+  .inspector-trigger:focus-visible {
+    outline: 2px solid var(--edge-focus-ring);
+    outline-offset: 2px;
+  }
+
+  .theme-root[data-lightsaber='true'] .inspector-trigger {
+    border-color: var(--saber-color);
+    color: var(--saber-color);
+  }
+
+  .inspector-trigger__icon {
+    width: var(--inspector-trigger-icon-size);
+    height: var(--inspector-trigger-icon-size);
+  }
+
+  .inspector-panel {
+    background-color: var(--inspector-panel-bg);
+    border-color: var(--inspector-panel-border);
+  }
+
+  .inspector-scroll {
+    max-height: min(
+      var(--inspector-panel-max-height),
+      calc(var(--radix-popover-content-available-height, 100vh) - 140px)
+    );
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--inspector-scroll-thumb) var(--inspector-scroll-track);
+  }
+
+  .inspector-scroll::-webkit-scrollbar {
+    width: var(--inspector-scroll-width);
+  }
+
+  .inspector-scroll::-webkit-scrollbar-track {
+    background: var(--inspector-scroll-track);
+    border-radius: 9999px;
+  }
+
+  .inspector-scroll::-webkit-scrollbar-thumb {
+    background: var(--inspector-scroll-thumb);
+    border-radius: 9999px;
+  }
+
+  .inspector-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--inspector-scroll-thumb-hover);
+  }
+}

@@ -61,14 +61,14 @@ pub fn notify_attention(
             let handle = match notification.send().await {
                 Ok(handle) => handle,
                 Err(error) => {
-                    eprintln!("warpforge: notification send failed: {error:?}");
+                    eprintln!("orchestrai: notification send failed: {error:?}");
                     return;
                 }
             };
             let response = match handle.response().await {
                 Ok(response) => response,
                 Err(error) => {
-                    eprintln!("warpforge: notification response failed: {error:?}");
+                    eprintln!("orchestrai: notification response failed: {error:?}");
                     return;
                 }
             };
@@ -149,11 +149,11 @@ pub fn init() {
         match check_bundle() {
             Ok(()) => {
                 if let Err(e) = blocking::request_auth() {
-                    eprintln!("warpforge: notification permission request failed: {e}");
+                    eprintln!("orchestrai: notification permission request failed: {e}");
                 }
             }
             Err(e) => {
-                eprintln!("warpforge: native notifications unavailable (unbundled binary): {e}")
+                eprintln!("orchestrai: native notifications unavailable (unbundled binary): {e}")
             }
         }
     }

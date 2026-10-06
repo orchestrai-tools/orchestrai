@@ -3,14 +3,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 
 /// Marker file written into every vault directory, containing the account id.
-pub(crate) const OWNERSHIP_MARKER: &str = ".warpforge-account";
+pub(crate) const OWNERSHIP_MARKER: &str = ".orchestrai-account";
 
-/// Root of all account vaults: `~/.warpforge/accounts`.
+/// Root of all account vaults: `~/.orchestrai/accounts`.
 pub fn accounts_root() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".warpforge")
-        .join("accounts")
+    crate::registry::data_dir().join("accounts")
 }
 
 /// Vault path for an account. Path only — does not create anything, so

@@ -3,8 +3,8 @@
 //!
 //! The orchestrator agent spawns this binary as an MCP server subprocess (wired
 //! via the ACP `mcpServers` config). It speaks MCP JSON-RPC 2.0 over stdio to
-//! the agent and connects *back* to the running warpforge daemon over the
-//! daemon's WebSocket API (endpoint + token from `~/.warpforge/daemon.json`),
+//! the agent and connects *back* to the running orchestrai daemon over the
+//! daemon's WebSocket API (endpoint + token from `~/.orchestrai/daemon.json`),
 //! translating tool calls into daemon commands.
 //!
 //! Tools:
@@ -36,7 +36,7 @@
 //!   also be configured once globally and run outside the daemon.
 //! - `WF_MODE`    — `orchestrator` to expose the spawn/inbox/workflow tools on
 //!   top of the runtime ones. Anything else (or unset) means a single session.
-//! - `WARPFORGE_SESSION_TASK` / `_PROJECT` / `_MODE` — the same three, set on the
+//! - `ORCHESTRAI_SESSION_TASK` / `_PROJECT` / `_MODE` — the same three, set on the
 //!   agent process rather than the server entry; they take precedence
 //!   (`identity.rs`).
 
@@ -123,7 +123,7 @@ fn project_from_cwd() -> Option<String> {
 
 /// The deepest registered root containing `cwd`. Deepest rather than first so a
 /// project nested inside another resolves to the inner one; a task worktree
-/// under `<project>/.warpforge/worktrees/<task>` (or legacy `.worktrees/`)
+/// under `<project>/.orchestrai/worktrees/<task>` (or legacy `.worktrees/`)
 /// resolves to its project.
 fn pick_project(roots: &[(String, PathBuf)], cwd: &Path) -> Option<String> {
     roots

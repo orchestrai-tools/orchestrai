@@ -13,7 +13,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@warpforge/protocol": ["../packages/protocol/src/index.ts"],
+      "@warpforge/daemon": ["../packages/daemon/src/index.ts"],
+      "@warpforge/daemon/*": ["../packages/daemon/src/*"],
+      "@warpforge/core/*": ["../packages/core/src/*"]
     }
   },
   "include": ["src"]

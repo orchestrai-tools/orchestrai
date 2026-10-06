@@ -37,12 +37,12 @@ pub struct WorktreeInfo {
     pub base_branch: String,
 }
 
-/// An agent session discovered on disk (claude/codex native session store),
+/// An agent session discovered on disk (claude, codex, opencode, goose, or pi),
 /// resumable via `task.resume` → ACP `session/load`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalSession {
-    /// Agent id this session belongs to ("claude" | "codex").
+    /// Agent id this session belongs to ("claude", "codex", "opencode", "goose", or "pi").
     pub agent: String,
     /// The agent's native session id (uuid) — passed to ACP `session/load`.
     pub session_id: String,
@@ -54,7 +54,7 @@ pub struct ExternalSession {
     pub message_count: u32,
 }
 
-/// Contents of `~/.warpforge/daemon.json`, written by the daemon on startup
+/// Contents of `~/.orchestrai/daemon.json`, written by the daemon on startup
 /// so clients can discover the endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]

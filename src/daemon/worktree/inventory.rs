@@ -16,7 +16,7 @@ pub struct Listed {
     pub branch: Option<String>,
 }
 
-/// Worktrees of `base_repo` that live under `.warpforge/worktrees` or the
+/// Worktrees of `base_repo` that live under `.orchestrai/worktrees` or the
 /// legacy `.worktrees`. Checkouts the user made elsewhere are not Warpforge's
 /// to list or remove.
 ///

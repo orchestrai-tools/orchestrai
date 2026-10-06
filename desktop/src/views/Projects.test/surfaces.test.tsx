@@ -1,0 +1,430 @@
+const xtermInstances = vi.hoisted(() => [] as object[]);
+
+vi.mock("@xterm/xterm", () => {
+  const MockTerminal = function () {
+    const element = document.createElement("div");
+    const terminal = {
+      cols: 80,
+      dispose: vi.fn<() => void>(),
+      element,
+      focus: vi.fn<() => void>(),
+      loadAddon: vi.fn<(addon: unknown) => void>(),
+      onData: vi
+        .fn<(cb: (data: string) => void) => { dispose: () => void }>()
+        .mockReturnValue({ dispose: vi.fn<() => void>() }),
+      open: vi.fn<(host: HTMLElement) => void>((host) => host.appendChild(element)),
+      rows: 24,
+      write: vi.fn<(data: Uint8Array | string) => void>(),
+    };
+    xtermInstances.push(terminal);
+    return terminal;
+  };
+  return { Terminal: MockTerminal };
+});
+
+vi.mock("@legendapp/list/react", () => import("@/test/legendList"));
+
+vi.mock("@xterm/addon-fit", () => {
+  const MockFitAddon = function () {
+    return { fit: vi.fn<() => void>() };
+  };
+  return { FitAddon: MockFitAddon };
+});
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { TerminalWorkspaceView } from "../../components/runtime/TerminalWorkspace";
+import { daemon } from "../../daemon";
+import { getTerminalWorkspace } from "../../lib/terminalWorkspace";
+import type { ProjectInfo } from "../../protocol";
+import { useUi } from "../../store/ui";
+import Projects from "../Projects";
+import {
+  type MockXterm,
+  openSurface,
+  projectTest,
+  renderProjects,
+  snapshot,
+  taskInfo,
+  terminalInfo,
+  warpforgeProject,
+} from "./fixtures";
+
+beforeEach(() => {
+  xtermInstances.length = 0;
+});
+
+describe("Projects", () => {
+  it("renders project context in the shared workspace surface", () => {
+    renderProjects();
+
+    expect(screen.getByRole("heading", { name: "warpforge" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Backlog/ })).toHaveAttribute("data-state", "active");
+    expect(screen.getByRole("tab", { name: /Runtime/ })).toBeInTheDocument();
+  });
+
+  it("remembers the surface each project was left on", async () => {
+    const other: ProjectInfo = { ...warpforgeProject, name: "other", path: "/workspace/other" };
+    projectTest.snapshot = { ...snapshot, projects: [warpforgeProject, other] };
+    renderProjects();
+
+    await openSurface(/Runtime/);
+    expect(useUi.getState().projectSurfaceByProject).toEqual({ warpforge: "runtime" });
+
+    // A project that was never switched falls back to Backlog rather than
+    // inheriting the surface of the one before it.
+    act(() => useUi.setState({ selectedProjectId: "other" }));
+    expect(screen.getByRole("tab", { name: /Backlog/ })).toHaveAttribute("data-state", "active");
+  });
+
+  // Hooks run before the `if (!project)` guard, so an empty registry used to
+  // dereference `project.declaredServices` and blank the view.
+  it("renders the empty state when the registry has no projects", () => {
+    projectTest.snapshot = { ...snapshot, projects: [] };
+
+    expect(() => renderProjects()).not.toThrow();
+
+    expect(screen.getByText("No projects registered")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Project" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "warpforge" })).not.toBeInTheDocument();
+  });
+
+  it("shows local backlog items and hides daemon task trees", async () => {
+    vi.mocked(daemon.listBacklog).mockImplementation(async (input) => ({
+      items:
+        input.pageSize === 1
+          ? []
+          : [
+              {
+                id: "item-1",
+                number: 1,
+                project: "warpforge",
+                title: "Local backlog item",
+                body: "",
+                status: "todo",
+                priority: "none",
+                source: "local",
+                createdAt: 100,
+                updatedAt: 110,
+              },
+            ],
+      page: 0,
+      pageSize: input.pageSize,
+      total: input.pageSize === 1 ? 0 : 1,
+      hasNextPage: false,
+    }));
+    const daemonTask = taskInfo({
+      id: "task-1",
+      title: "Daemon task",
+      status: "running",
+      updatedAt: 130,
+    });
+    projectTest.snapshot = { ...snapshot, tasks: [daemonTask] };
+
+    renderProjects();
+
+    await waitFor(() => expect(screen.getByText("Local backlog item")).toBeInTheDocument());
+    expect(screen.queryByText("Daemon task")).not.toBeInTheDocument();
+  });
+
+  async function removeSelectedProject() {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    await user.click(screen.getByRole("button", { name: "Project menu" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Remove project/ }));
+    await user.click(await screen.findByRole("button", { name: "Remove project" }));
+  }
+
+  it("moves to the next project when the one on screen is removed", async () => {
+    const other: ProjectInfo = { ...warpforgeProject, name: "other", path: "/workspace/other" };
+    projectTest.snapshot = { ...snapshot, projects: [warpforgeProject, other] };
+    useUi.setState({ selectedProjectId: "warpforge", view: "project" });
+
+    renderProjects();
+    await removeSelectedProject();
+
+    await waitFor(() => expect(useUi.getState().selectedProjectId).toBe("other"));
+    expect(useUi.getState().view).toBe("project");
+  });
+
+  it("leaves the project page entirely when the last project is removed", async () => {
+    // Nothing is left to be the subject and there is no Projects nav item to
+    // fall back to, so staying would render an arbitrary project or nothing.
+    useUi.setState({ selectedProjectId: "warpforge", view: "project" });
+
+    renderProjects();
+    await removeSelectedProject();
+
+    await waitFor(() => expect(useUi.getState().view).toBe("control"));
+  });
+
+  it("opens the new work item drawer for the selected project", () => {
+    const otherProject: ProjectInfo = {
+      ...warpforgeProject,
+      name: "other",
+      path: "/workspace/other",
+    };
+    projectTest.snapshot = { ...snapshot, projects: [warpforgeProject, otherProject] };
+
+    renderProjects(projectTest.snapshot);
+    fireEvent.click(screen.getByRole("button", { name: "New work item in warpforge" }));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("New work item")).toBeInTheDocument();
+    expect(screen.getByText(/Create a task in warpforge/)).toBeInTheDocument();
+  });
+
+  it("exposes full runtime names on hover", async () => {
+    const serviceName = "payments-api-with-a-very-long-runtime-name";
+    const portForwardName = "production-postgres-primary-port-forward";
+    projectTest.snapshot = {
+      ...snapshot,
+      projects: [{ ...warpforgeProject, declaredServices: [serviceName] }],
+      services: [
+        {
+          allocatedPort: 4000,
+          command: "bun run dev",
+          logSeq: 0,
+          name: serviceName,
+          originalPort: 3000,
+          project: "warpforge",
+          status: "running",
+        },
+      ],
+      portforwards: [
+        {
+          localPort: 5432,
+          logSeq: 0,
+          name: portForwardName,
+          namespace: "production",
+          pod: "postgres-primary",
+          project: "warpforge",
+          remotePort: 5432,
+          status: "active",
+        },
+      ],
+    };
+
+    renderProjects();
+    await openSurface(/Runtime/);
+
+    expect(screen.getByTitle(serviceName)).toBeInTheDocument();
+    expect(screen.getByTitle(portForwardName)).toBeInTheDocument();
+  });
+
+  it("keeps declared service controls available before runtime status arrives", async () => {
+    projectTest.snapshot = {
+      ...snapshot,
+      projects: [{ ...warpforgeProject, declaredServices: ["api"] }],
+    };
+    vi.spyOn(daemon, "fetchServiceLogs").mockReturnValue(new Promise(() => {}));
+    renderProjects();
+
+    expect(screen.queryByLabelText("Start api")).not.toBeInTheDocument();
+    await openSurface(/Runtime/);
+
+    expect(screen.getByLabelText("Start api")).toBeInTheDocument();
+  });
+
+  it("opens Terminal for a project with live terminals and zero tasks", async () => {
+    projectTest.snapshot = {
+      ...snapshot,
+      tasks: [],
+      terminals: [terminalInfo("term-1", "warpforge")],
+    };
+    renderProjects();
+
+    // The backlog waits for its tracker pull before it can say it is empty.
+    expect(await screen.findByText("No work items yet")).toBeInTheDocument();
+    await openSurface(/Terminal/);
+
+    expect(useUi.getState().projectSurfaceByProject.warpforge).toBe("terminal");
+    expect(screen.getByTestId("term-1")).toBeInTheDocument();
+  });
+
+  it("isolates terminals and the persisted surface by project", async () => {
+    const alpha: ProjectInfo = {
+      ...warpforgeProject,
+      name: "alpha",
+      path: "/workspace/alpha",
+    };
+    const beta: ProjectInfo = {
+      ...warpforgeProject,
+      name: "beta",
+      path: "/workspace/beta",
+      portRange: [4100, 4199],
+    };
+    projectTest.snapshot = {
+      ...snapshot,
+      projects: [alpha, beta],
+      services: [
+        {
+          allocatedPort: 4100,
+          command: "bun run dev",
+          logSeq: 0,
+          name: "web",
+          originalPort: 3000,
+          project: "beta",
+          status: "running",
+        },
+      ],
+      terminals: [
+        terminalInfo("alpha-1", "alpha"),
+        terminalInfo("alpha-2", "alpha"),
+        terminalInfo("beta-1", "beta"),
+      ],
+    };
+    useUi.setState({ projectSurfaceByProject: { alpha: "terminal", beta: "backlog" } });
+    renderProjects();
+
+    expect(screen.getByTestId("alpha-1")).toBeInTheDocument();
+
+    act(() => useUi.setState({ selectedProjectId: "beta" }));
+    expect(screen.getByRole("tab", { name: /Backlog/ })).toHaveAttribute("data-state", "active");
+    expect(screen.queryByTestId("alpha-1")).not.toBeInTheDocument();
+
+    await openSurface(/Terminal/);
+    expect(useUi.getState().projectSurfaceByProject).toEqual({
+      alpha: "terminal",
+      beta: "terminal",
+    });
+    expect(screen.getByTestId("beta-1")).toBeInTheDocument();
+
+    act(() => useUi.setState({ selectedProjectId: "alpha" }));
+    await waitFor(() => expect(screen.getByTestId("alpha-1")).toBeInTheDocument());
+    expect(screen.getByRole("tab", { name: /Terminal/ })).toHaveAttribute("data-state", "active");
+  });
+
+  it("reattaches the same project terminal when moving from a task Terminal to Projects", async () => {
+    projectTest.snapshot = {
+      ...snapshot,
+      terminals: [terminalInfo("term-1", "warpforge")],
+    };
+    useUi.setState({ projectSurfaceByProject: { warpforge: "terminal" } });
+
+    const taskSurface = render(<TerminalWorkspaceView project="warpforge" />);
+    const controller = getTerminalWorkspace("warpforge").getController("term-1");
+    expect(controller).not.toBeNull();
+    const xterm = controller!.term as unknown as MockXterm;
+    await waitFor(() => expect(xterm.element.isConnected).toBe(true));
+
+    taskSurface.unmount();
+    expect(xterm.element.isConnected).toBe(false);
+    renderProjects();
+    await waitFor(() => expect(xterm.element.isConnected).toBe(true));
+
+    expect(getTerminalWorkspace("warpforge").getController("term-1")).toBe(controller);
+    expect(xterm.open).toHaveBeenCalledTimes(1);
+    expect(xtermInstances).toHaveLength(1);
+  });
+});
+
+describe("Projects — port range source", () => {
+  it("labels each of the four range sources", () => {
+    const sources: [NonNullable<ProjectInfo["portRangeSource"]>, string][] = [
+      ["auto", "auto-assigned"],
+      ["sticky", "auto-assigned (kept)"],
+      ["declared", "from team config"],
+      ["localOverride", "local override"],
+    ];
+    const { rerender } = renderProjects();
+    for (const [source, label] of sources) {
+      rerender(
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+          <Projects
+            snapshot={{
+              ...snapshot,
+              projects: [{ ...warpforgeProject, portRangeSource: source }],
+            }}
+            onOpenTask={vi.fn<(id: string) => void>()}
+            onNewTask={vi.fn<(project?: string, prompt?: string) => void>()}
+            onAddProject={vi.fn<() => void>()}
+          />
+        </QueryClientProvider>,
+      );
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+
+  it("leaves the label off when an older daemon sends no source", () => {
+    renderProjects();
+    expect(screen.getByText(/ports 4000–4099/)).toBeInTheDocument();
+    expect(screen.queryByText("auto-assigned")).not.toBeInTheDocument();
+  });
+});
+
+describe("Projects — port range conflict", () => {
+  const conflicted: ProjectInfo = {
+    ...warpforgeProject,
+    portRangeSource: "declared",
+    portRangeConflict: "other-project",
+  };
+
+  it("surfaces the conflict and names the colliding project", () => {
+    renderProjects({ ...snapshot, projects: [conflicted] });
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/Port range conflict with other-project/);
+    expect(alert).toHaveTextContent(/this machine and does not change the team's shared config/);
+  });
+
+  it("resolves the conflict with a machine-local override", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderProjects({ ...snapshot, projects: [conflicted] });
+
+    await user.type(screen.getByLabelText("New local port range for warpforge"), "4300-4399");
+    await user.click(screen.getByRole("button", { name: "Set range on this machine" }));
+
+    expect(daemon.setProjectPortRange).toHaveBeenCalledWith("warpforge", "4300-4399");
+  });
+
+  it("rejects a malformed range client-side without calling the daemon", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderProjects({ ...snapshot, projects: [conflicted] });
+
+    await user.type(screen.getByLabelText("New local port range for warpforge"), "not-a-range");
+    await user.click(screen.getByRole("button", { name: "Set range on this machine" }));
+
+    expect(daemon.setProjectPortRange).not.toHaveBeenCalled();
+    expect(screen.getByText(/Use a range like 4200-4299/)).toBeInTheDocument();
+  });
+
+  it("surfaces the daemon's rejection of a valid-shaped range", async () => {
+    vi.spyOn(daemon, "setProjectPortRange").mockRejectedValue(
+      new Error("range overlaps project other-project"),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderProjects({ ...snapshot, projects: [conflicted] });
+
+    await user.type(screen.getByLabelText("New local port range for warpforge"), "4100-4199");
+    await user.click(screen.getByRole("button", { name: "Set range on this machine" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/The daemon rejected this range: range overlaps project other-project/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("offers to clear an existing local override", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderProjects({
+      ...snapshot,
+      projects: [
+        {
+          ...conflicted,
+          portRangeSource: "localOverride",
+          portRange: [4300, 4399],
+        },
+      ],
+    });
+
+    expect(screen.getByText("local override")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear override" }));
+    expect(daemon.setProjectPortRange).toHaveBeenCalledWith("warpforge", null);
+  });
+});

@@ -1,0 +1,50 @@
+/*
+ * Hover badge. The anchor sits on the edge's centre line and is moved
+ * vertically by Motion with translateY (composited, no layout). The badge
+ * inside keeps the CSS offset and a counter-skew so the glyph stays upright
+ * while its position follows the slanted edge. --edge-outward flips the
+ * horizontal offset so "out" always means toward the content on either side.
+ */
+@layer components {
+  .edge-badge-anchor {
+    position: absolute;
+    left: 50%;
+    z-index: 5;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    will-change: transform;
+  }
+
+  .edge-badge {
+    --edge-badge-opacity: 0;
+    --edge-badge-scale: 0.8;
+
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--edge-badge-size);
+    height: var(--edge-badge-size);
+    border: 1px solid var(--edge-badge-border);
+    border-radius: var(--edge-badge-radius);
+    background-color: var(--edge-badge-bg);
+    box-shadow: var(--edge-badge-shadow);
+    color: var(--edge-badge-color);
+    opacity: var(--edge-badge-opacity);
+    transform: translate(
+        calc(-50% + var(--edge-outward) * (var(--edge-badge-offset) + var(--edge-badge-shift))),
+        -50%
+      )
+      skewX(calc(var(--edge-skew, 0deg) * -1))
+      scale(var(--edge-badge-scale));
+    transition: var(--edge-badge-transition);
+  }
+
+  .sidebar-edge:is([data-pointer='over'], [data-separator='active'], :focus-visible) .edge-badge {
+    --edge-badge-opacity: 1;
+    --edge-badge-scale: 1;
+  }
+}

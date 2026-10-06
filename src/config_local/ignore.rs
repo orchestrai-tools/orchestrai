@@ -21,11 +21,11 @@ pub(crate) fn ensure_local_ignored(project_path: &Path) {
     }
 }
 
-/// `.warpforge/.gitignore` for the file in `.warpforge/`; the clone's
+/// `.orchestrai/.gitignore` for the file in `.orchestrai/`; the clone's
 /// `info/exclude` for a legacy root-level file. Never the root `.gitignore`.
 fn ignore(project_path: &Path, local: &Path) -> Result<()> {
     let file_name = local.file_name().unwrap_or_default().to_string_lossy();
-    if local.parent() == Some(&project_path.join(".warpforge")) {
+    if local.parent() == Some(&project_path.join(warpforge_protocol::identity::DIR)) {
         return ignore_beside(local, &file_name);
     }
     match exclude_file(project_path)? {

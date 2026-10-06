@@ -67,7 +67,7 @@ async fn workflow_list_and_eject_over_websocket() {
         .all(|w| w["source"] == "builtin" && w["valid"] == true));
     assert!(workflows.iter().any(|w| w["id"] == "review-loop"));
 
-    // Ejecting copies the built-in into .warpforge/workflows/.
+    // Ejecting copies the built-in into .orchestrai/workflows/.
     let v = rpc(
         &mut ws,
         2,

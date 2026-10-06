@@ -45,7 +45,7 @@ if (profile === "release") cargoArgs.push("--release");
 if (!noTarget) cargoArgs.push("--target", target);
 command("cargo", cargoArgs);
 
-const exe = target.includes("windows") ? "warpforge.exe" : "warpforge";
+const exe = target.includes("windows") ? "orchestrai.exe" : "orchestrai";
 const source = noTarget
   ? resolve(root, "target", profile, exe)
   : resolve(root, "target", target, profile, exe);
@@ -53,7 +53,7 @@ const suffix = target.includes("windows") ? ".exe" : "";
 const destination = resolve(
   root,
   "desktop/src-tauri/binaries",
-  `warpforge-${target}${suffix}`,
+  `orchestrai-${target}${suffix}`,
 );
 mkdirSync(dirname(destination), { recursive: true });
 copyFileSync(source, destination);

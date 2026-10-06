@@ -17,6 +17,10 @@ use crate::daemon::task::TaskStatus;
 use crate::daemon::worktree::{StartPoint, WorktreeManager};
 use crate::mcp::identity::BridgeMode;
 
+/// `origin` of a quick chat: a conversation with no task behind it, kept off
+/// the board and listed with the sessions.
+pub(crate) const CHAT_ORIGIN: &str = "chat";
+
 pub(crate) struct WorktreeRequest {
     pub(crate) project: String,
     pub(crate) base_repo: PathBuf,
@@ -191,6 +195,54 @@ impl Daemon {
             self.persist(&updated);
             self.emit(Event::TaskUpdated(updated));
         }
+    }
+
+    /// A quick chat is created without a session, so its first message starts
+    /// one and becomes the prompt. Returns false when `task_id` is not a chat
+    /// that is still waiting for that message. Limited to chats: a Factory task
+    /// also sits Queued without a session, and a message must not start it
+    /// around the project's limits.
+    pub(crate) fn start_chat_session(
+        &mut self,
+        task_id: &str,
+        text: &str,
+        attachments: Vec<wire::PromptAttachment>,
+    ) -> bool {
+        let Some(task) = self.tasks.get_mut(task_id).filter(|task| {
+            task.origin.as_deref() == Some(CHAT_ORIGIN)
+                && task.status == TaskStatus::Queued
+                && task.session_id.is_none()
+                && task.workflow_run.is_none()
+        }) else {
+            return false;
+        };
+        let first = super::commands::combine_prompt(&task.prompt, text);
+        if task.prompt.trim().is_empty() {
+            task.prompt = text.trim().to_string();
+            task.updated_at = crate::daemon::task::now_secs();
+        }
+        let (project, agent) = (task.project.clone(), task.agent.clone());
+        let model = task.model.clone().or_else(|| {
+            self.configured_agents
+                .iter()
+                .find(|config| config.id == agent)
+                .and_then(|config| config.last_model.clone())
+        });
+        let updated = task.clone();
+        self.persist(&updated);
+        self.emit(Event::TaskUpdated(updated));
+        self.start_session(
+            task_id,
+            &project,
+            &agent,
+            &first,
+            true,
+            None,
+            attachments,
+            model,
+            std::collections::HashMap::new(),
+        );
+        true
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -187,11 +187,12 @@ pub fn to_wire(ev: &Event) -> Option<wire::Event> {
         Event::ServiceLog {
             project,
             service,
+            seq,
             line,
         } => Some(wire::Event::ServiceLog {
             project: project.clone(),
             service: service.clone(),
-            seq: 0,
+            seq: *seq,
             line: line.clone(),
         }),
         Event::PortForwardStatus {
@@ -206,11 +207,12 @@ pub fn to_wire(ev: &Event) -> Option<wire::Event> {
         Event::PortForwardLog {
             project,
             name,
+            seq,
             line,
         } => Some(wire::Event::PortForwardLog {
             project: project.clone(),
             name: name.clone(),
-            seq: 0,
+            seq: *seq,
             line: line.clone(),
         }),
         Event::TaskCreated(t) => Some(wire::Event::TaskCreated(task_info(t))),
@@ -286,6 +288,10 @@ pub fn to_wire(ev: &Event) -> Option<wire::Event> {
         Event::ProjectConfigChanged(state) => {
             Some(wire::Event::ProjectConfigChanged(state.clone()))
         }
+        Event::ProjectConfigError { project, error } => Some(wire::Event::ProjectConfigError {
+            project: project.clone(),
+            error: error.clone(),
+        }),
         Event::LspMessage { server_id, payload } => Some(wire::Event::LspMessage {
             server_id: server_id.clone(),
             payload: payload.clone(),

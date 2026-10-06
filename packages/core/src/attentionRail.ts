@@ -1,0 +1,266 @@
+import type { SessionUpdate, TaskInfo, TaskStatus, WorkflowRunInfo } from "@warpforge/protocol";
+
+import {
+  latestPendingPermission,
+  prunePermissionCache,
+  type PermissionUpdate,
+} from "./sessionPermissions";
+import { awaitsReview } from "./taskGroups";
+import { workflowStageLabel } from "./workflow";
+
+export interface AttentionItem {
+  task: TaskInfo;
+  reason: string;
+  priority: number;
+  permission?: PermissionUpdate;
+}
+
+export type RailFilterMode = "attention" | "running" | "all";
+export type RailSortMode = "updated" | "created" | "status" | "project";
+
+/**
+ * Snapshot-time stand-in for a permission prompt the daemon has already
+ * reported on `TaskInfo.pendingPermission`. The transcript carrying the real
+ * request is not shipped at connect, so until that task streams anything this
+ * keeps the "needs you" badge honest. Options are empty on purpose: without
+ * the real request id no inline answer can be sent, so the row offers opening
+ * the task, where the live prompt renders with its real actions.
+ */
+function syntheticPendingPermission(task: TaskInfo): PermissionUpdate | null {
+  if (!task.pendingPermission) return null;
+  return {
+    kind: "permission_request",
+    request_id: `snapshot:${task.id}`,
+    title: "Permission needed",
+    options: [],
+  };
+}
+
+/**
+ * Urgency order. `waiting` sits low because it is a resting state; a waiting
+ * task that actually produced a diff is promoted by `taskStatusRank`, which is
+ * where the old `needs_review` rank went.
+ */
+export const STATUS_RANK: Record<TaskStatus, number> = {
+  blocked: 2,
+  interrupted: 3,
+  running: 4,
+  waiting: 5,
+  queued: 6,
+  done: 7,
+};
+
+/** Rank for a `waiting` task that left changes behind. */
+const AWAITS_REVIEW_RANK = 1;
+
+export const STATUS_LABEL: Record<TaskStatus, string> = {
+  blocked: "Blocked",
+  interrupted: "Interrupted",
+  running: "Running",
+  waiting: "Waiting",
+  queued: "Queued",
+  done: "Done",
+};
+
+export function taskStatusRank(task: TaskInfo, permission?: PermissionUpdate): number {
+  if (permission) return 0;
+  if (awaitsReview(task)) return AWAITS_REVIEW_RANK;
+  return STATUS_RANK[task.status];
+}
+
+/**
+ * Why the daemon parked a pipeline at the pause barrier, or null when nothing
+ * did: a pause the user asked for, or a daemon too old to say.
+ */
+function parkReason(run: WorkflowRunInfo): string | null {
+  const waiting = run.waiting;
+  if (waiting?.kind !== "paused") return null;
+  const stage = workflowStageLabel(run.stage);
+  switch (waiting.pauseReason) {
+    case "quota":
+      return `paused — ${waiting.question ?? "the next stage's account is out of quota"}`;
+    case "agent_lost":
+      return `paused — the agent was lost while ${stage}${waiting.question ? `: ${waiting.question}` : ""}`;
+    case "restart":
+      return `paused — the daemon restarted while ${stage}`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Work that cannot move without a human: a permission prompt, a pipeline that
+ * suspended itself to ask or that the daemon parked, a blocked task, a session
+ * lost to a restart.
+ *
+ * A finished turn that left a diff is deliberately *not* here. It used to be,
+ * and it made the queue meaningless — nearly every task an agent touches ends
+ * that way, so "needs you" grew to dozens of rows that were really just "your
+ * work". Nothing is blocked: the diff waits in the sidebar, where the task is
+ * already listed, until you get to it.
+ */
+export function buildAttentionQueue(
+  tasks: TaskInfo[],
+  sessionUpdates: Record<string, SessionUpdate[]>,
+  prFeedback?: ReadonlyMap<string, string>,
+): AttentionItem[] {
+  const items: AttentionItem[] = [];
+  prunePermissionCache(new Set(tasks.map((task) => task.id)));
+  for (const task of tasks) {
+    const perm =
+      latestPendingPermission(task.id, sessionUpdates[task.id]) ?? syntheticPendingPermission(task);
+    const waiting = task.workflowRun?.waiting ?? null;
+    const parked = task.workflowRun ? parkReason(task.workflowRun) : null;
+    if (perm) {
+      items.push({ permission: perm, priority: 0, reason: perm.title, task });
+    } else if (waiting && waiting.kind !== "paused") {
+      // A pipeline that suspended itself is asking directly, so it ranks just
+      // under a permission prompt. A pause the user asked for stays out of
+      // the queue: they know it is waiting.
+      items.push({
+        priority: 0.5,
+        reason:
+          waiting.kind === "question"
+            ? (waiting.question ?? "the Factory task needs your input")
+            : `${waiting.stage === "verify" ? "verification needs a decision" : "review limit reached"}${waiting.question ? ` — ${waiting.question}` : ""}`,
+        task,
+      });
+    } else if (parked) {
+      items.push({ priority: 1, reason: parked, task });
+    } else if (task.status === "blocked") {
+      items.push({ priority: 2, reason: task.blockedReason ?? "blocked", task });
+    } else if (task.status === "interrupted") {
+      items.push({ priority: 3, reason: "session lost on daemon restart", task });
+    } else if (prFeedback?.has(task.id)) {
+      // The task's pull request came back with failing checks or new review
+      // comments; the notice in the task sends them to its agent.
+      items.push({ priority: 3.5, reason: prFeedback.get(task.id) ?? "", task });
+    } else if (task.blockedKind === "model_mismatch") {
+      // Informational, not halting: the session works, it is just not on the
+      // requested model. Ranks below everything that actually stops work.
+      items.push({
+        priority: 4,
+        reason: task.blockedReason ?? "requested model was not applied",
+        task,
+      });
+    }
+  }
+  return items.sort(
+    (a, b) =>
+      a.priority - b.priority ||
+      b.task.updatedAt - a.task.updatedAt ||
+      a.task.id.localeCompare(b.task.id),
+  );
+}
+
+export function selectRailTasks(
+  tasks: readonly TaskInfo[],
+  attentionById: ReadonlyMap<string, AttentionItem>,
+  filter: RailFilterMode,
+  query: string,
+  sort: RailSortMode,
+): TaskInfo[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const filtered = tasks.filter((task) => {
+    if (task.status === "done") return false;
+    if (filter === "attention" && !attentionById.has(task.id)) return false;
+    if (filter === "running" && task.status !== "running") return false;
+    return (
+      !normalizedQuery ||
+      task.prompt.toLocaleLowerCase().includes(normalizedQuery) ||
+      task.project.toLocaleLowerCase().includes(normalizedQuery)
+    );
+  });
+
+  return filtered.sort((a, b) => {
+    if (sort === "created") {
+      return b.createdAt - a.createdAt || a.id.localeCompare(b.id);
+    }
+    if (sort === "project") {
+      return (
+        a.project.localeCompare(b.project) || b.updatedAt - a.updatedAt || a.id.localeCompare(b.id)
+      );
+    }
+    if (sort === "status") {
+      const aRank = taskStatusRank(a, attentionById.get(a.id)?.permission);
+      const bRank = taskStatusRank(b, attentionById.get(b.id)?.permission);
+      return aRank - bRank || b.updatedAt - a.updatedAt || a.id.localeCompare(b.id);
+    }
+    return (
+      b.updatedAt - a.updatedAt ||
+      taskStatusRank(a, attentionById.get(a.id)?.permission) -
+        taskStatusRank(b, attentionById.get(b.id)?.permission) ||
+      a.id.localeCompare(b.id)
+    );
+  });
+}
+
+export interface RailPartition {
+  needsYou: TaskInfo[];
+  working: TaskInfo[];
+  snoozed: TaskInfo[];
+  settled: TaskInfo[];
+  wokeIds: string[];
+}
+
+function isValidTimestamp(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isValidSnooze(task: TaskInfo): boolean {
+  return isValidTimestamp(task.snoozedUntil) && isValidTimestamp(task.snoozedAt);
+}
+
+function shelfSort(tasks: TaskInfo[]): TaskInfo[] {
+  return tasks.sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
+}
+
+export function partitionRailTasks(
+  tasks: readonly TaskInfo[],
+  attentionById: ReadonlyMap<string, AttentionItem>,
+  nowSeconds: number,
+): RailPartition {
+  const needsYou: TaskInfo[] = [];
+  const working: TaskInfo[] = [];
+  const snoozed: TaskInfo[] = [];
+  const settled: TaskInfo[] = [];
+  const wokeIds: string[] = [];
+
+  for (const task of tasks) {
+    if (task.status === "done") continue;
+
+    if (isValidSnooze(task) && task.snoozedUntil! > nowSeconds) {
+      snoozed.push(task);
+      continue;
+    }
+
+    if (task.settledOverride === true) {
+      settled.push(task);
+      continue;
+    }
+
+    if (attentionById.has(task.id)) {
+      needsYou.push(task);
+      if (isValidSnooze(task) && task.snoozedUntil! <= nowSeconds) {
+        wokeIds.push(task.id);
+      }
+      continue;
+    }
+
+    if (isValidSnooze(task) && task.snoozedUntil! <= nowSeconds) {
+      wokeIds.push(task.id);
+      working.push(task);
+      continue;
+    }
+
+    working.push(task);
+  }
+
+  return {
+    needsYou: shelfSort(needsYou),
+    working: shelfSort(working),
+    snoozed: shelfSort(snoozed),
+    settled: shelfSort(settled),
+    wokeIds: wokeIds.sort(),
+  };
+}

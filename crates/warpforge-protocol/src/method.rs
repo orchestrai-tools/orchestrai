@@ -128,7 +128,7 @@ pub enum Method {
     ServiceStop { project: String, service: String },
     #[serde(rename = "service.restart")]
     ServiceRestart { project: String, service: String },
-    /// Start every service declared in the project's .warpforge.yaml
+    /// Start every service declared in the project's .orchestrai/workspace.yaml
     /// (what the TUI did implicitly on "Enter project").
     #[serde(rename = "service.startAll")]
     ServiceStartAll { project: String },
@@ -204,7 +204,7 @@ pub enum Method {
         project: String,
         /// Prompt / instruction handed to the agent.
         prompt: String,
-        /// Agent template name from .warpforge.yaml, or a raw command.
+        /// Agent template name from .orchestrai/workspace.yaml, or a raw command.
         agent: String,
         #[serde(default)]
         tags: Vec<String>,
@@ -299,6 +299,14 @@ pub enum Method {
     /// Override a task's title (e.g. after async title generation completes).
     #[serde(rename = "task.setTitle")]
     TaskSetTitle { task_id: String, title: String },
+    /// Change what owns a task. Clearing a quick chat's `chat` origin turns it
+    /// into an ordinary task on the board.
+    #[serde(rename = "task.setOrigin")]
+    TaskSetOrigin {
+        task_id: String,
+        #[serde(default)]
+        origin: Option<String>,
+    },
     /// Merge a task's worktree branch back into its base branch. When
     /// `remove_worktree` (default true) the checkout and branch are removed
     /// after a successful merge. Errors if the task has no worktree.
@@ -583,18 +591,25 @@ pub enum Method {
     // ── Diff / review ──
     #[serde(rename = "diff.get")]
     DiffGet {
+        #[serde(default)]
         task_id: String,
         /// Also compute the .gitignore'd file list (the "Show Ignored Files"
         /// toggle) — skipped by default since most repos never need it.
         #[serde(default)]
         include_ignored: bool,
+        /// Diff the project's own checkout when no task is named.
+        #[serde(default)]
+        project: Option<String>,
     },
     #[serde(rename = "diff.resolveHunk")]
     DiffResolveHunk {
+        #[serde(default)]
         task_id: String,
         file: String,
         hunk_index: u32,
         resolution: HunkResolution,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// Full old (HEAD) + new (working-tree) contents of one file — powers the
     /// editable side-by-side (CodeMirror merge) review.
@@ -691,80 +706,146 @@ pub enum Method {
     /// `git.commit` this stages without committing, so the files move from
     /// "Unversioned Files" to "Changes" on the next `diff.get`.
     #[serde(rename = "git.add")]
-    GitAdd { task_id: String, paths: Vec<String> },
+    GitAdd {
+        #[serde(default)]
+        task_id: String,
+        paths: Vec<String>,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// Append paths to the repo's root `.gitignore` (the "Add to .gitignore"
     /// menu on unversioned files). Lines already covered stay untouched —
     /// existing entries are never duplicated.
     #[serde(rename = "git.ignore")]
-    GitIgnore { task_id: String, paths: Vec<String> },
+    GitIgnore {
+        #[serde(default)]
+        task_id: String,
+        paths: Vec<String>,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// List the repo's shelf bundles (the Shelf tab), newest first.
     #[serde(rename = "shelf.list")]
-    ShelfList { task_id: String },
+    ShelfList {
+        #[serde(default)]
+        task_id: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// Shelve paths (or every change when `paths` is absent): store the
     /// bundle and revert the worktree. An empty `name` auto-names the bundle.
     #[serde(rename = "shelf.create")]
     ShelfCreate {
+        #[serde(default)]
         task_id: String,
         #[serde(default)]
         name: String,
         #[serde(default)]
         paths: Option<Vec<String>>,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// One shelf bundle with its files as diffs, for preview.
     #[serde(rename = "shelf.get")]
-    ShelfGet { task_id: String, id: String },
+    ShelfGet {
+        #[serde(default)]
+        task_id: String,
+        id: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// Unshelve a bundle back into the worktree. `drop` (default true)
     /// removes the bundle afterwards.
     #[serde(rename = "shelf.apply")]
     ShelfApply {
+        #[serde(default)]
         task_id: String,
         id: String,
         #[serde(default = "default_true")]
         drop: bool,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// Delete a shelf bundle. The worktree is untouched.
     #[serde(rename = "shelf.drop")]
-    ShelfDrop { task_id: String, id: String },
+    ShelfDrop {
+        #[serde(default)]
+        task_id: String,
+        id: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// List the repo's stash entries (the Stash tab), newest first.
     #[serde(rename = "stash.list")]
-    StashList { task_id: String },
+    StashList {
+        #[serde(default)]
+        task_id: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// Stash paths (or everything when `paths` is absent) with
     /// `git stash push`. An empty `message` takes git's default.
     #[serde(rename = "stash.push")]
     StashPush {
+        #[serde(default)]
         task_id: String,
         #[serde(default)]
         message: String,
         #[serde(default)]
         paths: Option<Vec<String>>,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// One stash entry with its files as diffs, for preview.
     #[serde(rename = "stash.get")]
-    StashGet { task_id: String, id: String },
+    StashGet {
+        #[serde(default)]
+        task_id: String,
+        id: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// Apply (`pop=false`) or pop (`pop=true`) a whole stash entry. A
     /// conflicting pop keeps the entry — that is git's own behavior.
     #[serde(rename = "stash.apply")]
     StashApply {
+        #[serde(default)]
         task_id: String,
         id: String,
         #[serde(default)]
         pop: bool,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// Restore paths out of a stash entry into the worktree ("unstash any
     /// file"). The entry itself is untouched.
     #[serde(rename = "stash.file")]
     StashFile {
+        #[serde(default)]
         task_id: String,
         id: String,
         paths: Vec<String>,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// Drop a stash entry. The worktree is untouched.
     #[serde(rename = "stash.drop")]
-    StashDrop { task_id: String, id: String },
+    StashDrop {
+        #[serde(default)]
+        task_id: String,
+        id: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// Pull the task's project repo up to its upstream (rebase + autostash).
     /// Any conflict rolls the working tree back to the exact prior state.
     #[serde(rename = "git.update")]
-    GitUpdate { task_id: String },
+    GitUpdate {
+        #[serde(default)]
+        task_id: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// List local branches of a repo, identified either by a task or — before
     /// a task exists, as in New Task — by project name directly.
     #[serde(rename = "git.branches")]
@@ -798,28 +879,41 @@ pub enum Method {
     /// across (stash → checkout → unstash). A conflict rolls back to the branch
     /// you were on with your changes intact.
     #[serde(rename = "git.switchBranch")]
-    GitSwitchBranch { task_id: String, branch: String },
+    GitSwitchBranch {
+        #[serde(default)]
+        task_id: String,
+        branch: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// Rename a local branch to `new_name`. Works on the checked-out branch or
     /// any other; errors if `new_name` already exists.
     #[serde(rename = "git.branchRename")]
     GitBranchRename {
+        #[serde(default)]
         task_id: String,
         branch: String,
         new_name: String,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// Delete a local branch. Refuses the checked-out branch; without `force`
     /// also refuses unmerged branches.
     #[serde(rename = "git.branchDelete")]
     GitBranchDelete {
+        #[serde(default)]
         task_id: String,
         branch: String,
         #[serde(default)]
         force: bool,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// Create `name` from `from` (defaults to the current HEAD) and check it
     /// out, carrying uncommitted changes across.
     #[serde(rename = "git.branchCreate")]
     GitBranchCreate {
+        #[serde(default)]
         task_id: String,
         name: String,
         #[serde(default)]
@@ -828,32 +922,56 @@ pub enum Method {
         checkout: bool,
         #[serde(default)]
         overwrite: bool,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// Rebase the current branch onto `target`, carrying uncommitted changes
     /// across. A conflict rolls back to the prior tree.
     #[serde(rename = "git.rebase")]
     GitRebase {
+        #[serde(default)]
         task_id: String,
         branch: String,
         target: String,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// Merge `target` into the current branch, carrying uncommitted changes.
     /// A conflict rolls back to the prior tree.
     #[serde(rename = "git.merge")]
-    GitMerge { task_id: String, target: String },
+    GitMerge {
+        #[serde(default)]
+        task_id: String,
+        target: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// Describe the commits and files that would be sent by `git.push`.
     #[serde(rename = "git.pushInfo")]
-    GitPushInfo { task_id: String },
+    GitPushInfo {
+        #[serde(default)]
+        task_id: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// Full message of the task repo's latest commit, for pre-filling an amend.
     /// Returns `{ message }`, empty when the repo has no commits yet.
     #[serde(rename = "git.lastCommitMessage")]
-    GitLastCommitMessage { task_id: String },
+    GitLastCommitMessage {
+        #[serde(default)]
+        task_id: String,
+        #[serde(default)]
+        project: Option<String>,
+    },
     /// Push the current branch. With `force`, uses `--force-with-lease`.
     #[serde(rename = "git.push")]
     GitPush {
+        #[serde(default)]
         task_id: String,
         #[serde(default)]
         force: bool,
+        #[serde(default)]
+        project: Option<String>,
     },
     /// Open a GitHub pull request for the task branch via `gh`. Returns
     /// `{ url }`. `base` defaults to the repo's default branch when omitted.
@@ -950,12 +1068,12 @@ pub enum Method {
     OrchestrateSaveConfig { config: OrchestratorConfigDto },
 
     // ── Workflows (deterministic pipeline templates) ──
-    /// List workflows selectable for a project: `.warpforge/workflows/*.yaml`
+    /// List workflows selectable for a project: `.orchestrai/workflows/*.yaml`
     /// plus built-in templates (a project file overrides the built-in with the
     /// same id). Returns `{ "workflows": [WorkflowMeta] }`.
     #[serde(rename = "workflow.list")]
     WorkflowList { project: String },
-    /// Copy a built-in workflow into the project's `.warpforge/workflows/`
+    /// Copy a built-in workflow into the project's `.orchestrai/workflows/`
     /// directory so it can be customized. Refuses to overwrite an existing
     /// file. Returns `{ "path": … }`.
     #[serde(rename = "workflow.eject")]
@@ -1505,5 +1623,49 @@ pub enum Method {
         project: String,
         #[serde(default)]
         limit: Option<u32>,
+    },
+
+    /// Markdown files in a project, skipping dependency and build directories.
+    /// Returns `{ docs: [{ path, title }] }`.
+    #[serde(rename = "docs.list")]
+    DocsList { project: String },
+    /// Write one markdown file inside the project. `path` is relative.
+    #[serde(rename = "docs.write")]
+    DocsWrite {
+        project: String,
+        path: String,
+        content: String,
+    },
+    /// Start a new task from an existing one's prompt, with that task as parent.
+    /// Returns `{ taskId }`.
+    #[serde(rename = "session.fork")]
+    SessionFork { task_id: String },
+    /// Messages in the project's channel. Returns `{ messages }`.
+    #[serde(rename = "channel.list")]
+    ChannelList { project: String },
+    /// Append a channel message. `role` is `human` or `agent`.
+    #[serde(rename = "channel.post")]
+    ChannelPost {
+        project: String,
+        author: String,
+        #[serde(default)]
+        role: String,
+        body: String,
+    },
+    /// Run a shell command in the project directory and return its output.
+    #[serde(rename = "shell.run")]
+    ShellRun {
+        project: String,
+        command: String,
+        #[serde(default)]
+        task_id: Option<String>,
+    },
+    /// The package scripts, just recipes, and Makefile targets declared where
+    /// `shell.run` would run. Returns `RunCommands`.
+    #[serde(rename = "shell.commands")]
+    ShellCommands {
+        project: String,
+        #[serde(default)]
+        task_id: Option<String>,
     },
 }

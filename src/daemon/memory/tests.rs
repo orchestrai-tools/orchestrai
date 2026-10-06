@@ -133,7 +133,7 @@ fn with_overlay(dir: &Path) -> (MemoryStore, String, String) {
         .store("global fact", None, None, None, None, None)
         .unwrap()
         .id;
-    let path = dir.join("proj1/.warpforge/memory.db");
+    let path = dir.join("proj1/.orchestrai/memory.db");
     let conn = MemoryStore::open_project_at(&path, false).unwrap();
     let overlay = MemoryStore::store_on_conn(
         &conn,

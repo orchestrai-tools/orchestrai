@@ -39,12 +39,7 @@ const rootMetadata = cargoMetadata("Cargo.toml");
 const desktopMetadata = cargoMetadata("desktop/src-tauri/Cargo.toml");
 const rootPackage = json("package.json");
 const desktopPackage = json("desktop/package.json");
-const desktopLock = readFileSync(resolve(root, "desktop/bun.lock"), "utf8");
 const tauriConfig = json("desktop/src-tauri/tauri.conf.json");
-const updaterPublicKey =
-  process.env.TAURI_UPDATER_PUBLIC_KEY?.trim() ||
-  tauriConfig.plugins?.updater?.pubkey?.trim();
-
 function cspDirectiveSources(csp, directiveName) {
   if (typeof csp !== "string") return [];
   const directive = csp
@@ -102,26 +97,21 @@ for (const [source, version] of versions) {
 const releaseConfiguration = [
   ["Tauri bundling is enabled", tauriConfig.bundle?.active === true],
   [
-    "Tauri updater artifacts are enabled",
-    tauriConfig.bundle?.createUpdaterArtifacts === true,
+    "updater artifacts are off while OrchestrAI has no signed release feed",
+    tauriConfig.bundle?.createUpdaterArtifacts !== true,
   ],
   [
-    "the warpforge daemon is bundled as a sidecar",
-    tauriConfig.bundle?.externalBin?.includes("binaries/warpforge") === true,
+    "the orchestrai daemon is bundled as a sidecar",
+    tauriConfig.bundle?.externalBin?.includes("binaries/orchestrai") === true,
   ],
   [
-    "the updater public key is configured (build environment or Tauri config)",
-    typeof updaterPublicKey === "string" && updaterPublicKey.length > 0,
+    "no updater feed is configured, so the app never installs stock Warpforge",
+    tauriConfig.plugins?.updater == null,
   ],
   [
-    "the stable GitHub Releases updater endpoint is configured",
-    tauriConfig.plugins?.updater?.endpoints?.includes(
-      "https://github.com/warpforgehq/warpforge/releases/latest/download/latest.json",
-    ) === true,
-  ],
-  [
-    "the frontend updater dependency is locked",
-    desktopLock.includes('"@tauri-apps/plugin-updater":'),
+    "the app identity differs from stock Warpforge",
+    tauriConfig.identifier === "tools.orchestrai.desktop" &&
+      tauriConfig.productName === "OrchestrAI",
   ],
   [
     "every changeset has been consumed by the version bump",

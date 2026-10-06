@@ -143,7 +143,7 @@ pub fn render(
 
     if state.projects.is_empty() {
         let hint = Paragraph::new(
-            "  No projects. Press [a] to add a folder, or run `warpforge add <path>`.",
+            "  No projects. Press [a] to add a folder, or run `orchestrai add <path>`.",
         )
         .style(Style::default().fg(Color::DarkGray));
         frame.render_widget(hint, chunks[1].inner(Margin::new(1, 1)));

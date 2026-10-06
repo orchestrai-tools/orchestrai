@@ -1,6 +1,6 @@
 //! Agent accounts: several logins for the same agent, one active at a time.
 //!
-//! Each account owns a vault directory under `~/.warpforge/accounts/<agent>/`
+//! Each account owns a vault directory under `~/.orchestrai/accounts/<agent>/`
 //! holding whatever that agent needs to be that account — for Codex the whole
 //! `CODEX_HOME`, for Claude just the credential blob. Two rules hold for both,
 //! and both exist because the alternative silently destroys user data:

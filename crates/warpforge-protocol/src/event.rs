@@ -25,10 +25,14 @@ pub enum Event {
     ProjectAdded(ProjectInfo),
     #[serde(rename = "project.removed")]
     ProjectRemoved { name: String },
-    /// A registered project's .warpforge.yaml changed. Replaces only the
+    /// A registered project's .orchestrai/workspace.yaml changed. Replaces only the
     /// config-derived slice of client state; task/session history is untouched.
     #[serde(rename = "project.configChanged")]
     ProjectConfigChanged(ProjectConfigState),
+    /// The shared workspace file stopped parsing. Services and port-forwards
+    /// keep their last state; only the project's `configError` changes.
+    #[serde(rename = "project.configError")]
+    ProjectConfigError { project: String, error: String },
 
     #[serde(rename = "agentLimits.updated")]
     AgentLimitsUpdated { accounts: Vec<AgentAccountLimits> },
@@ -268,11 +272,15 @@ pub struct ProjectInfo {
     /// Name of the project whose declared range this one collides with.
     #[serde(default)]
     pub port_range_conflict: Option<String>,
-    /// Services declared in .warpforge.yaml (may not be running).
+    /// Services declared in .orchestrai/workspace.yaml (may not be running).
     pub declared_services: Vec<String>,
     pub agent_templates: HashMap<String, String>,
     /// Why the personal local config file is being ignored; absent when it
     /// applies or does not exist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_config_error: Option<String>,
+    /// Why the shared workspace file is being ignored; absent when it parses
+    /// or does not exist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_error: Option<String>,
 }

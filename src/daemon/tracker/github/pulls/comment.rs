@@ -46,7 +46,7 @@ pub(crate) async fn github_pr_comment(
                 "{GITHUB_API}/repos/{owner}/{repo}/issues/{number}/comments"
             ))
             .header("Authorization", format!("Bearer {token}"))
-            .header("User-Agent", "warpforge")
+            .header("User-Agent", warpforge_protocol::identity::BIN_NAME)
             .timeout(NETWORK_TIMEOUT)
             .json(&serde_json::json!({"body": body}))
             .send()

@@ -53,6 +53,7 @@ mod ports;
 mod pr_assistant;
 pub(crate) mod project;
 mod prompt;
+mod repo_scope;
 mod run;
 pub(crate) mod runner;
 mod service_start;
@@ -82,6 +83,7 @@ pub use command::AgentProbeContext;
 pub use command::Command;
 pub use event::{ChildResult, Event, GitEffect, ProjectRemovalError};
 pub use handle::DaemonHandle;
+pub use repo_scope::RepoScope;
 
 pub struct Daemon {
     projects: Vec<ProjectEntry>,
@@ -90,7 +92,7 @@ pub struct Daemon {
     /// `port_conflict_for` rather than deriving ranges anywhere else.
     port_ranges: HashMap<String, crate::ports::ResolvedRange>,
     /// Where resolved sticky ranges are persisted. Test builds inject a
-    /// memory sink so `cargo test` can never write `~/.warpforge/projects.json`.
+    /// memory sink so `cargo test` can never write `~/.orchestrai/projects.json`.
     port_range_sink: ports::PortRangeSink,
     /// Registry entries that predate stored port ranges, captured once at
     /// daemon boot. Only these get the one-time positional migration in
@@ -158,7 +160,7 @@ pub struct Daemon {
     orch_tx: Option<mpsc::Sender<crate::orchestration::OrchCommand>>,
     /// Receiver for orchestrator events (forwarded to broadcast).
     orch_event_rx: Option<broadcast::Receiver<crate::orchestration::OrchEvent>>,
-    /// Orchestrator configuration (loaded from ~/.warpforge/orchestrator.yaml).
+    /// Orchestrator configuration (loaded from ~/.orchestrai/orchestrator.yaml).
     orch_config: crate::orchestration::config::OrchestratorConfig,
     /// Per-orchestrator-task inbox of finished sub-agent results, keyed by the
     /// parent (orchestrator) task id. Drained by the `read_inbox` MCP tool.
@@ -196,7 +198,7 @@ pub struct Daemon {
     /// When credentials were last looked at, so the per-turn trigger does not
     /// re-read the keychain for every task that finishes a turn.
     last_credential_capture: Option<std::time::Instant>,
-    /// Shared memory store (separate `~/.warpforge/memory.db`), owned here so
+    /// Shared memory store (separate `~/.orchestrai/memory.db`), owned here so
     /// all memory ops run on the actor thread against one connection.
     memory: crate::daemon::memory::MemoryStore,
     last_memory_activity: Arc<Mutex<std::time::Instant>>,

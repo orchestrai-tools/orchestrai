@@ -34,7 +34,7 @@ impl Daemon {
 
     /// Like [`Daemon::spawn`], but with an explicit port-range persistence
     /// sink. Tests pass [`PortRangeSink::Registry`] to exercise real
-    /// registry writes against a throwaway `WARPFORGE_HOME`, or rely on the
+    /// registry writes against a throwaway `ORCHESTRAI_HOME`, or rely on the
     /// default in-memory sink to keep test runs off the real registry.
     pub fn spawn_with_sink(
         projects: Vec<ProjectEntry>,

@@ -226,6 +226,15 @@ pub(super) async fn task_set_title(
     Ok(json!(null))
 }
 
+pub(super) async fn task_set_origin(
+    handle: &DaemonHandle,
+    task_id: String,
+    origin: Option<String>,
+) -> Result<serde_json::Value, wire::RpcError> {
+    handle.set_task_origin(&task_id, origin).await;
+    Ok(json!(null))
+}
+
 pub(super) async fn task_merge_worktree(
     handle: &DaemonHandle,
     task_id: String,

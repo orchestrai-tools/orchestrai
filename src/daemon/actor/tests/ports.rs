@@ -34,7 +34,7 @@ fn register(tag: &str, name: &str) -> ProjectEntry {
 /// Point the registry at a throwaway directory for the duration of a test.
 async fn with_registry(tag: &str) -> MutexGuard<'static, ()> {
     let guard = registry_lock().await;
-    std::env::set_var("WARPFORGE_HOME", temp_home(tag));
+    std::env::set_var("ORCHESTRAI_HOME", temp_home(tag));
     guard
 }
 
@@ -47,7 +47,7 @@ fn stored_range(name: &str) -> Option<PortRange> {
 }
 
 fn declare_range(dir: &Path, range: &str) {
-    let config = dir.join(".warpforge/workspace.yaml");
+    let config = dir.join(".orchestrai/workspace.yaml");
     std::fs::create_dir_all(config.parent().unwrap()).unwrap();
     std::fs::write(config, format!("name: x\nports:\n  range: \"{range}\"\n")).unwrap();
 }
@@ -104,7 +104,7 @@ async fn declared_range_relocates_sticky_range_and_persists_both() {
 }
 
 /// Persistence goes to the injected sink: the default test sink records the
-/// sticky range instead of touching `~/.warpforge/projects.json`.
+/// sticky range instead of touching `~/.orchestrai/projects.json`.
 #[tokio::test]
 async fn sticky_range_persists_to_the_injected_sink() {
     let sink = PortRangeSink::memory();
@@ -203,7 +203,7 @@ async fn set_port_range_command_writes_the_override() {
 async fn out_of_range_pin_fails_with_named_remedies() {
     let _guard = with_registry("oor").await;
     let dir = temp_home("oor").join("outofrange");
-    let config = dir.join(".warpforge/workspace.yaml");
+    let config = dir.join(".orchestrai/workspace.yaml");
     std::fs::create_dir_all(config.parent().unwrap()).unwrap();
     std::fs::write(
             &config,
@@ -312,7 +312,7 @@ async fn adding_a_project_broadcasts_every_relocated_project() {
 }
 
 /// Adding a project with a range stores it as the registry's sticky range
-/// (the same slot `warpforge add --ports` uses) — not as a local override.
+/// (the same slot `orchestrai add --ports` uses) — not as a local override.
 #[tokio::test]
 async fn add_with_a_range_stores_it_as_the_sticky_range() {
     let _guard = with_registry("add-sticky").await;

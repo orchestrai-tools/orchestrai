@@ -1,0 +1,29 @@
+@import "@warpforge/ui/styles.css";
+
+@theme inline {
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --text-code: var(--mono-size, 13px);
+}
+
+/* Native window glass shows the desktop through the chrome, never through the work. */
+:root.native-glass [data-slot="sidebar-inner"],
+:root.native-glass [data-region="title-bar"],
+:root.native-glass [data-region="inspector"] {
+  background: color-mix(in oklch, var(--sidebar) calc(var(--sidebar-opacity, 0.85) * 100%), transparent);
+}
+:root.native-glass.glass-body [data-region="work"] {
+  background: color-mix(in oklch, var(--background) calc(var(--sidebar-opacity, 0.85) * 100%), transparent);
+}
+
+#boot-splash {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin {
+    animation: none;
+  }
+}

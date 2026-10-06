@@ -1,7 +1,7 @@
 //! Wire types for the warpforge daemon API.
 //!
 //! Transport: WebSocket on 127.0.0.1 (endpoint + auth token published in
-//! `~/.warpforge/daemon.json`). Every frame is a JSON object in one of three
+//! `~/.orchestrai/daemon.json`). Every frame is a JSON object in one of three
 //! shapes:
 //!
 //! - client → daemon  request:  `{ "id": 7, "method": "task.create", "params": { … } }`
@@ -17,6 +17,8 @@
 //! in daemon internals.
 
 use serde::{Deserialize, Serialize};
+
+pub mod identity;
 
 pub mod advisor;
 pub use advisor::*;
@@ -59,6 +61,9 @@ pub use runner_wait::*;
 
 pub mod runtime;
 pub use runtime::*;
+
+pub mod run_commands;
+pub use run_commands::*;
 
 pub mod tasks;
 pub use tasks::*;

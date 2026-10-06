@@ -64,12 +64,12 @@ pub(super) fn tool_title(update: &Value, id: &str, kind: &str) -> String {
 /// Turn an MCP tool title into a human label; for `spawn_agent` also surface
 /// which agent + task is being dispatched so the orchestrator's spawn is visible
 /// without expanding the tool. Handles both naming conventions agents emit:
-/// opencode's `warpforge_list_runtime` and Claude's `mcp__warpforge__list_runtime`.
+/// opencode's `orchestrai_list_runtime` and Claude's `mcp__orchestrai__list_runtime`.
 /// Returns `None` when the title is not an MCP-shaped tool name.
 fn pretty_mcp_tool_title(title: &str, update: &Value) -> Option<String> {
-    // opencode convention: `<server>_<tool>`, e.g. `warpforge_list_runtime`.
+    // opencode convention: `<server>_<tool>`, e.g. `orchestrai_list_runtime`.
     if let Some((server, tool)) = title.split_once('_') {
-        if server == "warpforge" {
+        if server == warpforge_protocol::identity::MCP_SERVER {
             return Some(render_mcp_tool(server, tool, update));
         }
     }
@@ -121,7 +121,7 @@ pub fn pretty_mcp_tool_label(title: &str) -> String {
         };
         t
     } else if let Some((s, t)) = title.split_once('_') {
-        if s != "warpforge" {
+        if s != warpforge_protocol::identity::MCP_SERVER {
             return title.to_string();
         }
         t
@@ -240,14 +240,14 @@ mod tests {
     #[test]
     fn ask_advisor_shows_the_question() {
         let asking = json!({
-            "title": "mcp__warpforge__ask_advisor",
+            "title": "mcp__orchestrai__ask_advisor",
             "rawInput": { "question": "Is a trie overkill here?" }
         });
         assert_eq!(
             tool_title(&asking, "c1", "other"),
             "Ask advisor: Is a trie overkill here?"
         );
-        let waiting = json!({ "title": "warpforge_ask_advisor", "rawInput": { "wait": true } });
+        let waiting = json!({ "title": "orchestrai_ask_advisor", "rawInput": { "wait": true } });
         assert_eq!(tool_title(&waiting, "c2", "other"), "Ask advisor");
     }
 }

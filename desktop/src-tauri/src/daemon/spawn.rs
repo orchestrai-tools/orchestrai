@@ -1,5 +1,5 @@
 //! Starting a daemon the app then holds: the development binary in debug builds
-//! or with `WARPFORGE_DAEMON_BIN`, the bundled sidecar otherwise.
+//! or with `ORCHESTRAI_DAEMON_BIN`, the bundled sidecar otherwise.
 
 use std::process::Command;
 
@@ -30,21 +30,21 @@ fn configure_sidecar_path(command: ShellCommand, _log: &SidecarLog) -> ShellComm
     command
 }
 
-/// The daemon binary: `WARPFORGE_DAEMON_BIN`, else a `warpforge` next to this
-/// exe (the app bundle), else the workspace's `target/debug/warpforge`
-/// (`tauri dev`), else `warpforge` on `PATH`.
+/// The daemon binary: `ORCHESTRAI_DAEMON_BIN`, else an `orchestrai` next to this
+/// exe (the app bundle), else the workspace's `target/debug/orchestrai`
+/// (`tauri dev`), else `orchestrai` on `PATH`.
 pub(super) fn find_daemon_bin() -> std::path::PathBuf {
-    if let Ok(p) = std::env::var("WARPFORGE_DAEMON_BIN") {
+    if let Ok(p) = std::env::var("ORCHESTRAI_DAEMON_BIN") {
         return p.into();
     }
     if let Ok(exe) = std::env::current_exe() {
         let dir = exe.parent().expect("exe has no parent dir");
-        // Prod: warpforge binary bundled next to warpforge-desktop.
-        let sibling = dir.join("warpforge");
+        // Prod: the daemon binary bundled next to the desktop binary.
+        let sibling = dir.join(warpforge_protocol::identity::BIN_NAME);
         if sibling.exists() {
             return sibling;
         }
-        // Dev layout: desktop/src-tauri/target/debug/warpforge-desktop
+        // Dev layout: desktop/src-tauri/target/debug/orchestrai-desktop
         //   dir = debug/  →  target/  →  src-tauri/  →  desktop/  →  workspace root
         let workspace = dir
             .parent() // target/
@@ -52,30 +52,33 @@ pub(super) fn find_daemon_bin() -> std::path::PathBuf {
             .and_then(|p| p.parent()) // desktop/
             .and_then(|p| p.parent()); // workspace root
         if let Some(root) = workspace {
-            let dev_bin = root.join("target").join("debug").join("warpforge");
+            let dev_bin = root
+                .join("target")
+                .join("debug")
+                .join(warpforge_protocol::identity::BIN_NAME);
             if dev_bin.exists() {
                 return dev_bin;
             }
         }
     }
-    "warpforge".into()
+    warpforge_protocol::identity::BIN_NAME.into()
 }
 
 pub(super) fn spawn(app: &AppHandle, sidecar_log: &SidecarLog) -> DaemonProcess {
-    let explicit_bin = std::env::var_os("WARPFORGE_DAEMON_BIN");
+    let explicit_bin = std::env::var_os("ORCHESTRAI_DAEMON_BIN");
     let spawned = if explicit_bin.is_some() || cfg!(debug_assertions) {
         let bin = find_daemon_bin();
         // This daemon inherits the app's own stdio, not a pipe the app reads,
         // so it can keep printing to the dev terminal (`daemon::server::stdio`).
         Command::new(&bin)
             .args(["daemon", "--owner", "desktop"])
-            .env("WARPFORGE_DAEMON_STDIO", "inherit")
+            .env("ORCHESTRAI_DAEMON_STDIO", "inherit")
             .spawn()
             .map(ManagedDaemon::Development)
             .map_err(|error| format!("could not spawn daemon ({bin:?}): {error}"))
     } else {
         app.shell()
-            .sidecar("warpforge")
+            .sidecar(warpforge_protocol::identity::BIN_NAME)
             .map(|command| configure_sidecar_path(command, sidecar_log))
             .map_err(|error| error.to_string())
             .and_then(|command| {
@@ -112,7 +115,7 @@ pub(super) fn spawn(app: &AppHandle, sidecar_log: &SidecarLog) -> DaemonProcess 
         Ok(child) => {
             let daemon = DaemonProcess::new(Some(child));
             if let Some(pid) = daemon.pid() {
-                eprintln!("warpforge: spawned daemon pid {pid}");
+                eprintln!("orchestrai: spawned daemon pid {pid}");
                 sidecar_log.lifecycle(&format!("spawned daemon pid {pid}"));
             }
             daemon

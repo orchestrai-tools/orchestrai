@@ -10,6 +10,10 @@ use crate::daemon::actor::Daemon;
 use crate::daemon::runner::{self as logic, Slots};
 
 /// Free space on the volume holding `path`, in whole gigabytes.
+#[allow(
+    clippy::unnecessary_cast,
+    reason = "statvfs field widths differ across supported platforms"
+)]
 fn free_gb(path: &str) -> Option<u64> {
     let c_path = std::ffi::CString::new(path).ok()?;
     let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };

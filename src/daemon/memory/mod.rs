@@ -1,7 +1,7 @@
 //! Shared memory: durable cross-session facts/decisions/preferences searchable
 //! by every harness (Claude, Codex, opencode). FTS5 in v1, optional local
 //! embeddings (v1.5) — no dreaming execution. The store owns its own connection
-//! to `~/.warpforge/memory.db`, isolated from the main warpforge DB, and is only
+//! to `~/.orchestrai/memory.db`, isolated from the main warpforge DB, and is only
 //! touched from the daemon actor thread (same single-threaded-access rationale
 //! as `store.rs`).
 //!
@@ -90,7 +90,7 @@ pub struct MemoryStore {
     /// `&mut self` embed fits the store's `&self` methods and the struct stays
     /// `Send`; only ever touched from the actor thread.
     embed: Mutex<EmbedEngine>,
-    /// Directory holding one `<project>/.warpforge/memory.db` overlay per project.
+    /// Directory holding one `<project>/.orchestrai/memory.db` overlay per project.
     /// `None` means the default locations; tests point it at a temp dir.
     projects_root: Option<PathBuf>,
 }
@@ -110,10 +110,7 @@ fn seed_meta(conn: &Connection) -> Result<()> {
 }
 impl MemoryStore {
     fn default_path() -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".warpforge")
-            .join("memory.db")
+        crate::registry::data_dir().join("memory.db")
     }
 
     /// Open (creating if needed) the default memory database.

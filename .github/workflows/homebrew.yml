@@ -23,6 +23,8 @@ concurrency:
 jobs:
   cask:
     name: Sync warpforgehq/homebrew-tap cask (macOS + Linux AppImage)
+    # That tap is stock Warpforge's; OrchestrAI must never publish to it.
+    if: false
     runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 10
     env:

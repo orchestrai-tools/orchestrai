@@ -1,4 +1,4 @@
-//! The warpforge daemon: the source of truth for all runtime state, driven by
+//! The orchestrai daemon: the source of truth for all runtime state, driven by
 //! commands and emitting events. See [`actor`] for the boundary rationale.
 //!
 //! Parts of this API surface are consumed only by tests today; the blanket
@@ -31,6 +31,7 @@ pub mod memory_types;
 pub mod prompt;
 pub mod pull_status;
 pub mod runner;
+pub mod runners;
 pub mod runtime;
 pub mod search;
 pub mod server;

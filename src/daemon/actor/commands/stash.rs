@@ -1,99 +1,63 @@
 use warpforge_protocol as wire;
 
 use crate::daemon::actor::{Command, Daemon};
+use crate::daemon::diff;
 
 impl Daemon {
+    /// Stash ops rewrite the worktree — each resolves its checkout here and
+    /// runs off the loop (ADR 0002).
     pub(crate) async fn handle_stash_command(&mut self, cmd: Command) {
         match cmd {
             Command::StashPush {
-                task_id,
+                scope,
                 message,
                 paths,
                 reply,
-            } => {
-                let repo = self.task_repo_path(&task_id);
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::stash_push(&p, &message, paths.as_deref())
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
-            }
-            Command::StashList { task_id, reply } => {
-                let repo = self.task_repo_path(&task_id);
+            } => self.spawn_git_call(
+                &scope,
+                move |p| async move { diff::stash_push(&p, &message, paths.as_deref()).await },
+                reply,
+            ),
+            Command::StashList { scope, reply } => {
+                let repo = self.scope_repo_path(&scope);
                 tokio::spawn(async move {
                     let entries = match repo {
-                        Some(p) => crate::daemon::diff::stash_list(&p)
-                            .await
-                            .unwrap_or_default(),
+                        Some(p) => diff::stash_list(&p).await.unwrap_or_default(),
                         None => Vec::new(),
                     };
                     let _ = reply.send(wire::StashList { entries });
                 });
             }
-            Command::StashGet { task_id, id, reply } => {
-                let repo = self.task_repo_path(&task_id);
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::stash_get(&p, &id)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
-            }
+            Command::StashGet { scope, id, reply } => self.spawn_git_call(
+                &scope,
+                move |p| async move { diff::stash_get(&p, &id).await },
+                reply,
+            ),
             Command::StashApply {
-                task_id,
+                scope,
                 id,
                 pop,
                 reply,
-            } => {
-                // Applying rewrites the worktree — resolve here, run off the
-                // loop (ADR 0002).
-                let repo = self.task_repo_path(&task_id);
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::stash_apply(&p, &id, pop)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
-            }
+            } => self.spawn_git_call(
+                &scope,
+                move |p| async move { diff::stash_apply(&p, &id, pop).await },
+                reply,
+            ),
             Command::StashFile {
-                task_id,
+                scope,
                 id,
                 paths,
                 reply,
-            } => {
-                let repo = self.task_repo_path(&task_id);
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::stash_checkout_file(&p, &id, &paths)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
-            }
-            Command::StashDrop { task_id, id, reply } => {
-                let repo = self.task_repo_path(&task_id);
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::stash_drop(&p, &id)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
-            }
+            } => self.spawn_git_call(
+                &scope,
+                move |p| async move { diff::stash_checkout_file(&p, &id, &paths).await },
+                reply,
+            ),
+            Command::StashDrop { scope, id, reply } => self.spawn_git_call(
+                &scope,
+                move |p| async move { diff::stash_drop(&p, &id).await },
+                reply,
+            ),
 
             other => self.handle_files_command(other).await,
         }

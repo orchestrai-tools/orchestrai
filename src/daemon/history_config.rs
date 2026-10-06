@@ -1,4 +1,4 @@
-//! Task-history retention: the `history:` section of `~/.warpforge/config.yaml`.
+//! Task-history retention: the `history:` section of `~/.orchestrai/config.yaml`.
 //!
 //! The lifecycle of a finished task, in order:
 //! 1. `retention_days` (default 30) — after this long, a *closed* task keeps
@@ -66,7 +66,7 @@ impl HistoryConfig {
     }
 }
 
-/// Persist the retention settings to `~/.warpforge/config.yaml`, preserving
+/// Persist the retention settings to `~/.orchestrai/config.yaml`, preserving
 /// any unrelated top-level keys. Best-effort for pruning, but the settings
 /// RPC surfaces failures.
 pub fn save(config: &HistoryConfig) -> Result<()> {
@@ -114,8 +114,5 @@ struct RawConfig {
 }
 
 fn config_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".warpforge")
-        .join("config.yaml")
+    crate::registry::data_dir().join("config.yaml")
 }

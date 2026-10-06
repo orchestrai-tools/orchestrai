@@ -8,7 +8,7 @@ async fn run_again_starts_a_new_task_with_the_same_configuration() {
     let repo = factory_repo("name: placeholder\n").await;
     let reviewer = wf_agent(&repo.dir, "rev.state", "garbage");
     let workflow = format!("name: Broken flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n");
-    std::fs::write(repo.work.join(".warpforge/workflows/test.yaml"), workflow).unwrap();
+    std::fs::write(repo.work.join(".orchestrai/workflows/test.yaml"), workflow).unwrap();
     let lead = wf_agent(&repo.dir, "lead.state", "impl");
     let daemon = Daemon::spawn(
         repo.projects.clone(),

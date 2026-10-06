@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DaemonClient } from "./daemon";
-import type { Snapshot } from "./protocol";
+import { DaemonClient } from "@/daemon";
+import type { Snapshot } from "@/protocol";
 
 class MockWebSocket {
   static readonly CONNECTING = 0;
@@ -70,7 +70,7 @@ describe("DaemonClient connection state", () => {
 
     expect(client.getState()).toMatchObject({
       connectionError:
-        "daemon protocol 99 is incompatible with desktop protocol 1. Stop the running daemon and relaunch Warpforge.",
+        "daemon protocol 99 is incompatible with desktop protocol 1. Stop the running daemon and relaunch OrchestrAI.",
     });
 
     firstSocket.readyState = MockWebSocket.CLOSED;

@@ -365,7 +365,7 @@ pub(crate) async fn github_issue_exists(repo_dir: &str, external_id: &str) -> Op
             let resp = client
                 .get(format!("{GITHUB_API}/repos/{owner}/{repo}/issues/{n}"))
                 .header("Authorization", format!("Bearer {tok}"))
-                .header("User-Agent", "warpforge")
+                .header("User-Agent", warpforge_protocol::identity::BIN_NAME)
                 .timeout(NETWORK_TIMEOUT)
                 .send()
                 .await

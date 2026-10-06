@@ -196,9 +196,9 @@ pub fn spawn_acp_session(
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<super::AcpCommand>();
     let image_capability = Arc::new(AtomicU8::new(0));
 
-    // Set WARPFORGE_ACP_DEBUG=1 to log the raw JSON-RPC exchange to the daemon's
+    // Set ORCHESTRAI_ACP_DEBUG=1 to log the raw JSON-RPC exchange to the daemon's
     // stderr — the fastest way to see why a real agent isn't answering.
-    let debug = std::env::var("WARPFORGE_ACP_DEBUG").is_ok();
+    let debug = std::env::var("ORCHESTRAI_ACP_DEBUG").is_ok();
 
     writer::spawn_writer(task_id.clone(), stdin, out_rx, debug);
 

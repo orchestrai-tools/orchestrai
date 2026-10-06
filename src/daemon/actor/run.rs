@@ -227,11 +227,20 @@ impl Daemon {
             let project_path = self.projects[index].path.clone();
 
             // An existing but invalid file is commonly just an editor's
-            // intermediate save. Keep the last rendered state and retry after
-            // the contents change instead of flashing empty controls.
+            // intermediate save. Keep the last rendered services and retry
+            // after the contents change instead of flashing empty controls;
+            // only the error itself reaches clients.
             let config = match try_load_workspace_config(Path::new(&project_path)) {
                 Ok(config) => config,
-                Err(_) => continue,
+                Err(error) => {
+                    self.config_observer
+                        .mark_applied(&project_name, fingerprint);
+                    self.emit(Event::ProjectConfigError {
+                        project: project_name,
+                        error: format!("{error:#}"),
+                    });
+                    continue;
+                }
             };
             crate::config_local::ensure_local_ignored(Path::new(&project_path));
 
@@ -286,9 +295,14 @@ impl Daemon {
         let broadcast = match &ev {
             ServiceEvent::Log { key, line, .. } => {
                 let (project, service) = split_key(key);
+                let seq = self
+                    .services
+                    .get(&project, &service)
+                    .map_or(0, |s| s.next_seq);
                 Event::ServiceLog {
                     project,
                     service,
+                    seq,
                     line: line.clone(),
                 }
             }
@@ -352,9 +366,20 @@ impl Daemon {
                 self.emit_service_status(project, service);
                 self.advance_waiting(project).await;
             }
+            // A line from a superseded run is dropped by the ring, so only a
+            // line that took its seq is broadcast.
             Event::ServiceLog {
-                project, service, ..
-            } if self.services.get(project, service).is_some() => self.emit(broadcast),
+                project,
+                service,
+                seq,
+                ..
+            } if self
+                .services
+                .get(project, service)
+                .is_some_and(|s| s.next_seq > *seq) =>
+            {
+                self.emit(broadcast)
+            }
             _ => {}
         }
     }

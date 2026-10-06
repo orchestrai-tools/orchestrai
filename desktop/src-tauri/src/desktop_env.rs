@@ -19,14 +19,15 @@ fn interactive_shell_path() -> Result<OsString, String> {
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
 
-    const BEGIN: &[u8] = b"\x1eWARPFORGE_PATH_BEGIN\x1f";
-    const END: &[u8] = b"\x1eWARPFORGE_PATH_END\x1f";
+    const BEGIN: &[u8] = b"\x1eORCHESTRAI_PATH_BEGIN\x1f";
+    const END: &[u8] = b"\x1eORCHESTRAI_PATH_END\x1f";
     const MAX_OUTPUT: usize = 256 * 1024;
 
     let shell = std::env::var_os("SHELL")
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| OsString::from("/bin/sh"));
-    let script = "printf '\\036WARPFORGE_PATH_BEGIN\\037%s\\036WARPFORGE_PATH_END\\037' \"$PATH\"";
+    let script =
+        "printf '\\036ORCHESTRAI_PATH_BEGIN\\037%s\\036ORCHESTRAI_PATH_END\\037' \"$PATH\"";
     let mut child = Command::new(&shell)
         .args(["-ilc", script])
         .stdin(Stdio::null())

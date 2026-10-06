@@ -19,7 +19,7 @@ use crate::registry::PortRange;
 use crate::daemon::actor::Daemon;
 
 /// Where newly-resolved sticky port ranges are persisted. The real daemon
-/// writes the registry (`~/.warpforge/projects.json`); test builds inject an
+/// writes the registry (`~/.orchestrai/projects.json`); test builds inject an
 /// in-memory sink so no test run can ever touch the developer's registry.
 #[derive(Clone, Default)]
 pub(crate) enum PortRangeSink {

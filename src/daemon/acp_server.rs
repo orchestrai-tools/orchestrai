@@ -121,7 +121,7 @@ async fn handle_connection(
                         "sessions": {"create": true, "prompt": true}
                     },
                     "serverInfo": {
-                        "name": "warpforge",
+                        "name": warpforge_protocol::identity::BIN_NAME,
                         "version": env!("CARGO_PKG_VERSION")
                     }
                 });

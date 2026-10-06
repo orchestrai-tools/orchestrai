@@ -89,7 +89,7 @@ async fn run(
     timeout: Duration,
 ) -> (Option<String>, tempfile::TempDir, tempfile::TempDir) {
     let (root, wt) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    std::fs::create_dir_all(root.path().join(".warpforge/worktrees")).unwrap();
+    std::fs::create_dir_all(root.path().join(".orchestrai/worktrees")).unwrap();
     let out = apply(root.path(), wt.path(), "t_1", &config(setup), timeout).await;
     (out, root, wt)
 }

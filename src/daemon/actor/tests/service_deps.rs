@@ -14,7 +14,7 @@ pub(super) const PROJECT: &str = "service-deps-test";
 
 pub(super) fn project(config: &str) -> (TempDir, ProjectEntry) {
     let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join(".warpforge/workspace.yaml");
+    let file = dir.path().join(".orchestrai/workspace.yaml");
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     std::fs::write(file, config).unwrap();
     let entry = ProjectEntry {
@@ -245,7 +245,7 @@ async fn a_declared_forward_with_no_runtime_entry_is_started_not_skipped() {
         wait_for_log(&handle, "api", "[service waiting for tunnel]").await;
 
         // A changed forward is removed from the runtime, leaving only its declaration.
-        std::fs::write(dir.path().join(".warpforge/workspace.yaml"), config(45441)).unwrap();
+        std::fs::write(dir.path().join(".orchestrai/workspace.yaml"), config(45441)).unwrap();
         let mut restarted = false;
         for _ in 0..100 {
             let snapshot = handle.snapshot().await;

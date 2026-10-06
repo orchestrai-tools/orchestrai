@@ -1,0 +1,77 @@
+---
+description: Use origin2 for all git and GitHub operations
+alwaysApply: true
+---
+
+# Git remotes — use origin2 by default
+
+This repo uses two remotes:
+
+| Remote | URL | Use |
+|--------|-----|-----|
+| `origin` | `git@github-ca.corp.zynga.com:fgusmao/lab.git` | Corporate mirror; VPN required |
+| `origin2` | `git@github.com:orchestrai-tools/orchestrai.git` | **Default for everything** |
+
+GitHub repo for `gh` and PRs: **`orchestrai-tools/orchestrai`**
+
+## Default policy
+
+Treat **`origin2`** as the canonical remote for all git and GitHub work unless the user explicitly names `origin`.
+
+Applies to:
+
+- push, fetch, pull, rebase, merge-base diffs
+- branch create/track/upstream
+- pull requests (`gh pr create`, `gh pr view`, comments, checks)
+- CI status and subscriptions
+- comparing against base branch (`origin2/main`)
+
+Do **not** use `origin` for any of the above by default.
+
+## Push and branch tracking
+
+- Always push to `origin2`.
+- Set upstream on `origin2`: `git push -u origin2 <branch>`.
+- If a branch still tracks `origin/*`, push to `origin2` and fix upstream before opening a PR.
+
+```bash
+# ✅ Default
+git push -u origin2 HEAD
+git fetch origin2
+git pull origin2 main
+git log origin2/main..HEAD
+git diff origin2/main...HEAD
+
+# ❌ Wrong unless the user asked for origin
+git push origin main
+git pull origin main
+```
+
+## Pull requests
+
+Before `gh pr create`:
+
+1. Push the branch to `origin2`.
+2. Pass the repo explicitly so `gh` does not follow `origin`:
+
+```bash
+git push -u origin2 HEAD
+gh pr create --repo orchestrai-tools/orchestrai --base main ...
+```
+
+For other GitHub commands, prefer `--repo orchestrai-tools/orchestrai`:
+
+```bash
+gh pr view --repo orchestrai-tools/orchestrai
+gh pr checks --repo orchestrai-tools/orchestrai
+gh run list --repo orchestrai-tools/orchestrai
+```
+
+## Force push
+
+- Never force-push to `main` on either remote unless the user explicitly requests it.
+- If they ask to force-push without naming a remote, use `origin2`.
+
+## When to use origin
+
+Only when the user explicitly asks to push, fetch, or sync with the corporate remote (`origin` / `fgusmao/lab` on Zynga GitHub).

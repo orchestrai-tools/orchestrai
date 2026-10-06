@@ -1,4 +1,4 @@
-//! The optional `worktree:` section of `.warpforge/workspace.yaml`: what to
+//! The optional `worktree:` section of `.orchestrai/workspace.yaml`: what to
 //! carry into, and run in, every new task worktree.
 
 use anyhow::{bail, Result};

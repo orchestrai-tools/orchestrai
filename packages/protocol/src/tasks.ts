@@ -1,0 +1,218 @@
+import type { AdvisorOutcome, TaskAdvisor } from "./advisor";
+import type { ConfigOption } from "./runtime";
+import type {
+  OrchGraphInfo,
+  WorkflowEventAgent,
+  WorkflowEventKind,
+  WorkflowEventTone,
+  WorkflowRunInfo,
+  WorkflowStage,
+} from "./workflow";
+
+/**
+ * Mirrors the Rust `TaskStatus`. `waiting` is one state, not the old
+ * `idle` / `needs_review` pair: both meant "the agent yielded its turn", and
+ * whether there is a diff to look at is `TaskInfo.filesChanged`, not a status.
+ * The daemon still *reads* the legacy spellings off disk, but never emits them.
+ */
+export type TaskStatus = "queued" | "running" | "waiting" | "blocked" | "interrupted" | "done";
+
+export interface TaskInfo {
+  id: string;
+  project: string;
+  prompt: string;
+  agent: string;
+  status: TaskStatus;
+  tags: string[];
+  /** Short imperative label derived from the prompt, or set explicitly. Empty until generated. */
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  filesChanged: number;
+  blockedReason: string | null;
+  /** The model the user explicitly asked for on this task, if they ever did. */
+  model?: string | null;
+  /**
+   * Why the task is blocked, when the daemon could classify it. `session_lost`
+   * means the agent no longer has the saved session and never will — the stored
+   * conversation is intact, so the work continues in a fresh session.
+   * `model_mismatch` means the session is alive but running on a model other
+   * than the requested one; the status is deliberately left unchanged.
+   */
+  blockedKind?: "session_lost" | "model_mismatch" | "checkout_held" | null;
+  /** Session selectors (model/mode/…) reported by the live ACP session. */
+  configOptions?: ConfigOption[];
+  /** Path to the git worktree for this task, if isolated. */
+  worktree?: string | null;
+  /** Branch this task's worktree merges back into, when it is isolated. */
+  baseBranch?: string | null;
+  /** Orchestration graph for parent orchestrator tasks, and for workflow parents. */
+  orchestrationGraph?: OrchGraphInfo | null;
+  /** Live pipeline state when this task is a workflow parent. */
+  workflowRun?: WorkflowRunInfo | null;
+  /** Task that spawned this sub-agent through the orchestrator MCP. */
+  parentTaskId?: string | null;
+  /** Backlog item this task was started from. */
+  backlogItemId?: string | null;
+  /** Explicit settle override (true = settled, false = not settled). */
+  settledOverride?: boolean | null;
+  /** Unix seconds when the task was last settled. */
+  settledAt?: number | null;
+  /** Unix seconds until which the task is snoozed. */
+  snoozedUntil?: number | null;
+  /** Unix seconds when the current snooze was set. */
+  snoozedAt?: number | null;
+  /** True while a permission prompt for this task is unanswered. Computed
+   *  daemon-side so the "needs you" badge works without holding transcripts. */
+  pendingPermission?: boolean;
+  /** What created this task, when it was not the board. `pr-review` is the
+   *  shadow task behind a pull request's Assistant tab: the surface owns it,
+   *  so board-shaped lists filter it out (`lib/taskOrigin`). */
+  origin?: string | null;
+  /** Messages sent while the agent was mid-turn, in the order they will go
+   *  out. They are not in the conversation yet — a message is recorded when
+   *  the agent is handed it. `session.interrupt` stops the running turn and
+   *  sends them all at once, joined into a single prompt; that call errors
+   *  when this is already empty — nothing is left to hurry along. */
+  queuedPrompts?: QueuedPrompt[];
+  /** The advisor this task's agent may consult, when one was picked at creation. */
+  advisor?: TaskAdvisor | null;
+}
+
+/** One message waiting behind the running turn. */
+export interface QueuedPrompt {
+  /** Stable while the message waits; means nothing once it is sent. */
+  id: string;
+  text: string;
+  /** Who submitted it. Only `user` messages are folded together by
+   *  `session.interrupt`. */
+  initiator: "user" | "automation" | "system";
+  /** Attachment metadata, shown read-only while the message waits. Editing
+   *  the text keeps them; they cannot be re-attached from here. */
+  attachments?: PromptAttachmentSummary[];
+}
+
+export type ToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export interface PlanEntry {
+  content: string;
+  status: string; // "pending" | "in_progress" | "completed"
+  priority?: string;
+}
+
+export interface CommandInfo {
+  name: string;
+  description: string;
+}
+
+export interface FileRange {
+  start: number;
+  end: number;
+}
+
+export type PromptAttachment =
+  | { type: "file"; path: string; range?: FileRange }
+  | { type: "image"; name: string; mimeType: "image/png" | "image/jpeg"; data: string }
+  | { type: "document"; name: string; mimeType: string; text: string };
+
+export interface PromptSubmission {
+  text: string;
+  attachments: PromptAttachment[];
+}
+
+export type PromptAttachmentSummary =
+  | { type: "file"; path: string }
+  | { type: "image"; name: string }
+  | { type: "document"; name: string };
+
+export interface SessionUsageCost {
+  amount: number;
+  currency: string;
+}
+
+export type SessionUpdate =
+  | { kind: "user_message"; text: string; attachments?: PromptAttachmentSummary[] }
+  | { kind: "prompt_capabilities"; image: boolean; embedded_context: boolean }
+  | { kind: "agent_text"; text: string }
+  | {
+      kind: "workflow_event";
+      event: WorkflowEventKind;
+      title: string;
+      detail?: string | null;
+      stage?: WorkflowStage | null;
+      agents: WorkflowEventAgent[];
+      tone: WorkflowEventTone;
+    }
+  | { kind: "agent_thought"; text: string }
+  | {
+      kind: "tool_call";
+      tool_call_id: string;
+      title: string;
+      status: ToolCallStatus;
+      tool_kind: string;
+      content?: string;
+      /** Daemon-preserved start of this tool call, in Unix milliseconds. */
+      started_at?: number;
+      /**
+       * Set by the client, never by the daemon: the permission prompt gating
+       * this call, folded in from the `permission_request` that named it. The
+       * prompt and the call are one event, so they render as one row.
+       */
+      pendingPermission?: { request_id: string; options: string[] };
+    }
+  | {
+      kind: "file_edit";
+      path: string;
+      /** Present on new histories; lets repeated ACP lifecycle frames coalesce. */
+      tool_call_id?: string;
+      additions?: number;
+      deletions?: number;
+      /** Concrete per-operation hunks when the ACP agent supplied old/new text. */
+      hunks?: EditHunk[];
+    }
+  | {
+      kind: "permission_request";
+      request_id: string;
+      title: string;
+      options: string[];
+      /** The tool call this prompt gates, when the agent named one. Absent on
+       *  histories recorded before the daemon carried it through. */
+      tool_call_id?: string;
+      /** Set on the daemon's prompt to let the agent use this site in the
+       *  in-app browser; answered in the task, never from a toast or banner. */
+      browser_origin?: string;
+    }
+  | { kind: "permission_resolved"; request_id: string; outcome: string }
+  | { kind: "plan"; entries: PlanEntry[] }
+  | { kind: "available_commands"; commands: CommandInfo[] }
+  | { kind: "usage"; used: number; size: number; cost?: SessionUsageCost }
+  | { kind: "turn_ended"; stop_reason: string }
+  | {
+      /** One question the executor put to its advisor, recorded when it ends. */
+      kind: "advisor_consultation";
+      question: string;
+      /** The advisor's answer, or the failure reason when `outcome` is `failed`. */
+      answer: string;
+      outcome: AdvisorOutcome;
+      agent: string;
+      model?: string;
+      advisor_task_id: string;
+      cost?: SessionUsageCost;
+    };
+
+export interface EditHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  /** Changed lines only, prefixed with "+" or "-". */
+  lines: string[];
+}
+
+/** Where a new task's worktree starts (`task.create`'s `worktree_base`).
+ *  Absent means a new branch forked from the project checkout's current HEAD. */
+export type WorktreeBase =
+  | { kind: "branch"; name: string }
+  | { kind: "origin" }
+  | { kind: "existing"; branch: string }
+  | { kind: "pullRequest"; number: number };

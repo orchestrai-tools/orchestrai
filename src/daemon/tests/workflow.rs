@@ -7,7 +7,7 @@ async fn workflow_full_loop_reject_fix_approve() {
     // Round 1 rejects with one high finding, round 2 approves.
     let reviewer = wf_agent(&dir, "rev.state", "reject approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!(
             "name: Test flow\nreview:\n  max_rounds: 2\n  reviewers:\n    - agent: {reviewer}\n"
         ),
@@ -202,7 +202,7 @@ async fn workflow_carries_the_closing_message_not_the_narration() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!("name: Closing flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
     )
     .unwrap();
@@ -269,7 +269,7 @@ async fn workflow_spawned_with_a_parent_reports_to_its_inbox() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!("name: Closing flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
     )
     .unwrap();
@@ -356,7 +356,7 @@ async fn archiving_the_orchestrator_stops_a_running_child_workflow() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!("name: Q flow\nplan: {{}}\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
     )
     .unwrap();
@@ -453,7 +453,7 @@ async fn workflow_fresh_reask_spawns_new_reviewers() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "reject approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!(
             "name: Fresh flow\nreview:\n  max_rounds: 2\n  reask: fresh\n  reviewers:\n    - agent: {reviewer}\n"
         ),
@@ -492,7 +492,7 @@ async fn workflow_dead_reviewer_session_falls_back_to_fresh() {
     // process) pops the next behavior: approve.
     let reviewer = wf_agent(&dir, "rev.state", "reject-die approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!(
             "name: Fallback flow\nreview:\n  max_rounds: 2\n  reviewers:\n    - agent: {reviewer}\n"
         ),
@@ -535,7 +535,7 @@ async fn workflow_lost_stage_agent_pauses_instead_of_failing() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!("name: Lost agent\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
     )
     .unwrap();

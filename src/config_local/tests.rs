@@ -47,8 +47,8 @@ fn write(root: &Path, rel: &str, text: &str) {
 
 fn load(local: &str) -> WorkspaceConfig {
     let dir = tempfile::tempdir().unwrap();
-    write(dir.path(), ".warpforge/workspace.yaml", SHARED);
-    write(dir.path(), ".warpforge/workspace.local.yaml", local);
+    write(dir.path(), ".orchestrai/workspace.yaml", SHARED);
+    write(dir.path(), ".orchestrai/workspace.local.yaml", local);
     try_load_workspace_config(dir.path()).unwrap().unwrap()
 }
 
@@ -62,13 +62,13 @@ fn load_err(local: &str) -> String {
 #[test]
 fn no_local_file_leaves_the_shared_config_untouched() {
     let dir = tempfile::tempdir().unwrap();
-    write(dir.path(), ".warpforge/workspace.yaml", SHARED);
+    write(dir.path(), ".orchestrai/workspace.yaml", SHARED);
     let config = try_load_workspace_config(dir.path()).unwrap().unwrap();
     assert_eq!(config.services.len(), 3);
     assert_eq!(config.local, LocalOverrides::default());
     write(
         dir.path(),
-        ".warpforge/workspace.local.yaml",
+        ".orchestrai/workspace.local.yaml",
         "# nothing yet\n",
     );
     let config = try_load_workspace_config(dir.path()).unwrap().unwrap();
@@ -165,17 +165,24 @@ fn top_level_maps_merge_per_key_and_scalars_replace() {
     assert_eq!(config.agent_templates.unwrap()["dev"].command, "claude");
 }
 
+/// Stock Warpforge's files belong to that app; a repo opened by both must not
+/// pick up its config here.
 #[test]
-fn legacy_root_config_takes_a_sibling_local_file() {
+fn stock_warpforge_config_is_not_read() {
     let dir = tempfile::tempdir().unwrap();
-    write(dir.path(), ".workspace.yaml", SHARED);
-    write(
-        dir.path(),
-        ".workspace.local.yaml",
-        "services:\n  db: null\n",
+    for name in [
+        ".warpforge/workspace.yaml",
+        ".warpforge.yaml",
+        ".wf.yaml",
+        ".workspace.yaml",
+    ] {
+        write(dir.path(), name, SHARED);
+    }
+    let config = try_load_workspace_config(dir.path()).unwrap();
+    assert!(
+        config.is_none_or(|config| config.services.is_empty()),
+        "only .orchestrai/workspace.yaml counts"
     );
-    let config = try_load_workspace_config(dir.path()).unwrap().unwrap();
-    assert!(!config.services.contains_key("db"));
 }
 
 #[test]
@@ -198,10 +205,10 @@ fn invalid_local_override_names_the_local_file() {
 #[test]
 fn invalid_shared_config_still_reports_the_shared_file() {
     let dir = tempfile::tempdir().unwrap();
-    write(dir.path(), ".warpforge/workspace.yaml", "name: [broken\n");
+    write(dir.path(), ".orchestrai/workspace.yaml", "name: [broken\n");
     write(
         dir.path(),
-        ".warpforge/workspace.local.yaml",
+        ".orchestrai/workspace.local.yaml",
         "services: {}\n",
     );
     let err = format!("{:#}", try_load_workspace_config(dir.path()).unwrap_err());
@@ -217,7 +224,7 @@ fn local_file_applies_over_an_autodetected_config() {
     write(dir.path(), "package.json", r#"{"scripts":{"dev":"vite"}}"#);
     write(
         dir.path(),
-        ".warpforge/workspace.local.yaml",
+        ".orchestrai/workspace.local.yaml",
         "services:\n  app:\n    port: 3100\n",
     );
     let config = try_load_workspace_config(dir.path()).unwrap().unwrap();
@@ -229,12 +236,12 @@ fn local_file_applies_over_an_autodetected_config() {
 fn ignore_file_is_created_once_and_is_idempotent() {
     let dir = tempfile::tempdir().unwrap();
     ensure_local_ignored(dir.path());
-    assert!(!dir.path().join(".warpforge/.gitignore").exists());
+    assert!(!dir.path().join(".orchestrai/.gitignore").exists());
 
-    write(dir.path(), ".warpforge/workspace.local.yaml", "");
+    write(dir.path(), ".orchestrai/workspace.local.yaml", "");
     ensure_local_ignored(dir.path());
     ensure_local_ignored(dir.path());
-    let text = fs::read_to_string(dir.path().join(".warpforge/.gitignore")).unwrap();
+    let text = fs::read_to_string(dir.path().join(".orchestrai/.gitignore")).unwrap();
     assert_eq!(text.matches("workspace.local.yaml").count(), 1);
     assert!(!dir.path().join(".gitignore").exists());
 }
@@ -242,11 +249,11 @@ fn ignore_file_is_created_once_and_is_idempotent() {
 #[test]
 fn existing_warpforge_gitignore_gets_one_appended_line() {
     let dir = tempfile::tempdir().unwrap();
-    write(dir.path(), ".warpforge/workspace.local.yaml", "");
-    write(dir.path(), ".warpforge/.gitignore", "cache/");
+    write(dir.path(), ".orchestrai/workspace.local.yaml", "");
+    write(dir.path(), ".orchestrai/.gitignore", "cache/");
     ensure_local_ignored(dir.path());
     ensure_local_ignored(dir.path());
-    let text = fs::read_to_string(dir.path().join(".warpforge/.gitignore")).unwrap();
+    let text = fs::read_to_string(dir.path().join(".orchestrai/.gitignore")).unwrap();
     assert_eq!(text, "cache/\nworkspace.local.yaml\n");
 }
 
@@ -262,35 +269,31 @@ fn git(dir: &Path, args: &[&str]) -> String {
 
 #[test]
 fn local_file_stays_out_of_git_status() {
-    for (shared, local) in [
-        (
-            ".warpforge/workspace.yaml",
-            ".warpforge/workspace.local.yaml",
-        ),
-        (".workspace.yaml", ".workspace.local.yaml"),
-    ] {
-        let dir = tempfile::tempdir().unwrap();
-        git(dir.path(), &["init", "-q"]);
-        write(dir.path(), shared, SHARED);
-        git(dir.path(), &["add", "."]);
-        git(
-            dir.path(),
-            &[
-                "-c",
-                "user.name=t",
-                "-c",
-                "user.email=t@t",
-                "commit",
-                "-qm",
-                "init",
-            ],
-        );
-        write(dir.path(), local, "services:\n  db: null\n");
-        ensure_local_ignored(dir.path());
-        ensure_local_ignored(dir.path());
-        assert_eq!(git(dir.path(), &["status", "--porcelain"]), "", "{local}");
-        assert!(!dir.path().join(".gitignore").exists());
-    }
+    let dir = tempfile::tempdir().unwrap();
+    git(dir.path(), &["init", "-q"]);
+    write(dir.path(), ".orchestrai/workspace.yaml", SHARED);
+    git(dir.path(), &["add", "."]);
+    git(
+        dir.path(),
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "init",
+        ],
+    );
+    write(
+        dir.path(),
+        ".orchestrai/workspace.local.yaml",
+        "services:\n  db: null\n",
+    );
+    ensure_local_ignored(dir.path());
+    ensure_local_ignored(dir.path());
+    assert_eq!(git(dir.path(), &["status", "--porcelain"]), "");
+    assert!(!dir.path().join(".gitignore").exists());
 }
 
 #[test]
@@ -304,8 +307,8 @@ fn legacy_local_file_outside_git_is_left_alone() {
 #[test]
 fn fixing_or_removing_the_local_file_clears_the_error() {
     let dir = tempfile::tempdir().unwrap();
-    write(dir.path(), ".warpforge/workspace.yaml", SHARED);
-    let local = dir.path().join(".warpforge/workspace.local.yaml");
+    write(dir.path(), ".orchestrai/workspace.yaml", SHARED);
+    let local = dir.path().join(".orchestrai/workspace.local.yaml");
     fs::write(&local, "services:\n  broken:\n    port: 1\n").unwrap();
     let config = try_load_workspace_config(dir.path()).unwrap().unwrap();
     let error = config.local_error.unwrap();

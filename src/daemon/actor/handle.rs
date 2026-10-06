@@ -172,6 +172,14 @@ impl DaemonHandle {
         .await;
     }
 
+    pub async fn set_task_origin(&self, id: &str, origin: Option<String>) {
+        self.send(Command::SetTaskOrigin {
+            id: id.to_string(),
+            origin,
+        })
+        .await;
+    }
+
     pub async fn read_inbox(&self, parent_task_id: &str) -> Vec<ChildResult> {
         let (tx, rx) = oneshot::channel();
         self.send(Command::ReadInbox {
@@ -182,11 +190,17 @@ impl DaemonHandle {
         rx.await.unwrap_or_default()
     }
 
-    pub async fn diff(&self, task_id: &str, include_ignored: bool) -> wire::TaskDiff {
+    pub async fn diff(
+        &self,
+        task_id: &str,
+        include_ignored: bool,
+        project: Option<String>,
+    ) -> wire::TaskDiff {
         let (tx, rx) = oneshot::channel();
         self.send(Command::GetDiff {
             task_id: task_id.to_string(),
             include_ignored,
+            project,
             reply: tx,
         })
         .await;

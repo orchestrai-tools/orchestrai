@@ -1,11 +1,15 @@
-//! `~/.warpforge/daemon.json`: written by a daemon once it is listening.
+//! `~/.orchestrai/daemon.json`: written by a daemon once it is listening.
 
 use warpforge_protocol::DaemonEndpoint;
 
 use super::DaemonProcess;
 
+fn endpoint_path() -> std::path::PathBuf {
+    warpforge_protocol::identity::data_dir_from(dirs::home_dir()).join("daemon.json")
+}
+
 pub(super) fn read_endpoint() -> Option<DaemonEndpoint> {
-    let path = dirs::home_dir()?.join(".warpforge").join("daemon.json");
+    let path = endpoint_path();
     serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
 }
 
@@ -17,10 +21,7 @@ pub(crate) fn daemon_endpoint(
     if let Some(reason) = &daemon.unusable {
         return Err(reason.clone());
     }
-    let path = dirs::home_dir()
-        .ok_or_else(|| "cannot determine home directory".to_string())?
-        .join(".warpforge")
-        .join("daemon.json");
+    let path = endpoint_path();
 
     for _ in 0..50 {
         if let Ok(text) = std::fs::read_to_string(&path) {
@@ -28,14 +29,14 @@ pub(crate) fn daemon_endpoint(
                 serde_json::from_str(&text).map_err(|e| format!("invalid daemon.json: {e}"))?;
             if endpoint.protocol_version != warpforge_protocol::PROTOCOL_VERSION {
                 return Err(format!(
-                    "incompatible daemon protocol {} (desktop requires {}); stop the running daemon and relaunch Warpforge",
+                    "incompatible daemon protocol {} (desktop requires {}); stop the running daemon and relaunch OrchestrAI",
                     endpoint.protocol_version,
                     warpforge_protocol::PROTOCOL_VERSION
                 ));
             }
             if endpoint.version != env!("CARGO_PKG_VERSION") {
                 return Err(format!(
-                    "daemon version {} does not match desktop version {}; stop the running daemon and relaunch Warpforge",
+                    "daemon version {} does not match desktop version {}; stop the running daemon and relaunch OrchestrAI",
                     endpoint.version,
                     env!("CARGO_PKG_VERSION")
                 ));

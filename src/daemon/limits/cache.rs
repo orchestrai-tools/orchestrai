@@ -32,10 +32,7 @@ pub struct CachedLimits {
 }
 
 fn cache_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".warpforge")
-        .join("agent-limits.json")
+    crate::registry::data_dir().join("agent-limits.json")
 }
 
 /// Emails compare case-insensitively and an empty string names nobody.

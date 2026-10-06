@@ -42,7 +42,7 @@ pub(super) fn defs() -> Vec<Value> {
                     },
                     "service": {
                         "type": "string",
-                        "description": "Service name as declared in .warpforge.yaml (see list_runtime)."
+                        "description": "Service name as declared in .orchestrai/workspace.yaml (see list_runtime)."
                     },
                     "after": {
                         "type": "integer",
@@ -84,7 +84,7 @@ pub(super) fn defs() -> Vec<Value> {
                     },
                     "name": {
                         "type": "string",
-                        "description": "Port-forward name as declared in .warpforge.yaml (see list_runtime)."
+                        "description": "Port-forward name as declared in .orchestrai/workspace.yaml (see list_runtime)."
                     },
                     "after": {
                         "type": "integer",
@@ -128,7 +128,7 @@ pub(super) fn defs() -> Vec<Value> {
                     },
                     "service": {
                         "type": "string",
-                        "description": "Service name as declared in .warpforge.yaml."
+                        "description": "Service name as declared in .orchestrai/workspace.yaml."
                     }
                 },
                 "required": ["service"]
@@ -146,7 +146,7 @@ pub(super) fn defs() -> Vec<Value> {
                     },
                     "service": {
                         "type": "string",
-                        "description": "Service name as declared in .warpforge.yaml."
+                        "description": "Service name as declared in .orchestrai/workspace.yaml."
                     }
                 },
                 "required": ["service"]
@@ -166,7 +166,7 @@ pub(super) fn defs() -> Vec<Value> {
                     },
                     "service": {
                         "type": "string",
-                        "description": "Service name as declared in .warpforge.yaml."
+                        "description": "Service name as declared in .orchestrai/workspace.yaml."
                     }
                 },
                 "required": ["service"]
@@ -184,7 +184,7 @@ pub(super) fn defs() -> Vec<Value> {
                     },
                     "name": {
                         "type": "string",
-                        "description": "Port-forward name as declared in .warpforge.yaml."
+                        "description": "Port-forward name as declared in .orchestrai/workspace.yaml."
                     }
                 },
                 "required": ["name"]
@@ -202,7 +202,7 @@ pub(super) fn defs() -> Vec<Value> {
                     },
                     "name": {
                         "type": "string",
-                        "description": "Port-forward name as declared in .warpforge.yaml."
+                        "description": "Port-forward name as declared in .orchestrai/workspace.yaml."
                     }
                 },
                 "required": ["name"]

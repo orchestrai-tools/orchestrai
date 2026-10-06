@@ -68,7 +68,7 @@ pub struct ManagedService {
     /// Sequence number for the next appended log line (monotonic, never reused,
     /// even across restarts). Log `seq` values are assigned from this.
     pub next_seq: u64,
-    /// Port declared in .warpforge.yaml (0 = none)
+    /// Port declared in .orchestrai/workspace.yaml (0 = none)
     pub original_port: u16,
     /// Actual port the process is listening on (allocated from range)
     pub allocated_port: u16,

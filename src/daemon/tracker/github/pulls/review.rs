@@ -46,7 +46,7 @@ pub(crate) async fn github_pr_review(
         let resp = client
             .post(format!("{GITHUB_API}/{api_path}"))
             .header("Authorization", format!("Bearer {token}"))
-            .header("User-Agent", "warpforge")
+            .header("User-Agent", warpforge_protocol::identity::BIN_NAME)
             .timeout(NETWORK_TIMEOUT)
             .json(&payload)
             .send()

@@ -1,90 +1,71 @@
 use warpforge_protocol as wire;
 
 use crate::daemon::actor::{Command, Daemon};
+use crate::daemon::diff;
 
 fn daemon_home() -> std::path::PathBuf {
-    dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
+    crate::registry::data_dir()
 }
 
 impl Daemon {
+    /// Shelving rewrites the worktree — each op resolves its checkout here
+    /// and runs off the loop (ADR 0002).
     pub(crate) async fn handle_shelf_command(&mut self, cmd: Command) {
         match cmd {
-            Command::ShelfList { task_id, reply } => {
-                let repo = self.task_repo_path(&task_id);
+            Command::ShelfList { scope, reply } => {
+                let repo = self.scope_repo_path(&scope);
                 let home = daemon_home();
                 tokio::spawn(async move {
                     let entries = match repo {
-                        Some(p) => crate::daemon::diff::shelf_list(&home, &p).await,
+                        Some(p) => diff::shelf_list(&home, &p).await,
                         None => Vec::new(),
                     };
                     let _ = reply.send(wire::ShelfList { entries });
                 });
             }
             Command::ShelfCreate {
-                task_id,
+                scope,
                 name,
                 paths,
                 reply,
             } => {
-                // Shelving rewrites the worktree — resolve here, run off the
-                // loop (ADR 0002).
-                let repo = self.task_repo_path(&task_id);
                 let home = daemon_home();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => {
-                            crate::daemon::diff::shelf_create(&home, &p, &name, paths.as_deref())
-                                .await
-                                .map_err(|e| e.to_string())
-                        }
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
+                self.spawn_git_call(
+                    &scope,
+                    move |p| async move {
+                        diff::shelf_create(&home, &p, &name, paths.as_deref()).await
+                    },
+                    reply,
+                );
             }
-            Command::ShelfGet { task_id, id, reply } => {
-                let repo = self.task_repo_path(&task_id);
+            Command::ShelfGet { scope, id, reply } => {
                 let home = daemon_home();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::shelf_get(&home, &p, &id)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
+                self.spawn_git_call(
+                    &scope,
+                    move |p| async move { diff::shelf_get(&home, &p, &id).await },
+                    reply,
+                );
             }
             Command::ShelfApply {
-                task_id,
+                scope,
                 id,
                 drop,
                 reply,
             } => {
-                let repo = self.task_repo_path(&task_id);
                 let home = daemon_home();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::shelf_apply(&home, &p, &id, drop)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
+                self.spawn_git_call(
+                    &scope,
+                    move |p| async move { diff::shelf_apply(&home, &p, &id, drop).await },
+                    reply,
+                );
             }
-            Command::ShelfDrop { task_id, id, reply } => {
-                let repo = self.task_repo_path(&task_id);
+            Command::ShelfDrop { scope, id, reply } => {
                 let home = daemon_home();
-                tokio::spawn(async move {
-                    let result = match repo {
-                        Some(p) => crate::daemon::diff::shelf_drop(&home, &p, &id)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err(format!("no repo for task {task_id}")),
-                    };
-                    let _ = reply.send(result);
-                });
+                self.spawn_git_call(
+                    &scope,
+                    move |p| async move { diff::shelf_drop(&home, &p, &id).await },
+                    reply,
+                );
             }
 
             other => self.handle_stash_command(other).await,

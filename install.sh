@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
-REPO="ephor/warpforge"
-BIN_NAME="warpforge"
+REPO="orchestrai-tools/orchestrai"
+BIN_NAME="orchestrai"
 INSTALL_DIR="/usr/local/bin"
-CLI_NAME="wf"
+CLI_NAME="orchestrai"  # stock Warpforge installs `wf`; a different name keeps both
 
 # Detect OS
 OS=$(uname -s)
@@ -40,7 +40,7 @@ fi
 
 URL="https://github.com/$REPO/releases/download/$VERSION/$BIN_NAME-$TARGET.tar.gz"
 
-echo "Installing warpforge $VERSION ($TARGET)..."
+echo "Installing orchestrai $VERSION ($TARGET)..."
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -54,4 +54,4 @@ else
 fi
 
 echo "Installed: $(which $CLI_NAME)"
-echo "Run: wf"
+echo "Run: orchestrai"

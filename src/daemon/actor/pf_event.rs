@@ -8,6 +8,11 @@ use crate::portforward::{PfEvent, PfStatus};
 impl Daemon {
     pub(crate) async fn handle_pf_event(&mut self, ev: PfEvent) {
         let key = format!("{}/{}", ev.project(), ev.name());
+        let next_seq = self
+            .portforwards
+            .forwards
+            .get(&key)
+            .map_or(0, |pf| pf.next_seq);
         let broadcast = match &ev {
             PfEvent::Log {
                 project,
@@ -16,6 +21,7 @@ impl Daemon {
             } => Event::PortForwardLog {
                 project: project.clone(),
                 name: name.clone(),
+                seq: next_seq,
                 line: line.clone(),
             },
             PfEvent::Active { project, name, .. } | PfEvent::Restarted { project, name, .. } => {
@@ -67,6 +73,7 @@ impl Daemon {
             self.emit(Event::PortForwardLog {
                 project: project.clone(),
                 name: name.clone(),
+                seq: line.seq,
                 line: line.line.clone(),
             });
         }
@@ -82,12 +89,15 @@ impl Daemon {
             .map(|(service, _, _)| service)
             .collect();
         for service in waiting {
-            if let Some(svc) = self.services.get_mut(&project, &service) {
-                svc.push_log(note.clone());
-            }
+            let Some(svc) = self.services.get_mut(&project, &service) else {
+                continue;
+            };
+            let seq = svc.next_seq;
+            svc.push_log(note.clone());
             self.emit(Event::ServiceLog {
                 project: project.clone(),
                 service,
+                seq,
                 line: note.clone(),
             });
         }

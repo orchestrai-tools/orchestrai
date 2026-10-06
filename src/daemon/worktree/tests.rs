@@ -39,8 +39,8 @@ async fn create_and_remove_worktree() {
     assert!(
         wt.path
             .to_string_lossy()
-            .contains(".warpforge/worktrees/t_abc123"),
-        "new worktrees live under .warpforge/worktrees: {}",
+            .contains(".orchestrai/worktrees/t_abc123"),
+        "new worktrees live under .orchestrai/worktrees: {}",
         wt.path.display()
     );
     assert!(mgr.has_worktree("t_abc123"));
@@ -61,15 +61,20 @@ async fn create_detached_lands_under_warpforge_and_stays_out_of_git() {
 
     let a = create_detached(&repo, "t_a", None).await.unwrap();
     let b = create_detached(&repo, "t_b", None).await.unwrap();
-    assert!(a
-        .path
-        .starts_with(repo.join(".warpforge").join("worktrees")));
-    assert!(b
-        .path
-        .starts_with(repo.join(".warpforge").join("worktrees")));
+    assert!(a.path.starts_with(
+        repo.join(warpforge_protocol::identity::DIR)
+            .join("worktrees")
+    ));
+    assert!(b.path.starts_with(
+        repo.join(warpforge_protocol::identity::DIR)
+            .join("worktrees")
+    ));
 
     // The `.gitignore` is written once, with the comment and a single `*`.
-    let ignore = repo.join(".warpforge").join("worktrees").join(".gitignore");
+    let ignore = repo
+        .join(warpforge_protocol::identity::DIR)
+        .join("worktrees")
+        .join(".gitignore");
     let text = std::fs::read_to_string(&ignore).unwrap();
     assert_eq!(
         text.lines().filter(|l| l.trim() == "*").count(),

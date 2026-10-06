@@ -22,7 +22,7 @@ fn is_stage(task: &Task, stage: wire::WorkflowStage) -> bool {
 /// whether a fix changed the working copy. Mock-agent state files are ignored.
 async fn git_workflow_project() -> (tempfile::TempDir, Vec<crate::registry::ProjectEntry>) {
     let (dir, projects) = workflow_project("name: placeholder\n");
-    std::fs::write(dir.path().join(".gitignore"), "*.state\n.warpforge/\n").unwrap();
+    std::fs::write(dir.path().join(".gitignore"), "*.state\n.orchestrai/\n").unwrap();
     let git = |args: &[&str]| {
         std::process::Command::new("git")
             .args(args)
@@ -64,7 +64,7 @@ async fn verify_failure_goes_to_fix_and_each_fix_is_verified_again() {
     let verifier = wf_agent(&dir, "verify.state", "verify-fail verify-pass verify-pass");
     let reviewer = wf_agent(&dir, "rev.state", "reject approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         verify_yaml(&verifier, &reviewer, ""),
     )
     .unwrap();
@@ -124,7 +124,7 @@ async fn a_fix_that_changed_nothing_is_not_verified_again() {
     let verifier = wf_agent(&dir, "verify.state", "verify-pass");
     let reviewer = wf_agent(&dir, "rev.state", "reject approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         verify_yaml(&verifier, &reviewer, ""),
     )
     .unwrap();
@@ -153,7 +153,7 @@ async fn out_of_attempts_waits_for_the_user_then_continues_to_review() {
     let verifier = wf_agent(&dir, "verify.state", "verify-fail");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         verify_yaml(&verifier, &reviewer, "  max_attempts: 1\n"),
     )
     .unwrap();
@@ -194,7 +194,7 @@ async fn an_optional_verify_that_cannot_run_does_not_hold_the_pipeline() {
     let verifier = wf_agent(&dir, "verify.state", "verify-blocked");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         verify_yaml(&verifier, &reviewer, "  required: false\n"),
     )
     .unwrap();
@@ -225,7 +225,7 @@ async fn a_verify_stage_screenshot_is_kept_as_evidence() {
     let verifier = wf_agent(&dir, "verify.state", "slow-verify-pass");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         verify_yaml(&verifier, &reviewer, ""),
     )
     .unwrap();
@@ -282,7 +282,7 @@ async fn a_worktree_task_is_refused_verification_with_the_reason() {
     let verifier = wf_agent(&dir, "verify.state", "verify-pass");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         verify_yaml(&verifier, &reviewer, ""),
     )
     .unwrap();

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 // ─── Disk access ─────────────────────────────────────────────────────────────
 
-/// All workflows visible to a project: `.warpforge/workflows/*.{yaml,yml}`
+/// All workflows visible to a project: `.orchestrai/workflows/*.{yaml,yml}`
 /// (sorted by file name; on duplicate stems the first file wins) followed by
 /// built-ins not overridden by a project file with the same id.
 pub fn list_workflows(project_path: &Path) -> Vec<LoadedWorkflow> {

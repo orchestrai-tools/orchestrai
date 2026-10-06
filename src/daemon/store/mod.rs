@@ -1,5 +1,5 @@
 //! SQLite persistence for the daemon. Tasks are the genuinely new, must-not-be-
-//! lost state (projects still live in `~/.warpforge/projects.json`, port ranges
+//! lost state (projects still live in `~/.orchestrai/projects.json`, port ranges
 //! are derived from project index), so this store is task-focused for now.
 //!
 //! The connection is owned by the actor task and only ever touched from there,
@@ -42,10 +42,7 @@ const SETTLED_TASK: &str = "(status = 'done' OR COALESCE(settled_override, 0) = 
 const SETTLED_SINCE: &str = "COALESCE(settled_at, updated_at)";
 
 fn db_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".warpforge")
-        .join("warpforge.db")
+    crate::registry::data_dir().join("warpforge.db")
 }
 
 pub struct Store {

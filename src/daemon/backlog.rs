@@ -1,6 +1,6 @@
 //! YAML-backed backlog storage.
 //!
-//! One file per item keeps writes small and makes `.warpforge/backlog` useful
+//! One file per item keeps writes small and makes `.orchestrai/backlog` useful
 //! in git without merge conflicts between unrelated items.
 
 use anyhow::{Context, Result};
@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 use warpforge_protocol as wire;
 
 fn dir(project_path: &str) -> PathBuf {
-    Path::new(project_path).join(".warpforge").join("backlog")
+    Path::new(project_path)
+        .join(warpforge_protocol::identity::DIR)
+        .join("backlog")
 }
 
 fn safe_id(id: &str) -> String {

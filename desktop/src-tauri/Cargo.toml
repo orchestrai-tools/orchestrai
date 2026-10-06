@@ -9,19 +9,22 @@
 name = "warpforge-desktop"
 version = "0.23.0"
 edition = "2021"
-description = "Warpforge desktop shell — a thin Tauri client for the warpforge daemon"
+description = "OrchestrAI desktop shell — a thin Tauri client for the orchestrai daemon"
+
+[[bin]]
+name = "orchestrai-desktop"
+path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # `unstable` gates the multiwebview API: child content webviews for the browser.
-tauri = { version = "2", features = ["macos-private-api", "unstable"] }
+tauri = { version = "2", features = ["macos-private-api", "unstable", "image-png"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-process = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-opener = "2"
-tauri-plugin-updater = "2.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"
@@ -42,6 +45,7 @@ libc = "0.2"
 mac-usernotifications = "0.3.1"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = [
+    "NSApplication",
     "NSColor",
     "NSResponder",
     "NSView",

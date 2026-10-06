@@ -18,13 +18,14 @@ joined the client's path onto the repo root, so an absolute path read any file.
 No `Origin` header means a non-browser client (TUI, MCP bridge, tests) and is
 allowed. The packaged webview's origin is always allowed: `tauri://localhost`
 on macOS and Linux, and on Windows only, `http(s)://tauri.localhost` (tauri
-`protocol::origin`). The Vite dev server (`http://localhost:5173`,
-`http://127.0.0.1:5173`) is allowed on every daemon, release builds included:
+`protocol::origin`). The Vite dev servers (`localhost` and `127.0.0.1` on
+5174 for the window's `desktop-next`, and on 5173 for the previous `desktop`
+frontend) are allowed on every daemon, release builds included:
 `tauri dev` loads the UI from Vite and reuses whatever daemon `daemon.json`
 names, so a dev app that found a packaged daemon got a silent 403. A daemon
 with a token loses nothing by it, since a page still cannot authenticate
 without reading `daemon.json`. `WARPFORGE_DEV_ORIGINS` (comma-separated)
-replaces the Vite pair. Anything else gets a 403 before the upgrade.
+replaces the Vite list. Anything else gets a 403 before the upgrade.
 
 **Client paths are relative and resolved inside the root** (`diff/files.rs`).
 Every `Path::components()` entry must be a plain name (or a leading `.`), so
@@ -39,7 +40,7 @@ itself. A refusal is an RPC error the editor shows, `file.save` included.
 
 - **A token in `--dev` too.** The plain-browser UI has no way to read
   `daemon.json`; the origin check closes the hole without breaking it. It
-  leaves one: in `--dev`, whatever serves `localhost:5173` — another project's
+  leaves one: in `--dev`, whatever serves those Vite ports — another project's
   dev server, when Warpforge's is not running — can drive the daemon. Closing
   it needs the daemon to mint a `--dev` token and Warpforge's Vite server to
   hand it only to its own page (Vite's CORS lets other localhost origins fetch

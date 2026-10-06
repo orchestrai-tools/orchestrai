@@ -122,15 +122,10 @@ pub fn sorted_services(config: &WorkspaceConfig) -> Vec<String> {
     result
 }
 
-/// Config file names in priority order: new → legacy. `.warpforge/` is the
-/// preferred home for warpforge files (workspace config, workflows); the
-/// root-level names keep working for existing projects.
-pub(crate) const CONFIG_NAMES: &[&str] = &[
-    ".warpforge/workspace.yaml",
-    ".warpforge.yaml",
-    ".wf.yaml",
-    ".workspace.yaml",
-];
+/// Config file names in priority order. Stock Warpforge's `.warpforge/` and
+/// root-level `.warpforge.yaml`, `.wf.yaml` and `.workspace.yaml` are not read,
+/// so one repository can be opened by both apps without sharing a config.
+pub(crate) const CONFIG_NAMES: &[&str] = &[".orchestrai/workspace.yaml"];
 
 /// Load a project's config while preserving the distinction between a missing
 /// config and an existing file that could not be read or parsed.
@@ -173,7 +168,7 @@ pub fn load_workspace_config(project_path: &Path) -> Option<WorkspaceConfig> {
 }
 
 /// Return the first existing config file path, or the default
-/// `.warpforge/workspace.yaml` for projects that have no config yet. Callers
+/// `.orchestrai/workspace.yaml` for projects that have no config yet. Callers
 /// writing to the returned path must create its parent directory first.
 pub fn find_config_file(project_path: &Path) -> std::path::PathBuf {
     for name in CONFIG_NAMES {
@@ -286,7 +281,7 @@ fn auto_detect(project_path: &Path) -> Option<WorkspaceConfig> {
     })
 }
 
-/// Generate a `.warpforge/workspace.yaml` file in the given directory.
+/// Generate a `.orchestrai/workspace.yaml` file in the given directory.
 /// If auto-detection finds services, pre-populates them. Refuses to run when
 /// any config (new or legacy location) already exists.
 pub fn generate_workspace_yaml(project_path: &Path) -> anyhow::Result<()> {
@@ -309,11 +304,11 @@ pub fn generate_workspace_yaml(project_path: &Path) -> anyhow::Result<()> {
     let content = if let Some(config) = auto_detect(project_path) {
         // Serialize detected config
         let yaml = serde_yaml::to_string(&config)?;
-        format!("# .warpforge/workspace.yaml — auto-detected by warpforge\n{yaml}")
+        format!("# .orchestrai/workspace.yaml — auto-detected by warpforge\n{yaml}")
     } else {
         // Write template
         format!(
-            r#"# .warpforge/workspace.yaml — Warpforge project configuration
+            r#"# .orchestrai/workspace.yaml — Warpforge project configuration
 name: {name}
 
 services:

@@ -1,4 +1,4 @@
-//! `~/.warpforge/daemon.json`: where clients find the daemon and its token.
+//! `~/.orchestrai/daemon.json`: where clients find the daemon and its token.
 
 use std::io::Write;
 use std::net::SocketAddr;
@@ -8,10 +8,7 @@ use anyhow::Result;
 use warpforge_protocol as wire;
 
 pub(super) fn daemon_json_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".warpforge")
-        .join("daemon.json")
+    crate::registry::data_dir().join("daemon.json")
 }
 
 /// Remove `daemon.json` on exit, unless a daemon started since has already
@@ -160,7 +157,7 @@ mod tests {
     #[test]
     fn creates_the_directory_and_file_owner_only() {
         let home = tempfile::tempdir().unwrap();
-        let dir = home.path().join(".warpforge");
+        let dir = home.path().join(warpforge_protocol::identity::DIR);
         let path = dir.join("daemon.json");
 
         write_private(&path, "{\"token\":\"a\"}").unwrap();

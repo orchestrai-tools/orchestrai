@@ -33,9 +33,9 @@ fn project(setup: &str) -> (tempfile::TempDir, DaemonHandle, Arc<ServerLifecycle
     git(repo.path(), &["add", "."]);
     git(repo.path(), &["commit", "-qm", "init"]);
     std::fs::write(repo.path().join(".env"), "TOKEN=1\n").unwrap();
-    std::fs::create_dir_all(repo.path().join(".warpforge")).unwrap();
+    std::fs::create_dir_all(repo.path().join(warpforge_protocol::identity::DIR)).unwrap();
     std::fs::write(
-        repo.path().join(".warpforge/workspace.yaml"),
+        repo.path().join(".orchestrai/workspace.yaml"),
         format!("name: demo\nworktree:\n  copy: ['.env*']\n  setup: \"{setup}\"\n"),
     )
     .unwrap();
@@ -141,7 +141,7 @@ async fn a_failing_setup_blocks_the_task_but_keeps_the_worktree() {
 #[tokio::test]
 async fn orphans_are_listed_and_removed_only_when_clean() {
     let (repo, handle, lifecycle) = project("true");
-    let orphan = repo.path().join(".warpforge/worktrees/orphan");
+    let orphan = repo.path().join(".orchestrai/worktrees/orphan");
     git(
         repo.path(),
         &[
@@ -208,7 +208,7 @@ async fn orphans_are_listed_and_removed_only_when_clean() {
 #[tokio::test]
 async fn reclaim_clears_build_output_inside_the_named_worktree_only() {
     let (repo, handle, lifecycle) = project("true");
-    let orphan = repo.path().join(".warpforge/worktrees/orphan");
+    let orphan = repo.path().join(".orchestrai/worktrees/orphan");
     git(
         repo.path(),
         &[

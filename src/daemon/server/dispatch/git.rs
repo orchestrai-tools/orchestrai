@@ -1,19 +1,18 @@
 //! Server dispatcher topic: git.
 
-use crate::daemon::actor::DaemonHandle;
+use crate::daemon::actor::{DaemonHandle, RepoScope};
 use serde_json::json;
 use warpforge_protocol as wire;
 
 pub(super) async fn git_commit(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     message: String,
     files: Option<Vec<String>>,
     amend: bool,
-    project: Option<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
-        .git_commit(&task_id, &message, files, amend, project)
+        .git_commit(scope, &message, files, amend)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -24,9 +23,9 @@ pub(super) async fn git_commit(
 
 pub(super) async fn git_update(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
 ) -> Result<serde_json::Value, wire::RpcError> {
-    let result = handle.git_update(&task_id).await;
+    let result = handle.git_update(scope).await;
     serde_json::to_value(result).map_err(|e| wire::RpcError {
         code: wire::ErrorCode::Internal,
         message: e.to_string(),
@@ -71,11 +70,11 @@ pub(super) async fn git_ignored(
 
 pub(super) async fn git_add(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     paths: Vec<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
-        .git_add(&task_id, paths)
+        .git_add(scope, paths)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -86,11 +85,11 @@ pub(super) async fn git_add(
 
 pub(super) async fn git_ignore(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     paths: Vec<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
-        .git_ignore_paths(&task_id, paths)
+        .git_ignore_paths(scope, paths)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -101,10 +100,10 @@ pub(super) async fn git_ignore(
 
 pub(super) async fn git_last_commit_message(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
-        .git_last_commit_message(&task_id)
+        .git_last_commit_message(scope)
         .await
         .map(|message| json!({ "message": message }))
         .map_err(|message| wire::RpcError {
@@ -115,10 +114,10 @@ pub(super) async fn git_last_commit_message(
 
 pub(super) async fn git_push_info(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
 ) -> Result<serde_json::Value, wire::RpcError> {
     let info = handle
-        .git_push_info(&task_id)
+        .git_push_info(scope)
         .await
         .map_err(|message| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -132,10 +131,10 @@ pub(super) async fn git_push_info(
 
 pub(super) async fn git_push(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     force: bool,
 ) -> Result<serde_json::Value, wire::RpcError> {
-    let result = handle.git_push(&task_id, force).await;
+    let result = handle.git_push(scope, force).await;
     serde_json::to_value(result).map_err(|e| wire::RpcError {
         code: wire::ErrorCode::Internal,
         message: e.to_string(),

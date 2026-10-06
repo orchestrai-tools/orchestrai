@@ -190,7 +190,7 @@ async fn fetch_pr_patch(repo_dir: &str, owner: &str, repo: &str, number: u64) ->
             .get(format!("{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}"))
             .header("Accept", "application/vnd.github.diff")
             .header("Authorization", format!("Bearer {token}"))
-            .header("User-Agent", "warpforge")
+            .header("User-Agent", warpforge_protocol::identity::BIN_NAME)
             .timeout(NETWORK_TIMEOUT)
             .send()
             .await

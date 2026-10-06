@@ -570,10 +570,7 @@ fn pf_status(s: wire::PortForwardStatus) -> PfStatus {
 // ── Daemon discovery / auto-spawn ──
 
 fn daemon_json_path() -> std::path::PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(".warpforge")
-        .join("daemon.json")
+    crate::registry::data_dir().join("daemon.json")
 }
 
 fn read_endpoint() -> Option<wire::DaemonEndpoint> {

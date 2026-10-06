@@ -34,18 +34,13 @@ struct ProjectsData {
     projects: Vec<ProjectEntry>,
 }
 
-pub(crate) fn warpforge_dir() -> PathBuf {
-    // Test seam: lets the suite point the registry at a throwaway directory.
-    if let Ok(dir) = std::env::var("WARPFORGE_HOME") {
-        return PathBuf::from(dir);
-    }
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".warpforge")
+/// The machine data folder: registry, database, endpoint file, logs.
+pub(crate) fn data_dir() -> PathBuf {
+    warpforge_protocol::identity::data_dir_from(dirs::home_dir())
 }
 
 fn projects_file() -> PathBuf {
-    warpforge_dir().join("projects.json")
+    data_dir().join("projects.json")
 }
 
 fn load() -> Result<ProjectsData> {
@@ -58,7 +53,7 @@ fn load() -> Result<ProjectsData> {
 }
 
 fn save(data: &ProjectsData) -> Result<()> {
-    let dir = warpforge_dir();
+    let dir = data_dir();
     fs::create_dir_all(&dir)?;
     let text = serde_json::to_string_pretty(data)? + "\n";
     fs::write(projects_file(), text)?;

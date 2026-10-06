@@ -13,12 +13,10 @@ use crate::daemon::memory_embed::{ensure_vec_extension, vec_table_sql};
 
 impl MemoryStore {
     pub(super) fn any_project_db_exists() -> bool {
-        let base = dirs::home_dir()
-            .map(|h| h.join(".warpforge/projects"))
-            .unwrap_or_default();
+        let base = crate::registry::data_dir().join("projects");
         if let Ok(entries) = std::fs::read_dir(&base) {
             for e in entries.flatten() {
-                if e.path().join(".warpforge/memory.db").exists() {
+                if e.path().join(".orchestrai/memory.db").exists() {
                     return true;
                 }
             }
@@ -36,24 +34,24 @@ impl MemoryStore {
         // Check env override and home heuristic
         for base in [
             std::env::var("WARP_PROJECTS_DIR").ok().map(PathBuf::from),
-            dirs::home_dir().map(|h| h.join(".warpforge/projects").join(pid)),
+            Some(crate::registry::data_dir().join("projects").join(pid)),
         ]
         .into_iter()
         .flatten()
         {
-            let p = base.join(".warpforge/memory.db");
+            let p = base.join(".orchestrai/memory.db");
             // base already includes pid for home case; for env var, pid subdir
             let candidate = if base.ends_with(pid) {
                 p
             } else {
-                base.join(pid).join(".warpforge/memory.db")
+                base.join(pid).join(".orchestrai/memory.db")
             };
             if candidate.exists() {
                 return Some(candidate);
             }
         }
         // Also check pid as direct path (tests)
-        let direct = PathBuf::from(pid).join(".warpforge/memory.db");
+        let direct = PathBuf::from(pid).join(".orchestrai/memory.db");
         if direct.exists() {
             return Some(direct);
         }
@@ -67,14 +65,13 @@ impl MemoryStore {
             return None;
         }
         if let Ok(base) = std::env::var("WARP_PROJECTS_DIR") {
-            return Some(PathBuf::from(base).join(pid).join(".warpforge/memory.db"));
+            return Some(PathBuf::from(base).join(pid).join(".orchestrai/memory.db"));
         }
         Some(
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".warpforge/projects")
+            crate::registry::data_dir()
+                .join("projects")
                 .join(pid)
-                .join(".warpforge/memory.db"),
+                .join(".orchestrai/memory.db"),
         )
     }
     /// All existing project overlay DB paths (both `WARP_PROJECTS_DIR` and the
@@ -88,9 +85,7 @@ impl MemoryStore {
         if let Ok(base) = std::env::var("WARP_PROJECTS_DIR") {
             collect_project_dbs(&PathBuf::from(base), &mut out);
         }
-        if let Some(home) = dirs::home_dir() {
-            collect_project_dbs(&home.join(".warpforge/projects"), &mut out);
-        }
+        collect_project_dbs(&crate::registry::data_dir().join("projects"), &mut out);
         let mut seen = HashSet::new();
         out.retain(|p| seen.insert(p.clone()));
         out

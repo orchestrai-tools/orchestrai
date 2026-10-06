@@ -1,0 +1,44 @@
+---
+description: When reviewing a harness, score it against the ACP desktop-harness goal
+alwaysApply: true
+---
+
+# ACP desktop harness fit
+
+The product being built is a **desktop harness** that combines the best of other desktop apps, CLIs, agent orchestrators, and software factories. The backbone is **agents over Agent Client Protocol** (Zed ACP, JSON-RPC). It is not IBM Agent Communication Protocol, not MCP-only, and not a custom per-CLI adapter layer.
+
+**Base:** fork Warpforge at `orchestrai-tools/orchestrai` (MIT, Tauri 2 + Rust ACP daemon). `command_center` is a UI reference (grid, panes, plans, approvals, scoped memory), not the engine. Decision note: `research-output/DESKTOP-HARNESS-DECISIONS.md`.
+
+**Who uses it:** agentic coding. The person has not opened a source file in months and lives in markdown: agent transcripts plus wikis and docs, in volume. The primary UI must **view and edit** markdown well (rendered page plus a real `.md` editor). Do not rank a repo by its code editor. Chat-only markdown rendering is not enough.
+
+On every individual review (a named repo, UI, CLI, orchestrator, or factory):
+
+1. Say whether it speaks ACP, and as what: **agent** (others drive it), **client** (it drives ACP agents), or **both**.
+2. Say if it also has a **regular HTTP/WebSocket API** besides ACP stdio.
+3. Give a **fit** verdict in one line:
+   - **Good fit** — ACP client (or both) whose UX, orchestration, or factory loop is worth copying into the desktop shell.
+   - **Worker** — native ACP agent or adapter to spawn, not a shell to copy.
+   - **Poor fit** — no real ACP (`initialize` / `session/new`). Do not treat docs-only, roadmap, or a different “ACP” acronym as support.
+4. Name the one or two patterns worth stealing. Do not expand into a full architecture unless asked.
+5. Score two extra product needs, even when the repo is a poor ACP fit:
+   - **Remote:** the desktop must be drivable from a phone off-LAN. The reference is **Sinew** (`Paseru/sinew`): 6-digit pairing, ECDH, AES-256-GCM, dumb public relay that never sees plaintext (`wss://remote.sinew-ide.com/ws`, overrideable, code in `remote/server.mjs`). Sinew beats T3 Connect for this: T3’s off-LAN path is Clerk plus a Cloudflare tunnel (TLS ends at their edge). T3’s native phone app is the client to aim for later; the transport stays Sinew. Say if this repo’s remote is better, worse, or absent versus Sinew.
+   - **Terminal UI:** adopt Sinew’s bottom drawer (tab strip, per-session status). The process model is Warp’s open client (`warpdotdev/warp`): PTY spawn, `SIGCHLD`, a queued write controller, command-as-block, shell hooks for exit and cwd. AGPL is accepted for that code. Do not assume Sinew’s PTY is the one to keep.
+   - **Warp client:** copy as much of the open Rust as fits. Skills catalog, `WARP.md` over `AGENTS.md`, permission profiles (denylist before allowlist; `AlwaysAllow` is not the default), fan-out plus idle wait, SSH ControlMaster, and a typed local control socket. Oz, Warp Drive, and the server are closed and not a source. ACP workers stay the model loop. Do not reverse `conpty.dll`. Not a reason to leave the Warpforge fork.
+   - **Session list:** KLIDE Mission Control is the UX to beat: Codex, Claude, and peer sessions on one board, with continue and fork in the app. Prefer ACP (`session/load`, `session/fork`).
+   - **Plugins:** new agent tool calls come from WASM plugins. The host model is Zellij: a Rust host loads a `.wasm` module in a sandbox and the plugin only reaches the system through the host API. Zellij plugins themselves are panes and keybindings, not LLM tools. Do not use Daintree’s unsandboxed Node plugin workers for this.
+   - **Daintree UI:** the reference for managing many harnesses at once. Panel grid of live CLIs (Claude, Codex, Gemini, and the rest), a shell promotes to an agent when you type its name, fleet broadcast, worktree dashboard. Copy the bottom-left sidebar command bar first (`QuickRun`): a `$` field for shell commands only, with saved commands, package scripts, and history, scoped to the selected worktree. It is not an agent composer. Also copy the loopback MCP whose tools are the same app actions as the palette, so a CLI in a panel can take those actions. Copy that UX onto the Warpforge fork. Its status is terminal-byte observation; KLIDE’s hooks are the better status signal, and KLIDE’s `ptyd` is what survives quitting the window. Do not switch the base to Electron for this UI.
+   - **Native wrapper:** KLIDE’s other pattern is interesting and not rejected: the original CLI still runs in a terminal, and the app only adds the wrapper. Name the pros and cons when a repo does this. Do not switch the base off the Warpforge fork for it unless ACP cannot host that CLI.
+   - **Direct LLM:** the backbone stays ACP. A first-party model loop is optional. If one is wanted, **Sinew’s Rust `run_turn`** is a candidate (stream retry, tool-result repair, cache-stable compaction, fingerprint edits). Call out its gaps: Goal loop dies with the UI, unsandboxed bash, no approvals. Do not treat it as a replacement for ACP workers like Codex.
+   - **Onboarding:** copy Helmor’s first run (`dohooo/helmor`). Fixed non-resizable window, a mock of the real workspace beside the steps, then agent sign-in, GitHub/GitLab, skills, and adding a repo. Not a reason to leave the Warpforge fork.
+   - **Jujutsu:** look into adding `jj` beside Git. Not a switch off Git. T3 only shows Jujutsu as Coming Soon (`implemented: false`); do not treat that row as a working driver.
+   - **Tasks, workflows, automations, GitHub:** possible adopt. A GitHub page for issues and pull requests, plus a task (one run), a workflow (reusable steps), and an automation (a trigger that starts a task). Cezar (`open-mercato/cezar`) is the first reference, not the required design. If a later repo does one of these better, say so and treat it as the new reference for that piece.
+   - **Shep task ending:** Shep (`shep-ai/shep`) is the reference for how a finished task meets CI and a pull request. A person can stop the run at the requirements, the plan, or the merge. After that, push, watch CI, let the agent fix failures a few times, and open a draft PR. Cezar stays the reference for what a task, a workflow, and an automation are.
+   - **Shep project memory:** write project memory only after a merge succeeds, then inject a short ranked slice on the next run. The store stays the Warpforge index.
+   - **Browser:** copy T3 Code’s browser use. An in-app preview opens URLs with the user’s Chrome logins, via a one-time cookie import into a named profile (macOS/Linux; Windows Chrome cannot be imported). The agent and hand-opened tabs share the Default profile. This is not driving the live Chrome window, and it is not a reason to leave the Warpforge base.
+   - **Buzz as Slack:** Buzz is the reference for an AI Slack. Adopt the Agents page, agent teams (a group you add to a channel together), and the channel as the loop everyone is in — humans and agents are members of the same room. Do not take the Nostr relay or the Builderlab account. Not a reason to leave the Warpforge fork.
+   - **Buzz landing:** the desktop first screen is a landing page worth remembering (`LandingBees` in `MachineOnboardingFlow`): wordmark, one line, bees that drift and move away from the pointer. Helmor remains the step-by-step onboarding. Not a reason to leave the Warpforge fork.
+   - **AgentDock and Agent Swarm:** nothing to adopt. AgentDock is a tmux dashboard for Claude and Cursor. Agent Swarm is a control plane (memory index and workflow graph included). Cezar stays the reference for a task, a workflow, and an automation.
+   - **Goose:** a worker (`goose acp` or `goose serve`), not the base. `Goose.app` is an Electron client of that one process. Take dual-visibility compaction, non-nesting `delegate`/`load`, YAML recipes (retry, shell check, `on_failure`), `/goal` vs `/grind`, shell truncation to a temp file, unique-match edit, and Auto/Approve/SmartApprove/Chat. Leave Goose's file memory and the Electron app. Cezar still defines a task, a workflow, and an automation.
+   - **Berd UI:** the most unique, clean UI in the set. Home is a free-placement canvas that should read well on a large monitor as a board of agent report updates. Open choice: port Berd’s UI onto the Warpforge fork, or bring only the canvas home. Also open: Berd’s SSH remote (system `ssh` to a remote Goose, ACP through a local tunnel) and its phone conversation (on-device speech, OpenAI voice, experimental Realtime). The voice call is separate from Sinew’s phone relay. Skip kgoose automation tiles.
+
+Evidence: source in `references/` or `UI-References/`, else say the claim is unverified. `research-output/ACP-ECOSYSTEM-REPORT.md` is the corpus map. Sinew notes: `research-output/U029-Paseru-sinew.md`.

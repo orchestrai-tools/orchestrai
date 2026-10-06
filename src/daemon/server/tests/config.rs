@@ -8,7 +8,8 @@ use tokio::time::timeout;
 #[tokio::test]
 async fn config_save_broadcasts_project_config_changed() {
     let project_dir = tempfile::tempdir().unwrap();
-    let config_path = project_dir.path().join(".warpforge.yaml");
+    let config_path = project_dir.path().join(".orchestrai/workspace.yaml");
+    std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
     std::fs::write(
         &config_path,
         "name: demo\nservices:\n  old:\n    command: old\n    port: 3000\n",
@@ -48,7 +49,7 @@ async fn config_save_broadcasts_project_config_changed() {
 #[tokio::test]
 async fn local_override_file_edit_broadcasts_flagged_services() {
     let project_dir = tempfile::tempdir().unwrap();
-    let warpforge = project_dir.path().join(".warpforge");
+    let warpforge = project_dir.path().join(warpforge_protocol::identity::DIR);
     std::fs::create_dir_all(&warpforge).unwrap();
     std::fs::write(
         warpforge.join("workspace.yaml"),
@@ -92,7 +93,7 @@ async fn local_override_file_edit_broadcasts_flagged_services() {
 #[tokio::test]
 async fn broken_local_file_keeps_shared_services_and_reports_the_error() {
     let project_dir = tempfile::tempdir().unwrap();
-    let warpforge = project_dir.path().join(".warpforge");
+    let warpforge = project_dir.path().join(warpforge_protocol::identity::DIR);
     std::fs::create_dir_all(&warpforge).unwrap();
     std::fs::write(
         warpforge.join("workspace.yaml"),
@@ -127,6 +128,67 @@ async fn broken_local_file_keeps_shared_services_and_reports_the_error() {
             assert_eq!(config.project.local_config_error, None);
             assert_eq!(config.services[0].original_port, 5999);
             break;
+        }
+    }
+}
+
+#[tokio::test]
+async fn broken_shared_file_is_reported_instead_of_ignored() {
+    let project_dir = tempfile::tempdir().unwrap();
+    let warpforge = project_dir.path().join(warpforge_protocol::identity::DIR);
+    std::fs::create_dir_all(&warpforge).unwrap();
+    let shared = warpforge.join("workspace.yaml");
+    std::fs::write(&shared, "name: demo\nservices: [not, a, map]\n").unwrap();
+    let projects = vec![ProjectEntry {
+        name: "demo".into(),
+        path: project_dir.path().to_string_lossy().into_owned(),
+        added_at: "0".into(),
+        port_range: None,
+        port_range_override: None,
+    }];
+    let handle = Daemon::spawn(projects, None);
+    let snapshot = handle.snapshot().await;
+    let error = snapshot.projects[0].config_error.clone().unwrap();
+    assert!(error.contains("workspace.yaml"), "{error}");
+
+    let mut events = handle.subscribe();
+    std::fs::write(
+        &shared,
+        "name: demo\nservices:\n  web:\n    command: bun dev\n    port: 5173\n",
+    )
+    .unwrap();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let event = timeout(remaining, events.recv())
+            .await
+            .expect("project.configChanged event")
+            .expect("daemon event");
+        if let crate::daemon::Event::ProjectConfigChanged(config) = event {
+            assert_eq!(config.project.config_error, None);
+            assert_eq!(config.project.declared_services, ["web"]);
+            break;
+        }
+    }
+
+    std::fs::write(&shared, "name: demo\nservices: [broken\n").unwrap();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let event = timeout(remaining, events.recv())
+            .await
+            .expect("project.configError event")
+            .expect("daemon event");
+        match event {
+            crate::daemon::Event::ProjectConfigError { project, error } => {
+                assert_eq!(project, "demo");
+                assert!(error.contains("workspace.yaml"), "{error}");
+                break;
+            }
+            crate::daemon::Event::ProjectConfigChanged(_) => {
+                panic!("a broken save must not replace the rendered services")
+            }
+            _ => {}
         }
     }
 }

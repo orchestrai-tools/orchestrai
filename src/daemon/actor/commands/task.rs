@@ -362,6 +362,15 @@ impl Daemon {
                     self.emit(Event::TaskUpdated(updated));
                 }
             }
+            Command::SetTaskOrigin { id, origin } => {
+                if let Some(task) = self.tasks.get_mut(&id) {
+                    task.origin = origin;
+                    task.updated_at = crate::daemon::task::now_secs();
+                    let updated = task.clone();
+                    self.persist(&updated);
+                    self.emit(Event::TaskUpdated(updated));
+                }
+            }
 
             Command::SetTaskStatus { id, status } => {
                 if let Some(task) = self.tasks.get_mut(&id) {

@@ -1,5 +1,5 @@
 
-## Project: Warpforge
+## Project: OrchestrAI (a fork of Warpforge)
 
 Workspace orchestrator with TUI and desktop interfaces. Manages multiple dev projects: isolated services with auto-resolved ports, embedded agent terminals (Codex, Claude), instant context switching.
 
@@ -12,24 +12,24 @@ Workspace orchestrator with TUI and desktop interfaces. Manages multiple dev pro
 - **PTY:** `portable-pty` — real TTY for spawned agents
 - **Terminal emulation:** `vt100` crate — parses ANSI into screen buffer
 - **CLI:** `clap` derive API
-- **Config:** `.warpforge/workspace.yaml` per project (serde_yaml; legacy root-level `.warpforge.yaml` / `.wf.yaml` / `.workspace.yaml` still load), registry in `~/.warpforge/projects.json`
+- **Config:** `.orchestrai/workspace.yaml` per project (serde_yaml). Stock Warpforge's `.warpforge/` and root-level config names are deliberately not read. Machine data lives in `~/.orchestrai` (`ORCHESTRAI_HOME` moves it), with the registry in `~/.orchestrai/projects.json`. Every on-disk and user-visible name comes from `crates/warpforge-protocol/src/identity.rs` (ADR 0030), so the app runs beside stock Warpforge
 - **Port isolation:** each project gets 100-port range (4000+), `${svc.port}` interpolation in env vars
 - **Daemon IPC:** WebSocket JSON-RPC (port 61814)
 
 **TUI (Rust):**
 - **Framework:** Ratatui + Crossterm
-- **Binary:** `cargo build --release` → `target/release/warpforge`
+- **Binary:** `cargo build --release` → `target/release/orchestrai`
 - **Key crates:** ratatui 0.29, crossterm 0.28 (event-stream), vt100 0.15
 
 **Desktop (TypeScript + Tauri):**
 - **Framework:** Tauri v2 (Rust shell + WebView)
-- **Frontend:** React 18 + TypeScript + Vite
-- **UI:** Tailwind CSS + Radix UI primitives + shadcn/ui components
-- **State:** Zustand (persisted to localStorage)
-- **Terminal:** CodeMirror for editor, xterm.js for interactive terminal sessions
+- **Frontend:** `desktop-next/` — React 19 + TypeScript + Vite, port 5174. `desktop/src` remains because the website still compiles it.
+- **UI:** Tailwind CSS 4 with the shared kit `@warpforge/ui` (`packages/ui`: shadcn components on Radix and Base UI, cmdk, react-resizable-panels, lucide, Geist). Pages use kit components and Tailwind classes only. The layout follows the mock in `experiments/orchestrai-shell`: Home, a sidebar of pages, an inspector rail, and a terminal drawer.
+- **State:** Zustand (`orc-shell`, `orc-layout`)
+- **Terminal:** xterm.js in the drawer. The file page is a text editor with language-server diagnostics.
 - **Package manager:** Bun
 - **Linting:** oxlint + oxfmt
-- **Tests:** Vitest + React Testing Library
+- **Tests:** Vitest
 
 **Key crates (Rust):** tokio, clap 4, serde, anyhow, portable-pty 0.8, vt100 0.15, ratatui 0.29, crossterm 0.28
 
@@ -41,8 +41,8 @@ app.rs           — TUI event loop (tokio::select), AppState, InputMode (Naviga
 agent.rs         — AgentManager: PTY spawn via portable-pty, vt100 parser, input/output channels
 service.rs       — ServiceManager: sh -c spawn, stdout/stderr log capture, process-group kill, port allocation
 config.rs        — workspace config parsing + auto-detect (package.json scripts, docker-compose)
-workflow_config.rs — .warpforge/workflows/*.yaml templates: schema, validation, prompt rendering
-registry.rs      — ~/.warpforge/projects.json CRUD
+workflow_config.rs — .orchestrai/workflows/*.yaml templates: schema, validation, prompt rendering
+registry.rs      — ~/.orchestrai/projects.json CRUD
 ports.rs         — Port range allocation (4000+), ${svc.port} env interpolation
 tui/
   mod.rs         — render dispatch (Dashboard vs Project screen)
@@ -59,37 +59,29 @@ tui/
   agent protocols. Actor glue is the workflow block at the end of actor.rs.
   Templates are parsed by `src/workflow_config.rs`; see `docs/adr/0001`.
 
-**Desktop source (`desktop/src/`):**
+**Desktop source (`desktop-next/src/`):**
 ```
-main.tsx              — React entry point
-App.tsx               — Main app shell, navigation
-daemon/               — WebSocket client to Rust daemon (ONLY place that talks to daemon)
-protocol.ts           — TypeScript types for daemon protocol (mirrors Rust)
-query.ts              — React Query setup
-store/
-  ui.ts               — Zustand store (UI state: view, panels, toggles)
-views/
-  MissionControl.tsx  — Main dashboard with session tiles
-  Projects.tsx        — Project list + surface tabs (backlog, runtime, files, PRs)
-  TaskDetail.tsx      — Task detail: chat + changes rail + runtime panel
-  Settings.tsx        — Settings view
-components/
-  AttentionRail.tsx   — "Needs you" sidebar
-  ChangesRail.tsx     — Git staging tree + commit box
-  ChatComposer.tsx    — Agent chat input
-  ChatTranscript.tsx  — Agent conversation display
-  RuntimePanel.tsx    — Services/port-forward status
-  CodeEditor.tsx      — CodeMirror editor
-  MergeDiff.tsx       — Diff viewer
-  FileTree.tsx        — File tree navigator
-  + 30 more UI components
-hooks/                — React hooks (useChatFollow, useMediaQuery)
-lib/                  — Utilities (38 files: sessionActivity, sessionTiming, etc.)
+main.tsx          — React entry, daemon callbacks, demo mode (`?demo`)
+App.tsx           — Mounts the shell, the page for the current route, and the app dialogs
+shell/            — App shell: title bar, sidebars, worktree switcher, palette, inspector, terminal drawer
+pages/            — One file per page plus a folder of its parts (home, board, task, changes, files, …)
+components/       — Dialogs shared across pages (new task, setup, push) and `common/` building blocks
+lib/              — Shell store, shortcuts, appearance, language server, updater
+```
+
+The previous frontend is still in `desktop/src/`. The site imports it. The Tauri window loads `desktop-next`.
+
+**Shared client (`packages/`):**
+```
+protocol/   — Wire types
+daemon/     — WebSocket client
+ui/         — Shared UI kit (shadcn components, `cn`, hooks, `styles.css`)
+core/       — UI-free helpers (themes, snooze, session timing)
 ```
 
 ### What Works (Rust)
 
-- **CLI:** `warpforge add/remove/list` — project registry CRUD
+- **CLI:** `orchestrai add/remove/list` — project registry CRUD
 - **TUI dashboard:** project list with service status, agent elapsed time, j/k navigation
 - **TUI project view:** sidebar (services + agents list) + agent terminal or logs pane
 - **Agent terminal:** portable-pty + vt100 renders full-color terminal with cursor, bold, italic, underline, inverse
@@ -102,23 +94,9 @@ lib/                  — Utilities (38 files: sessionActivity, sessionTiming, e
 
 ### What Works (Desktop)
 
-- **Daemon connection:** WebSocket JSON-RPC client with auto-reconnect, handshake, demo mode
-- **Task management:** create, archive, delete, title editing, session resume
-- **Agent chat:** conversation stream, composer with mentions/attachments, thinking blocks
-- **Changes rail:** staging tree with tri-state checkboxes, per-file diff counts, commit with amend
-- **Mission Control:** session tiles with live conversation preview, pinned tasks
-- **Backlog:** per-project work item list — infinite scroll, filters, sort, priority edits, detail drawer
-- **Services/PF status:** runtime panel with live status/logs, start/stop/restart, and an interactive terminal
-- **Git operations:** commit, push (with force-with-lease), branch info
-- **Code editor:** CodeMirror with syntax highlighting for multiple languages
-- **Diff viewer:** unified/split merge view
-- **Agent setup:** detect/install agents (Claude, Codex), bootstrap wizard
-- **UI state:** Zustand store with localStorage persistence (panels, toggles, view)
-- **Orchestration:** planner → workers → reviewers pipeline (daemon-driven)
-- **Workflows:** pick a configured pipeline (`.warpforge/workflows/*.yaml`) in
-  New Task; the daemon runs `plan? → implement → review ⇄ fix` as child tasks,
-  asks you at barriers (stage question, review limit), and supports
-  pause/resume. See `docs/adr/0001-workflow-pipelines.md` before changing it.
+The Tauri window loads `desktop-next`. Home, the board, a task conversation, changes, files, GitHub, backlog, workflows, automations, memory, services, and project settings talk to the daemon. Command-K opens the palette. Commit is Command-Return in the commit box.
+
+`desktop/src` is the previous frontend. The website still compiles it.
 
 ### Key Design Decisions
 
@@ -147,17 +125,21 @@ cargo run
 cd desktop
 bun install
 bun run tauri dev
+
+# The window's frontend, without the Rust shell
+cd desktop-next
+bun run dev
 ```
 
 ### Desktop Commands
 
 ```bash
 cd desktop
-bun run dev          # Vite dev server only
-bun run tauri dev    # Full Tauri dev (Rust + frontend)
+bun run tauri dev    # Full Tauri dev (Rust shell + desktop-next)
+
+cd desktop-next
+bun run dev          # Vite dev server only, port 5174
 bun run lint         # oxlint
-bun run lint:fix     # oxlint --fix
-bun run format       # oxfmt
 bun run typecheck    # tsc --noEmit
 bun run test         # vitest
 ```

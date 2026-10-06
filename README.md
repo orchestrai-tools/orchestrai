@@ -1,4 +1,4 @@
-<h1 align="center">Warpforge</h1>
+<h1 align="center">OrchestrAI</h1>
 
 <h2 align="center">Run parallel coding agents without losing the workspace.</h2>
 
@@ -7,10 +7,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/warpforgehq/warpforge/releases/latest"><img src="https://img.shields.io/github/v/release/warpforgehq/warpforge?display_name=tag&label=download%20for%20macOS&color=7c9cff" alt="Latest release"></a>
-  <a href="https://github.com/warpforgehq/warpforge/actions/workflows/ci.yml"><img src="https://github.com/warpforgehq/warpforge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/orchestrai-tools/orchestrai/actions/workflows/ci.yml"><img src="https://github.com/orchestrai-tools/orchestrai/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8bcf6a" alt="MIT license"></a>
 </p>
+
+> [!NOTE]
+> OrchestrAI is a fork of [Warpforge](https://github.com/warpforgehq/warpforge). It keeps its own identity so both can run on one machine: the app is **OrchestrAI** (`tools.orchestrai.desktop`), the binary is `orchestrai`, machine data lives in `~/.orchestrai`, and each project's config lives in `.orchestrai/workspace.yaml`. It never reads Warpforge's `~/.warpforge` or `.warpforge/` folders. The feature descriptions and docs links below come from Warpforge and apply here too.
 
 <p align="center">
   <a href="#install">Install</a> ·
@@ -34,52 +36,11 @@ It does not replace Claude Code, Codex, or OpenCode; those tools still do the co
 
 ## Install
 
-### macOS Apple Silicon
+OrchestrAI has no published release yet, so [build it from source](#build-from-source). Automatic updates are off until it publishes its own signed releases; the Warpforge release feed would install Warpforge over it.
 
-**Homebrew:**
+It runs beside an installed Warpforge without sharing anything: separate app, daemon, data folder, endpoint file, and agent tool server. Projects you already use in Warpforge need adding again in OrchestrAI, and each repository's `.warpforge/` folder needs a copy at `.orchestrai/`.
 
-```bash
-brew install --cask ephor/tap/warpforge
-```
-
-**Or manually:**
-
-1. Open the [latest Warpforge release](https://github.com/warpforgehq/warpforge/releases/latest).
-2. Download `Warpforge_<version>_aarch64.dmg`.
-3. Open the DMG and drag **Warpforge** into **Applications**.
-4. Launch it and select the coding agents you want enabled.
-
-The build is signed with a Developer ID certificate and notarized by Apple, so it opens without Gatekeeper workarounds. It needs macOS 11 or newer on an Apple Silicon Mac and ships its own daemon — no Rust toolchain or source checkout required.
-
-### Linux (Fedora / Debian / Ubuntu)
-
-Every release ships `rpm`, `deb`, and `AppImage` alongside the macOS DMG.
-
-**Via Homebrew (linuxbrew, AppImage):**
-
-```bash
-brew install --cask ephor/tap/warpforge
-```
-
-**Or natively (rpm / deb):**
-
-```bash
-# Fedora / RHEL / openSUSE
-sudo dnf install ./Warpforge_<version>_amd64.rpm
-# Debian / Ubuntu
-sudo dpkg -i ./Warpforge_<version>_amd64.deb
-# Any distro (AppImage)
-chmod +x ./Warpforge_<version>_amd64.AppImage && ./Warpforge_<version>_amd64.AppImage
-```
-
-Download the assets from the [latest release](https://github.com/warpforgehq/warpforge/releases/latest) — `SHA256SUMS` is published alongside them.
-
-**Updates are built in and signed.** The in-app updater is the primary update channel for both install methods — Homebrew performs the initial install, and Warpforge keeps itself current afterwards (`auto_updates` is declared in the cask, so `brew upgrade` never fights the built-in updater). Warpforge checks the release feed shortly after its daemon comes up, and on demand from the app. Downloading and installing are always explicit actions — nothing installs in the background. An update carries both the desktop UI and its matching daemon, verifies an exact version and protocol handshake, and is refused with a clear list of blockers while agent tasks or runtime transitions are still active rather than interrupting work.
-
-> [!NOTE]
-> macOS Apple Silicon and Linux x64 (Fedora 46+, Debian/Ubuntu via rpm/deb/AppImage) are validated desktop targets. Windows remains an opt-in preview.
-
-Two features shell out to CLIs the app doesn't bundle: **Node.js/`npm`** for one-click agent install/update, and the **[GitHub CLI](https://cli.github.com/)** (`gh`, authenticated via `gh auth login`) for **Open pull request** — commit and push don't need it. See **[Install → Requirements](https://warpforge.app/getting-started/install/#requirements-beyond-the-app-itself)** for details.
+Two features shell out to CLIs the app doesn't bundle: **Node.js/`npm`** for one-click agent install/update, and the **[GitHub CLI](https://cli.github.com/)** (`gh`, authenticated via `gh auth login`) for **Open pull request** — commit and push don't need it.
 
 ### Reuse your existing agent login
 
@@ -121,17 +82,17 @@ More in **[Cross-harness memory](https://warpforge.app/concepts/memory/)**.
 
 ## Projects and their runtime
 
-Register a project once and Warpforge reads or creates `.warpforge/workspace.yaml`, brings its services online in dependency order with captured logs and readiness detection, and gives every project a predictable 100-port range starting at `4000` — no more `address already in use`. A local Rust daemon owns all state behind a WebSocket API, so task history and conversations are kept between sessions; quitting stops running services and agents. Review changed files as unified or split diffs, revert individual hunks, commit, push, and open a pull request from the same workspace.
+Register a project once and OrchestrAI reads or creates `.orchestrai/workspace.yaml`, brings its services online in dependency order with captured logs and readiness detection, and gives every project a predictable 100-port range starting at `4000` — no more `address already in use`. A local Rust daemon owns all state behind a WebSocket API, so task history and conversations are kept between sessions; quitting stops running services and agents. Review changed files as unified or split diffs, revert individual hunks, commit, push, and open a pull request from the same workspace.
 
 Full guide: **[Projects and their runtime](https://warpforge.app/guides/projects-and-runtime/)** · config schema: **[Configuration reference](https://warpforge.app/reference/configuration/)**
 
 ## Build from source
 
-Only needed to develop Warpforge itself or to run it where no build is published — the [installer](#install) above is the recommended path otherwise.
+The only way to run OrchestrAI for now.
 
 ```bash
-git clone https://github.com/warpforgehq/warpforge.git
-cd warpforge/desktop
+git clone https://github.com/orchestrai-tools/orchestrai.git
+cd orchestrai/desktop
 bun install
 bun run tauri dev
 ```
@@ -143,14 +104,14 @@ Prerequisites, running the checks, and building a local bundle: **[Build from so
 The Rust binary manages the project registry directly and can run the daemon by hand:
 
 ```bash
-warpforge add <path>        # register a project
-warpforge remove <name>     # unregister it
-warpforge list              # list projects and port ranges
-warpforge init [path]       # create workspace config (--add also registers it)
-warpforge bootstrap [path]  # generate a config interactively with an agent
+orchestrai add <path>       # register a project
+orchestrai remove <name>    # unregister it
+orchestrai list             # list projects and port ranges
+orchestrai init [path]      # create workspace config (--add also registers it)
+orchestrai bootstrap [path] # generate a config interactively with an agent
 ```
 
-`install.sh` installs this as `wf` from published archives (macOS Apple Silicon only for now); it does not install the desktop app. Full command reference: **[CLI reference](https://warpforge.app/reference/cli/)**.
+`install.sh` installs this as `orchestrai` from published archives once releases exist (macOS Apple Silicon only); it does not install the desktop app. Full command reference: **[CLI reference](https://warpforge.app/reference/cli/)**.
 
 ## Current scope
 

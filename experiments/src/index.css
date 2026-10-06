@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "./styles/tokens.css";
+@import "./styles/layout.css";
+@import "./styles/edge.css";
+@import "./styles/surface.css";
+@import "./styles/badge.css";
+@import "./styles/inspector.css";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    overflow: hidden;
+    color-scheme: dark;
+  }
+}

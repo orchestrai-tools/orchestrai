@@ -105,7 +105,7 @@ fn find_nested_git_dirs(
         if HEAVY_DIRS.contains(&name.as_ref()) {
             continue;
         }
-        // Task checkouts (`.warpforge/worktrees`, legacy `.worktrees`) are never
+        // Task checkouts (`.orchestrai/worktrees`, legacy `.worktrees`) are never
         // working roots. Without this, any repo with a live task shows the
         // multi-root tree for no reason.
         if let Ok(rel) = path.strip_prefix(base) {
@@ -279,7 +279,7 @@ mod tests {
 
     #[tokio::test]
     async fn git_roots_skips_new_location_task_worktrees() {
-        // The new location, `.warpforge/worktrees/`, is also not a root.
+        // The new location, `.orchestrai/worktrees/`, is also not a root.
         let dir = std::env::temp_dir().join(format!("wf-roots-wt2-{}", uuid::Uuid::new_v4()));
         init_repo(&dir).await;
         let repo = dir.to_str().unwrap();
@@ -287,7 +287,10 @@ mod tests {
         git(&dir, &["add", "."]).await;
         git(&dir, &["commit", "-q", "-m", "init"]).await;
 
-        let nested = dir.join(".warpforge").join("worktrees").join("t_abc");
+        let nested = dir
+            .join(warpforge_protocol::identity::DIR)
+            .join("worktrees")
+            .join("t_abc");
         init_repo(&nested).await;
 
         let roots = git_roots(repo).await.unwrap();

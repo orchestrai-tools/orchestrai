@@ -215,7 +215,7 @@ impl Daemon {
             // without a store every stage would look like it produced nothing.
             return Err(
                 "workflows need the local database, which failed to open — check \
-                 ~/.warpforge and restart the daemon"
+                 ~/.orchestrai and restart the daemon"
                     .to_string(),
             );
         }

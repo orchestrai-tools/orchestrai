@@ -17,6 +17,9 @@
     "test:demo": "node test/demo-smoke.mjs"
   },
   "dependencies": {
+    "@warpforge/core": "workspace:*",
+    "@warpforge/daemon": "workspace:*",
+    "@warpforge/protocol": "workspace:*",
     "@cloudflare/nimbus-docs": "^0.10.0",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-go": "^6.0.1",

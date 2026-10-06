@@ -37,6 +37,11 @@ env:
 jobs:
   preflight:
     name: Validate tagged source
+    # OrchestrAI has no signing key or release feed of its own yet, and this
+    # pipeline produces signed updater artifacts. Every later job needs this
+    # one, so the whole release stays off until the repository variable
+    # ORCHESTRAI_RELEASES_ENABLED is "true" (docs/adr/0030-fork-identity.md).
+    if: ${{ vars.ORCHESTRAI_RELEASES_ENABLED == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 30
     env:
@@ -190,7 +195,7 @@ jobs:
             release_json="$(
               gh api --method POST "repos/$GH_REPO/releases" \
                 -f tag_name="$RELEASE_TAG" \
-                -f name="Warpforge ${RELEASE_TAG#v}" \
+                -f name="OrchestrAI ${RELEASE_TAG#v}" \
                 -f body="$RELEASE_NOTES" \
                 -F draft=true
             )"

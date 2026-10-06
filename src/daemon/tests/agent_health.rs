@@ -281,9 +281,9 @@ async fn a_probe_from_before_a_reinstall_does_not_re_mark_the_agent() {
 #[tokio::test]
 async fn a_template_session_does_not_mark_any_agent() {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(dir.path().join(".warpforge")).unwrap();
+    std::fs::create_dir_all(dir.path().join(warpforge_protocol::identity::DIR)).unwrap();
     std::fs::write(
-        dir.path().join(".warpforge/workspace.yaml"),
+        dir.path().join(".orchestrai/workspace.yaml"),
         format!("name: demo\nagentTemplates:\n  my-agent:\n    command: node {REJECT_INIT}\n"),
     )
     .unwrap();

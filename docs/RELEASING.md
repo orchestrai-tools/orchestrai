@@ -1,4 +1,7 @@
-# Releasing Warpforge
+# Releasing
+
+> [!IMPORTANT]
+> Releases are off for OrchestrAI. **Draft release** and **Homebrew tap** do not run, and the app ships no updater ([ADR 0030](adr/0030-fork-identity.md)). To turn releases on, the fork needs its own updater signing key, an updater feed in `tauri.conf.json` pointing at this repository's releases (the release check then needs the matching assertion), and the repository variable `ORCHESTRAI_RELEASES_ENABLED=true`. The rest of this page describes the pipeline as inherited from Warpforge.
 
 A release starts with one manual trigger. **Version release** turns the
 changesets merged into `main` into a version bump, changelog entry, and immutable
@@ -182,14 +185,14 @@ machine that:
 Packaged Unix launches resolve the user's login/interactive shell environment
 and merge its `PATH` with the desktop launcher's inherited entries before
 starting the bundled daemon. If startup fails, inspect
-`~/.warpforge/logs/desktop-sidecar.log`. It contains only bounded, rotating
+`~/.orchestrai/logs/desktop-sidecar.log`. It contains only bounded, rotating
 sidecar lifecycle and redacted stderr diagnostics — including whether a daemon
 found at launch was reused, replaced or reported as not responding — plus
 whatever the daemon printed before it took over its own output. From then on
-the daemon writes its stderr to `~/.warpforge/logs/daemon.log` (owner-only,
+the daemon writes its stderr to `~/.orchestrai/logs/daemon.log` (owner-only,
 appended, rotated to `daemon.log.1` when over 10 MB, at startup and by a
 once-a-minute check during a run). That file is not redacted and has no
-per-line cap, and it carries the raw agent exchange when `WARPFORGE_ACP_DEBUG`
+per-line cap, and it carries the raw agent exchange when `ORCHESTRAI_ACP_DEBUG`
 is set. Daemon stdout is still discarded.
 
 If Windows or Linux previews were requested, smoke-test the same lifecycle on

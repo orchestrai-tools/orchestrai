@@ -1,0 +1,148 @@
+/*
+ * Shell layout on top of react-resizable-panels (Group > Panel | Separator).
+ *
+ * Collapse/expand animate through a flex-grow transition that is enabled
+ * only while a programmatic toggle runs (data-layout-transition), so drag and
+ * keyboard resizing track input exactly.
+ *
+ * Angled edges: each sidebar panel and its separator receive --edge-skew.
+ * The separator surface is skewed around its vertical centre, moving the top
+ * and bottom of the boundary by ±--edge-offset. The sidebar backdrop is
+ * clipped to the same slanted line and widened by --edge-overhang so it
+ * reaches the edge where the slant leans away from the sidebar.
+ */
+@layer components {
+  .theme-root {
+    position: relative;
+    width: 100vw;
+    height: 100dvh;
+    overflow: hidden;
+    background: var(--bg-main);
+  }
+
+  .app-shell {
+    width: 100%;
+    height: 100%;
+    container-type: size;
+  }
+
+  .app-shell > [data-side] {
+    --edge-badge-shift: 0px;
+    position: relative;
+  }
+
+  .app-shell > [data-side='left'] {
+    --edge-sidebar-bg: var(--bg-sidebar-left);
+    --edge-grid-image: var(--grid-left-image);
+    --edge-grid-size: var(--grid-left-size);
+    --edge-outward: 1;
+  }
+
+  .app-shell > [data-side='right'] {
+    --edge-sidebar-bg: var(--bg-sidebar-right);
+    --edge-grid-image: var(--grid-right-image);
+    --edge-grid-size: var(--grid-right-size);
+    --edge-outward: -1;
+  }
+
+  .app-shell > [data-side][data-collapsed='true'] {
+    /* Keep the badge fully on screen when the rail is narrower than half the badge. */
+    --edge-badge-shift: max(0px, calc(var(--edge-badge-size) / 2 - var(--sidebar-collapsed-width)));
+  }
+
+  .app-shell > [data-panel] {
+    position: relative;
+    z-index: 1;
+  }
+
+  .app-shell > [data-panel][data-side] {
+    z-index: 2;
+  }
+
+  /* Set only while a programmatic collapse/expand runs, so drag and keyboard resizing stay immediate. */
+  .app-shell[data-layout-transition='true'] > [data-panel] {
+    transition: flex-grow var(--collapse-duration) var(--collapse-easing);
+  }
+
+  .app-shell:has(> [data-separator='active']) {
+    cursor: var(--edge-cursor);
+  }
+
+  .app-main {
+    background-color: var(--bg-main);
+    background-image: var(--grid-main-image);
+    background-size: var(--grid-main-size);
+    background-attachment: var(--grid-attachment);
+  }
+
+  .sidebar,
+  .sidebar-edge {
+    --edge-offset: calc(50cqh * tan(var(--edge-skew, 0deg)));
+    --edge-overhang: max(var(--edge-offset), calc(var(--edge-offset) * -1));
+  }
+
+  .sidebar {
+    position: relative;
+    height: 100%;
+  }
+
+  .sidebar__backdrop,
+  .sidebar__content {
+    position: absolute;
+    inset: 0;
+    transition:
+      clip-path var(--collapse-duration) var(--collapse-easing),
+      left var(--collapse-duration) var(--collapse-easing),
+      right var(--collapse-duration) var(--collapse-easing);
+  }
+
+  /* The grid sits on the backdrop so it is clipped to the angled edge with the sidebar colour. */
+  .sidebar__backdrop {
+    background-color: var(--edge-sidebar-bg);
+    background-image: var(--edge-grid-image);
+    background-size: var(--edge-grid-size);
+    background-attachment: var(--grid-attachment);
+  }
+
+  .sidebar__content {
+    overflow: hidden;
+  }
+
+  [data-side='left'] > .sidebar > .sidebar__backdrop {
+    right: calc(var(--edge-overhang) * -1);
+    clip-path: polygon(
+      0 0,
+      calc(100% - var(--edge-overhang) - var(--edge-offset)) 0,
+      calc(100% - var(--edge-overhang) + var(--edge-offset)) 100%,
+      0 100%
+    );
+  }
+
+  [data-side='right'] > .sidebar > .sidebar__backdrop {
+    left: calc(var(--edge-overhang) * -1);
+    clip-path: polygon(
+      calc(var(--edge-overhang) - var(--edge-offset)) 0,
+      100% 0,
+      100% 100%,
+      calc(var(--edge-overhang) + var(--edge-offset)) 100%
+    );
+  }
+
+  [data-side='left'] > .sidebar > .sidebar__content {
+    clip-path: polygon(
+      0 0,
+      calc(100% - var(--edge-offset)) 0,
+      calc(100% + var(--edge-offset)) 100%,
+      0 100%
+    );
+  }
+
+  [data-side='right'] > .sidebar > .sidebar__content {
+    clip-path: polygon(
+      calc(var(--edge-offset) * -1) 0,
+      100% 0,
+      100% 100%,
+      var(--edge-offset) 100%
+    );
+  }
+}

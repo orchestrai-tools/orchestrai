@@ -121,12 +121,12 @@ fn only_a_missing_session_counts_as_gone() {
 fn mcp_tool_titles_render_as_human_labels() {
     // Claude convention.
     assert_eq!(
-        pretty_mcp_tool_label("mcp__warpforge__list_runtime"),
+        pretty_mcp_tool_label("mcp__orchestrai__list_runtime"),
         "List runtime"
     );
     // opencode convention (server_tool, no mcp__ prefix).
     assert_eq!(
-        pretty_mcp_tool_label("warpforge_read_service_logs"),
+        pretty_mcp_tool_label("orchestrai_read_service_logs"),
         "Read service logs"
     );
     // Not MCP-shaped — leave untouched.
@@ -137,7 +137,7 @@ fn mcp_tool_titles_render_as_human_labels() {
 fn spawn_agent_title_surfaces_the_agent_and_task() {
     // opencode convention.
     let update = json!({
-        "title": "warpforge_spawn_agent",
+        "title": "orchestrai_spawn_agent",
         "rawInput": { "agent": "codex", "task": "Refactor the auth module" }
     });
     assert_eq!(
@@ -149,7 +149,7 @@ fn spawn_agent_title_surfaces_the_agent_and_task() {
 #[test]
 fn permission_title_prettifies_mcp_names() {
     let (title, options, _map, _tool_call_id) = parse_permission(&json!({
-        "toolCall": { "title": "mcp__warpforge__service_start" },
+        "toolCall": { "title": "mcp__orchestrai__service_start" },
         "options": []
     }));
     assert_eq!(title, "Service start");

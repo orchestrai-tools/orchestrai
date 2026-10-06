@@ -19,7 +19,7 @@ pub(super) async fn github_graphql(
         .post(GITHUB_GRAPHQL)
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
-        .header("User-Agent", "warpforge")
+        .header("User-Agent", warpforge_protocol::identity::BIN_NAME)
         .timeout(NETWORK_TIMEOUT)
         .json(&serde_json::json!({"query":query,"variables":vars}))
         .send()

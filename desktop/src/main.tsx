@@ -1,10 +1,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { Toaster } from "sonner";
+import { toast, Toaster } from "sonner";
 
 import App from "./App";
 import { installControlCharGuard } from "./lib/controlCharInput";
+import { forgetTask } from "./lib/sessionStore";
 import { queryClient } from "./query";
 
 // CSS is loaded for its global side effect at the application boundary.
@@ -44,7 +45,15 @@ function dismissBootSplash() {
 // Paint immediately; connect after the first frame so the daemon client's
 // heavy deps don't extend the white screen before React mounts.
 requestAnimationFrame(() => {
-  void import("./daemon").then(({ daemon }) => {
+  void import("./daemon").then(({ daemon, onInvalidate, onNotice, onTaskRemoved }) => {
+    onInvalidate((queryKey) => {
+      void queryClient.invalidateQueries({ queryKey: [...queryKey] });
+    });
+    onTaskRemoved(forgetTask);
+    onNotice(({ tone, message, duration }) => {
+      if (tone === "warning") toast.warning(message, { duration });
+      else toast.info(message, { duration });
+    });
     void daemon.connect().catch(() => {
       /* Reconnect loop takes over */
     });

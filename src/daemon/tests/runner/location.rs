@@ -33,7 +33,7 @@ fn state_of(
 async fn auto_puts_a_verifying_workflow_in_the_checkout_beside_a_worktree_run() {
     let repo = factory_repo("name: Plain flow\n").await;
     std::fs::write(
-        repo.work.join(".warpforge/workflows/verified.yaml"),
+        repo.work.join(".orchestrai/workflows/verified.yaml"),
         "name: Verified flow\nverify:\n  required: true\n",
     )
     .unwrap();

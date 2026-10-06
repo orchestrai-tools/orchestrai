@@ -1,19 +1,20 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Warpforge",
+  "productName": "OrchestrAI",
+  "mainBinaryName": "orchestrai-desktop",
   "version": "0.23.0",
-  "identifier": "dev.warpforge.desktop",
+  "identifier": "tools.orchestrai.desktop",
   "build": {
-    "beforeDevCommand": "bun scripts/stage-sidecar.mjs --profile debug --no-target && bun run dev",
-    "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "bun scripts/stage-sidecar.mjs --profile release && bun run build",
-    "frontendDist": "../dist"
+    "beforeDevCommand": "bun scripts/stage-sidecar.mjs --profile debug --no-target && bun --cwd ../desktop-next run dev",
+    "devUrl": "http://localhost:5174",
+    "beforeBuildCommand": "bun scripts/stage-sidecar.mjs --profile release && bun --cwd ../desktop-next run build",
+    "frontendDist": "../../desktop-next/dist"
   },
   "app": {
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "Warpforge",
+        "title": "OrchestrAI",
         "width": 1360,
         "height": 860,
         "minWidth": 900,
@@ -28,12 +29,14 @@
     ],
     "security": {
       "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:* ws://localhost:*",
-      "dangerousDisableAssetCspModification": ["style-src"]
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ]
     }
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -42,20 +45,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/warpforge"],
+    "externalBin": [
+      "binaries/orchestrai"
+    ],
     "macOS": {
       "minimumSystemVersion": "11.0"
-    }
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc2Rjk5RDZDMjFFODhCREIKUldUYmkrZ2hiSjM1ZGd2NmptODMvZWlJTFVzK3BXZTBTWWkvT215Y0dpT3JsSlpramVCcTdIakkK",
-      "endpoints": [
-        "https://github.com/warpforgehq/warpforge/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
     }
   }
 }

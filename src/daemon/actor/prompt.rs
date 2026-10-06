@@ -57,12 +57,12 @@ you dispatched, and continue the conversation. The user can keep messaging you \
 while sub-agents and pipelines run.";
 
 /// System preamble prepended to a plain task session's first prompt. The task's
-/// dev services run under the warpforge daemon, so their stdout and status are
+/// dev services run under the orchestrai daemon, so their stdout and status are
 /// invisible to the agent's own shell — these MCP tools are how the agent sees
 /// the runtime it is supposed to be working against.
 pub(crate) const RUNTIME_MCP_SYSTEM: &str = "\
 You have these warpforge MCP tools for observing and controlling the project's \
-dev runtime (services and port-forwards are managed by the warpforge daemon, so \
+dev runtime (services and port-forwards are managed by the orchestrai daemon, so \
 their stdout and lifecycle are NOT visible to your shell):\n\
 - list_runtime(): list the project's running services and port-forwards with \
 their status and allocated ports. Call it first to see what is up and which \
@@ -105,9 +105,9 @@ pub(crate) fn mcp_servers(
     let exe = std::env::current_exe()
         .ok()
         .and_then(|p| p.to_str().map(String::from))
-        .unwrap_or_else(|| "warpforge".to_string());
+        .unwrap_or_else(|| warpforge_protocol::identity::BIN_NAME.to_string());
     vec![serde_json::json!({
-        "name": "warpforge",
+        "name": warpforge_protocol::identity::MCP_SERVER,
         "command": exe,
         "args": ["__mcp-orchestrator"],
         "env": [

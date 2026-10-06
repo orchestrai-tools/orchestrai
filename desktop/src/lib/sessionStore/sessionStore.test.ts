@@ -2,25 +2,29 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { getDB } from "./db";
 import {
+  DB_NAME,
+  MAX_TASK_SESSIONS,
   deleteTask,
+  emptyProjectSession,
+  emptyTaskSession,
+  ensureProject,
+  ensureTask,
   flush,
+  forgetProject,
+  forgetTask,
+  getDB,
   getProject,
   getTask,
+  isTaskLoaded,
+  loadTask,
+  preferredActivePath,
+  pruneTaskDiff,
+  pruneViews,
   putProject,
   putTask,
   resetPendingForTests,
   resetRegistryForTests,
-} from "./index";
-import {
-  ensureProject,
-  ensureTask,
-  forgetProject,
-  forgetTask,
-  isTaskLoaded,
-  loadTask,
-  pruneTaskDiff,
   setProjectFiles,
   setTaskDiff,
   setTaskDiffHunkPosition,
@@ -29,16 +33,8 @@ import {
   setTaskFind,
   setTaskSurface,
   subscribeTask,
-} from "./registry";
-import {
-  DB_NAME,
-  MAX_TASK_SESSIONS,
-  emptyProjectSession,
-  emptyTaskSession,
-  preferredActivePath,
-  pruneViews,
   type TaskWorkspaceSession,
-} from "./types";
+} from "@warpforge/core/sessionStore";
 
 async function clearDatabase(): Promise<void> {
   await new Promise<void>((resolve) => {
@@ -52,7 +48,7 @@ async function clearDatabase(): Promise<void> {
 beforeEach(async () => {
   resetPendingForTests();
   resetRegistryForTests();
-  const { resetDBForTests } = await import("./db");
+  const { resetDBForTests } = await import("@warpforge/core/sessionStore");
   await resetDBForTests();
   await clearDatabase();
 });
@@ -117,7 +113,7 @@ describe("eviction", () => {
     fresh.updatedAt = now;
     await db.put("tasks", fresh);
 
-    const { sweep } = await import("./db");
+    const { sweep } = await import("@warpforge/core/sessionStore");
     await sweep(db);
 
     // TTL removed every record older than 90 days, so only the fresh one is left.

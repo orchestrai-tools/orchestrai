@@ -1,6 +1,6 @@
 //! Server dispatcher topic: files.
 
-use crate::daemon::actor::{Command, DaemonHandle};
+use crate::daemon::actor::{Command, DaemonHandle, RepoScope};
 use serde_json::json;
 use warpforge_protocol as wire;
 
@@ -8,8 +8,9 @@ pub(super) async fn diff_get(
     handle: &DaemonHandle,
     task_id: String,
     include_ignored: bool,
+    project: Option<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
-    let diff = handle.diff(&task_id, include_ignored).await;
+    let diff = handle.diff(&task_id, include_ignored, project).await;
     serde_json::to_value(diff).map_err(|e| wire::RpcError {
         code: wire::ErrorCode::Internal,
         message: e.to_string(),
@@ -18,14 +19,14 @@ pub(super) async fn diff_get(
 
 pub(super) async fn diff_resolve_hunk(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     file: String,
     hunk_index: u32,
     resolution: wire::HunkResolution,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
         .send(Command::ResolveHunk {
-            task_id,
+            scope,
             file,
             hunk_index,
             resolution,

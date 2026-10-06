@@ -125,7 +125,7 @@ async fn viewer_login(_repo_dir: &str) -> anyhow::Result<String> {
         let resp = client
             .get(format!("{GITHUB_API}/user"))
             .header("Authorization", format!("Bearer {token}"))
-            .header("User-Agent", "warpforge")
+            .header("User-Agent", warpforge_protocol::identity::BIN_NAME)
             .timeout(NETWORK_TIMEOUT)
             .send()
             .await

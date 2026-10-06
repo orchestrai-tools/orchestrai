@@ -194,7 +194,7 @@ async fn github_get_text(repo_dir: &str, path: &str, accept: &str) -> Result<Str
             .get(format!("{GITHUB_API}/{path}"))
             .header("Accept", accept)
             .header("Authorization", format!("Bearer {token}"))
-            .header("User-Agent", "warpforge")
+            .header("User-Agent", warpforge_protocol::identity::BIN_NAME)
             .timeout(NETWORK_TIMEOUT)
             .send()
             .await

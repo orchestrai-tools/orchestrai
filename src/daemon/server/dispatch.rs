@@ -6,7 +6,7 @@
 
 use warpforge_protocol as wire;
 
-use crate::daemon::actor::DaemonHandle;
+use crate::daemon::actor::{DaemonHandle, RepoScope};
 use crate::daemon::server::ServerLifecycle;
 
 mod advisor;
@@ -26,6 +26,8 @@ mod runner;
 mod runtime;
 mod sessions;
 mod shelf;
+mod shell;
+mod surface;
 mod system;
 mod tasks;
 mod tracker;
@@ -67,7 +69,7 @@ pub(super) async fn dispatch(
         OrchestratorListAgents { parent_task_id, project, } => orchestration::orchestrator_list_agents(handle, parent_task_id, project).await,
         AdvisorAsk { task_id, question, context } => advisor::advisor_ask(handle, task_id, question, context).await,
         AdvisorWait { task_id } => advisor::advisor_wait(handle, task_id).await,
-        DiffGet { task_id, include_ignored, } => files::diff_get(handle, task_id, include_ignored).await,
+        DiffGet { task_id, include_ignored, project } => files::diff_get(handle, task_id, include_ignored, project).await,
         MemoryStore { content, scope, kind, tags, project_id, created_by, } => memory::memory_store(handle, content, scope, kind, tags, project_id, created_by).await,
         MemorySearch { query, scope, limit, mode, } => memory::memory_search(handle, query, scope, limit, mode).await,
         MemoryList { scope, kind, limit, offset, } => memory::memory_list(handle, scope, kind, limit, offset).await,
@@ -77,7 +79,7 @@ pub(super) async fn dispatch(
         MemorySetEmbedding { mode } => memory::memory_set_embedding(handle, mode).await,
         MemoryAddEdge { src_id, dst_id, relation, } => memory::memory_add_edge(handle, src_id, dst_id, relation).await,
         MemoryEdges { id } => memory::memory_edges(handle, id).await,
-        DiffResolveHunk { task_id, file, hunk_index, resolution, } => files::diff_resolve_hunk(handle, task_id, file, hunk_index, resolution).await,
+        DiffResolveHunk { task_id, file, hunk_index, resolution, project } => files::diff_resolve_hunk(handle, RepoScope::new(task_id, project), file, hunk_index, resolution).await,
         FileContents { task_id, path, project, } => files::file_contents(handle, task_id, path, project).await,
         FileList { task_id, project, include_ignored, } => files::file_list(handle, task_id, project, include_ignored).await,
         FileSave { task_id, path, content, project, } => files::file_save(handle, task_id, path, content, project).await,
@@ -85,33 +87,33 @@ pub(super) async fn dispatch(
         FileRename { task_id, path, new_path, project, } => files::file_rename(handle, task_id, path, new_path, project).await,
         FileDelete { task_id, path, project } => files::file_delete(handle, task_id, path, project).await,
         FileSearch { task_id, query, limit, project, } => files::file_search(handle, task_id, query, limit, project).await,
-        GitCommit { task_id, message, files, amend, project, } => git::git_commit(handle, task_id, message, files, amend, project).await,
-        GitUpdate { task_id } => git::git_update(handle, task_id).await,
+        GitCommit { task_id, message, files, amend, project } => git::git_commit(handle, RepoScope::new(task_id, project), message, files, amend).await,
+        GitUpdate { task_id, project } => git::git_update(handle, RepoScope::new(task_id, project)).await,
         GitBranches { task_id, project } => git::git_branches(handle, task_id, project).await,
         GitRoots { task_id, project } => git::git_roots(handle, task_id, project).await,
         GitIgnored { task_id, project } => git::git_ignored(handle, task_id, project).await,
-        GitAdd { task_id, paths } => git::git_add(handle, task_id, paths).await,
-        GitIgnore { task_id, paths } => git::git_ignore(handle, task_id, paths).await,
-        ShelfList { task_id } => shelf::shelf_list(handle, task_id).await,
-        ShelfCreate { task_id, name, paths, } => shelf::shelf_create(handle, task_id, name, paths).await,
-        ShelfGet { task_id, id } => shelf::shelf_get(handle, task_id, id).await,
-        ShelfApply { task_id, id, drop } => shelf::shelf_apply(handle, task_id, id, drop).await,
-        ShelfDrop { task_id, id } => shelf::shelf_drop(handle, task_id, id).await,
-        StashList { task_id } => shelf::stash_list(handle, task_id).await,
-        StashPush { task_id, message, paths, } => shelf::stash_push(handle, task_id, message, paths).await,
-        StashGet { task_id, id } => shelf::stash_get(handle, task_id, id).await,
-        StashApply { task_id, id, pop } => shelf::stash_apply(handle, task_id, id, pop).await,
-        StashFile { task_id, id, paths } => shelf::stash_file(handle, task_id, id, paths).await,
-        StashDrop { task_id, id } => shelf::stash_drop(handle, task_id, id).await,
-        GitSwitchBranch { task_id, branch } => branch::git_switch_branch(handle, task_id, branch).await,
-        GitBranchRename { task_id, branch, new_name, } => branch::git_branch_rename(handle, task_id, branch, new_name).await,
-        GitBranchDelete { task_id, branch, force, } => branch::git_branch_delete(handle, task_id, branch, force).await,
-        GitBranchCreate { task_id, name, from, checkout, overwrite, } => branch::git_branch_create(handle, task_id, name, from, checkout, overwrite).await,
-        GitRebase { task_id, branch, target, } => branch::git_rebase(handle, task_id, branch, target).await,
-        GitMerge { task_id, target } => branch::git_merge(handle, task_id, target).await,
-        GitLastCommitMessage { task_id } => git::git_last_commit_message(handle, task_id).await,
-        GitPushInfo { task_id } => git::git_push_info(handle, task_id).await,
-        GitPush { task_id, force } => git::git_push(handle, task_id, force).await,
+        GitAdd { task_id, paths, project } => git::git_add(handle, RepoScope::new(task_id, project), paths).await,
+        GitIgnore { task_id, paths, project } => git::git_ignore(handle, RepoScope::new(task_id, project), paths).await,
+        ShelfList { task_id, project } => shelf::shelf_list(handle, RepoScope::new(task_id, project)).await,
+        ShelfCreate { task_id, name, paths, project } => shelf::shelf_create(handle, RepoScope::new(task_id, project), name, paths).await,
+        ShelfGet { task_id, id, project } => shelf::shelf_get(handle, RepoScope::new(task_id, project), id).await,
+        ShelfApply { task_id, id, drop, project } => shelf::shelf_apply(handle, RepoScope::new(task_id, project), id, drop).await,
+        ShelfDrop { task_id, id, project } => shelf::shelf_drop(handle, RepoScope::new(task_id, project), id).await,
+        StashList { task_id, project } => shelf::stash_list(handle, RepoScope::new(task_id, project)).await,
+        StashPush { task_id, message, paths, project } => shelf::stash_push(handle, RepoScope::new(task_id, project), message, paths).await,
+        StashGet { task_id, id, project } => shelf::stash_get(handle, RepoScope::new(task_id, project), id).await,
+        StashApply { task_id, id, pop, project } => shelf::stash_apply(handle, RepoScope::new(task_id, project), id, pop).await,
+        StashFile { task_id, id, paths, project } => shelf::stash_file(handle, RepoScope::new(task_id, project), id, paths).await,
+        StashDrop { task_id, id, project } => shelf::stash_drop(handle, RepoScope::new(task_id, project), id).await,
+        GitSwitchBranch { task_id, branch, project } => branch::git_switch_branch(handle, RepoScope::new(task_id, project), branch).await,
+        GitBranchRename { task_id, branch, new_name, project } => branch::git_branch_rename(handle, RepoScope::new(task_id, project), branch, new_name).await,
+        GitBranchDelete { task_id, branch, force, project } => branch::git_branch_delete(handle, RepoScope::new(task_id, project), branch, force).await,
+        GitBranchCreate { task_id, name, from, checkout, overwrite, project } => branch::git_branch_create(handle, RepoScope::new(task_id, project), name, from, checkout, overwrite).await,
+        GitRebase { task_id, branch, target, project } => branch::git_rebase(handle, RepoScope::new(task_id, project), branch, target).await,
+        GitMerge { task_id, target, project } => branch::git_merge(handle, RepoScope::new(task_id, project), target).await,
+        GitLastCommitMessage { task_id, project } => git::git_last_commit_message(handle, RepoScope::new(task_id, project)).await,
+        GitPushInfo { task_id, project } => git::git_push_info(handle, RepoScope::new(task_id, project)).await,
+        GitPush { task_id, force, project } => git::git_push(handle, RepoScope::new(task_id, project), force).await,
         GitCreatePr { task_id, title, body, base, } => git::git_create_pr(handle, task_id, title, body, base).await,
         TextGenerate { task_id, agent_id, kind, model, account_id, input, } => agents::text_generate(handle, task_id, agent_id, kind, model, account_id, input).await,
         TextEnhance { project, agent_id, prompt, model, } => agents::text_enhance(handle, project, agent_id, prompt, model).await,
@@ -120,6 +122,7 @@ pub(super) async fn dispatch(
         TaskDelete { task_id } => tasks::task_delete(handle, task_id).await,
         TaskDeleteSettled { project } => tasks::task_delete_settled(handle, project).await,
         TaskSetTitle { task_id, title } => tasks::task_set_title(handle, task_id, title).await,
+        TaskSetOrigin { task_id, origin } => tasks::task_set_origin(handle, task_id, origin).await,
         TaskMergeWorktree { task_id, remove_worktree } => tasks::task_merge_worktree(handle, task_id, remove_worktree).await,
         TaskListWorktrees { project } => tasks::task_list_worktrees(handle, project).await,
         WorktreeList { project } => worktrees::worktree_list(handle, project).await,
@@ -232,6 +235,13 @@ pub(super) async fn dispatch(
         MemoryDream { dry_run, project_id, } => memory::memory_dream(handle, dry_run, project_id).await,
         MemoryListCompaction {} => memory::memory_list_compaction(handle).await,
         MemoryResolveCompaction { id, approve, apply } => memory::memory_resolve_compaction(handle, id, approve, apply).await,
+        DocsList { project } => surface::docs_list(handle, project).await,
+        DocsWrite { project, path, content } => surface::docs_write(handle, project, path, content).await,
+        SessionFork { task_id } => surface::session_fork(handle, task_id).await,
+        ChannelList { project } => surface::channel_list(handle, project).await,
+        ChannelPost { project, author, role, body } => surface::channel_post(handle, project, author, role, body).await,
+        ShellRun { project, command, task_id } => shell::shell_run(handle, project, command, task_id).await,
+        ShellCommands { project, task_id } => shell::shell_commands(handle, project, task_id).await,
     }
 }
 

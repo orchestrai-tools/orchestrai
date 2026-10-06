@@ -8,16 +8,13 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use super::{Connection, Endpoint, Transport};
 
-/// The daemon as published in `~/.warpforge/daemon.json`, over its WebSocket.
+/// The daemon as published in `~/.orchestrai/daemon.json`, over its WebSocket.
 pub(crate) struct PublishedDaemon;
 
 #[async_trait]
 impl Transport for PublishedDaemon {
     fn endpoint(&self) -> Result<Endpoint> {
-        let path = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".warpforge")
-            .join("daemon.json");
+        let path = crate::registry::data_dir().join("daemon.json");
         let raw = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {} — is the daemon running?", path.display()))?;
         serde_json::from_str(&raw).with_context(|| format!("reading {}", path.display()))

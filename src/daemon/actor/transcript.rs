@@ -354,5 +354,5 @@ pub(crate) fn settled_candidate_is_deletable(
     has_worktree: bool,
     unsafe_state: bool,
 ) -> bool {
-    !(has_worktree && files_changed > 0) && !unsafe_state
+    !(unsafe_state || has_worktree && files_changed > 0)
 }

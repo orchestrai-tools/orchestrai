@@ -1,0 +1,65 @@
+/*
+ * The live edge surface (EdgeSurface.tsx). Paths are motion values; these
+ * rules only colour them. The body reads as part of the sidebar, the border
+ * takes its look from the --line-* state in edge.css, and the gap shows the
+ * content colour under troughs that dip past the track into the sidebar.
+ * Glyphs are Lucide icons coloured via currentColor.
+ */
+@layer components {
+  .edge-surface {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .edge-surface__gap {
+    fill: var(--bg-main);
+  }
+
+  .edge-surface__body {
+    fill: var(--edge-sidebar-bg);
+  }
+
+  /* Glow is a drop-shadow filter (box-shadow does not apply to SVG); it is "none" unless glow or lightsaber is on. */
+  .edge-surface__border {
+    opacity: var(--line-opacity);
+    filter: var(--line-filter);
+    transition:
+      opacity var(--line-duration) var(--border-easing),
+      fill var(--line-duration) var(--border-easing),
+      stroke var(--line-duration) var(--border-easing),
+      filter var(--line-duration) var(--border-easing);
+  }
+
+  .edge-surface__border[data-mode='fill'] {
+    fill: var(--line-color);
+  }
+
+  .edge-surface__border[data-mode='stroke'] {
+    fill: none;
+    stroke: var(--line-color);
+    stroke-width: var(--border-line-width);
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+
+  .edge-surface__glyph-mask {
+    color: #000;
+  }
+
+  .edge-surface__glyph-rim {
+    color: rgb(255 255 255 / 0.25);
+  }
+
+  .edge-surface__glyph-cavity {
+    color: rgb(0 0 0 / calc(0.55 + 0.45 * var(--deboss-depth)));
+  }
+
+  .edge-surface__glyph-bevel {
+    color: rgb(255 255 255 / calc(0.1 + 0.2 * var(--deboss-depth)));
+    translate: 0 1px;
+  }
+}

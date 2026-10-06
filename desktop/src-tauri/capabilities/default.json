@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicholasgriffintn/tauri-plugin-dialog/v2/capabilities/schema.json",
   "identifier": "default",
-  "description": "Default capabilities for Warpforge desktop",
+  "description": "Default capabilities for the OrchestrAI desktop app",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -11,7 +11,6 @@
     "dialog:allow-open",
     "dialog:allow-ask",
     "opener:default",
-    "updater:default",
     "process:allow-restart"
   ]
 }

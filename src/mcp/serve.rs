@@ -59,7 +59,7 @@ where
                 "protocolVersion": MCP_VERSION,
                 "capabilities": { "tools": {} },
                 "serverInfo": {
-                    "name": "warpforge",
+                    "name": warpforge_protocol::identity::MCP_SERVER,
                     "version": env!("CARGO_PKG_VERSION"),
                 },
             })),

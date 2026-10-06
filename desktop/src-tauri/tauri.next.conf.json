@@ -1,0 +1,8 @@
+{
+  "build": {
+    "beforeDevCommand": "bun scripts/stage-sidecar.mjs --profile debug --no-target && bun --cwd ../desktop-next run dev",
+    "devUrl": "http://localhost:5174",
+    "beforeBuildCommand": "bun scripts/stage-sidecar.mjs --profile release && bun --cwd ../desktop-next run build",
+    "frontendDist": "../../desktop-next/dist"
+  }
+}

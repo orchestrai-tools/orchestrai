@@ -203,7 +203,7 @@ pub async fn connect_github(token: &str) -> Result<()> {
     let resp = client
         .get("https://api.github.com/user")
         .header("Authorization", format!("Bearer {t}"))
-        .header("User-Agent", "warpforge")
+        .header("User-Agent", warpforge_protocol::identity::BIN_NAME)
         .timeout(NETWORK_TIMEOUT)
         .send()
         .await

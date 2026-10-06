@@ -1,14 +1,14 @@
 //! Server dispatcher topic: shelf.
 
-use crate::daemon::actor::DaemonHandle;
+use crate::daemon::actor::{DaemonHandle, RepoScope};
 use serde_json::json;
 use warpforge_protocol as wire;
 
 pub(super) async fn shelf_list(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
 ) -> Result<serde_json::Value, wire::RpcError> {
-    let list = handle.shelf_list(&task_id).await;
+    let list = handle.shelf_list(scope).await;
     serde_json::to_value(list).map_err(|e| wire::RpcError {
         code: wire::ErrorCode::Internal,
         message: e.to_string(),
@@ -17,12 +17,12 @@ pub(super) async fn shelf_list(
 
 pub(super) async fn shelf_create(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     name: String,
     paths: Option<Vec<String>>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     let entry = handle
-        .shelf_create(&task_id, name, paths)
+        .shelf_create(scope, name, paths)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -36,11 +36,11 @@ pub(super) async fn shelf_create(
 
 pub(super) async fn shelf_get(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     id: String,
 ) -> Result<serde_json::Value, wire::RpcError> {
     let diff = handle
-        .shelf_get(&task_id, &id)
+        .shelf_get(scope, &id)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -54,12 +54,12 @@ pub(super) async fn shelf_get(
 
 pub(super) async fn shelf_apply(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     id: String,
     drop: bool,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
-        .shelf_apply(&task_id, &id, drop)
+        .shelf_apply(scope, &id, drop)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -70,11 +70,11 @@ pub(super) async fn shelf_apply(
 
 pub(super) async fn shelf_drop(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     id: String,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
-        .shelf_drop(&task_id, &id)
+        .shelf_drop(scope, &id)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -85,9 +85,9 @@ pub(super) async fn shelf_drop(
 
 pub(super) async fn stash_list(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
 ) -> Result<serde_json::Value, wire::RpcError> {
-    let list = handle.stash_list(&task_id).await;
+    let list = handle.stash_list(scope).await;
     serde_json::to_value(list).map_err(|e| wire::RpcError {
         code: wire::ErrorCode::Internal,
         message: e.to_string(),
@@ -96,12 +96,12 @@ pub(super) async fn stash_list(
 
 pub(super) async fn stash_push(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     message: String,
     paths: Option<Vec<String>>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     let entry = handle
-        .stash_push(&task_id, message, paths)
+        .stash_push(scope, message, paths)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -115,11 +115,11 @@ pub(super) async fn stash_push(
 
 pub(super) async fn stash_get(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     id: String,
 ) -> Result<serde_json::Value, wire::RpcError> {
     let diff = handle
-        .stash_get(&task_id, &id)
+        .stash_get(scope, &id)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -133,12 +133,12 @@ pub(super) async fn stash_get(
 
 pub(super) async fn stash_apply(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     id: String,
     pop: bool,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
-        .stash_apply(&task_id, &id, pop)
+        .stash_apply(scope, &id, pop)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -149,12 +149,12 @@ pub(super) async fn stash_apply(
 
 pub(super) async fn stash_file(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     id: String,
     paths: Vec<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
-        .stash_checkout_file(&task_id, &id, paths)
+        .stash_checkout_file(scope, &id, paths)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
@@ -165,11 +165,11 @@ pub(super) async fn stash_file(
 
 pub(super) async fn stash_drop(
     handle: &DaemonHandle,
-    task_id: String,
+    scope: RepoScope,
     id: String,
 ) -> Result<serde_json::Value, wire::RpcError> {
     handle
-        .stash_drop(&task_id, &id)
+        .stash_drop(scope, &id)
         .await
         .map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,

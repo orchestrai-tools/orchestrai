@@ -1,0 +1,39 @@
+set dotenv-load := false
+
+mod db
+
+alias t := test
+
+# Show the recipes
+default:
+    @just --list
+
+# Run the test suite
+[group('check')]
+test filter="" *flags:
+    cargo test {{filter}} {{flags}}
+
+[group('check')]
+[doc('Lint everything')]
+lint:
+    cargo clippy
+
+# Start the dev server
+[group('run')]
+dev port:
+    bun run dev --port {{port}}
+
+[confirm('Really wipe the database?')]
+wipe +targets:
+    rm -rf {{targets}}
+
+[confirm]
+deploy:
+    echo deploy
+
+[private]
+helper:
+    echo hidden
+
+_secret:
+    echo hidden

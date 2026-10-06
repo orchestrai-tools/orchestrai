@@ -15,7 +15,7 @@ use super::super::{make_link, RemoteIssue};
 ///
 /// `yaml_project_path` is the project's checkout directory when the configured
 /// backlog backend is YAML files. Backlog item rows then land in
-/// `…/.warpforge/backlog/*.yaml` (project-local) instead of the SQLite
+/// `…/.orchestrai/backlog/*.yaml` (project-local) instead of the SQLite
 /// `backlog_items` table; tracker links always live in SQLite because they are
 /// daemon-owned. Passing `None` persists to SQLite.
 ///

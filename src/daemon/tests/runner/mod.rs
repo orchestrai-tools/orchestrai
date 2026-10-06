@@ -37,7 +37,7 @@ struct Repo {
 }
 
 /// A project cloned from a local bare origin whose default branch is `main`,
-/// with `workflow` as `.warpforge/workflows/test.yaml`.
+/// with `workflow` as `.orchestrai/workflows/test.yaml`.
 async fn factory_repo(workflow: &str) -> Repo {
     let dir = tempfile::tempdir().unwrap();
     let origin = dir.path().join("origin.git");
@@ -73,7 +73,7 @@ async fn factory_repo(workflow: &str) -> Repo {
     .await;
     git(&work, &["config", "user.email", "t@t"]).await;
     git(&work, &["config", "user.name", "t"]).await;
-    let workflows = work.join(".warpforge/workflows");
+    let workflows = work.join(".orchestrai/workflows");
     std::fs::create_dir_all(&workflows).unwrap();
     std::fs::write(workflows.join("test.yaml"), workflow).unwrap();
     let projects = vec![ProjectEntry {

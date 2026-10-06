@@ -22,10 +22,7 @@ struct LogWriter {
 
 impl SidecarLog {
     pub(crate) fn open() -> io::Result<Self> {
-        let directory = dirs::home_dir()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "home directory unavailable"))?
-            .join(".warpforge")
-            .join("logs");
+        let directory = warpforge_protocol::identity::data_dir_from(dirs::home_dir()).join("logs");
         Self::open_in(&directory, MAX_BYTES, ROTATIONS)
     }
 
@@ -76,7 +73,7 @@ impl SidecarLog {
             return;
         };
         let Some(writer) = guard.as_mut() else {
-            eprintln!("warpforge: [{kind}] {message}");
+            eprintln!("orchestrai: [{kind}] {message}");
             return;
         };
         if let Err(error) = writer.write(kind, message) {

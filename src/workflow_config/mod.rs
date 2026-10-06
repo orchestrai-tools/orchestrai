@@ -1,4 +1,4 @@
-//! Workflow templates: `.warpforge/workflows/*.yaml` parsing and validation,
+//! Workflow templates: `.orchestrai/workflows/*.yaml` parsing and validation,
 //! `{{placeholder}}` prompt-template rendering, and the built-in templates
 //! shipped with the binary.
 //!
@@ -30,7 +30,9 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub fn workflows_dir(project_path: &Path) -> PathBuf {
-    project_path.join(".warpforge").join("workflows")
+    project_path
+        .join(warpforge_protocol::identity::DIR)
+        .join("workflows")
 }
 
 /// The only workflow file format version this build understands.

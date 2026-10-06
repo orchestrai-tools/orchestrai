@@ -20,7 +20,7 @@ impl Daemon {
     }
 
     /// Valid workflow ids the orchestrator may pass to `spawn_workflow`: a
-    /// project's `.warpforge/workflows/*.yaml` plus built-ins not overridden
+    /// project's `.orchestrai/workflows/*.yaml` plus built-ins not overridden
     /// by one — the same set `workflow.list` shows the New Task picker.
     pub(crate) fn available_workflow_ids(&self, project: &str) -> Vec<String> {
         let Some(path) = self.project_path(project) else {

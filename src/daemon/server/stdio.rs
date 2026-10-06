@@ -11,7 +11,7 @@ use std::time::Duration;
 
 const LOG_NAME: &str = "daemon.log";
 const LOG_ROTATE_BYTES: u64 = 10 * 1024 * 1024;
-const STDIO_ENV: &str = "WARPFORGE_DAEMON_STDIO";
+const STDIO_ENV: &str = "ORCHESTRAI_DAEMON_STDIO";
 const LOG_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Point stdin at /dev/null for every descendant. As a sidecar it is a pipe the
@@ -23,16 +23,16 @@ pub(super) fn detach_stdin() {
         // and fd 0 is a valid target.
         Ok(null) => unsafe {
             if libc::dup2(null.as_raw_fd(), libc::STDIN_FILENO) < 0 {
-                eprintln!("warpforge daemon: could not redirect stdin to /dev/null");
+                eprintln!("orchestrai daemon: could not redirect stdin to /dev/null");
             }
         },
-        Err(error) => eprintln!("warpforge daemon: could not open /dev/null ({error})"),
+        Err(error) => eprintln!("orchestrai daemon: could not open /dev/null ({error})"),
     }
 }
 
 /// Move stdout and stderr off whatever the daemon was started with, unless it
-/// cannot break: stderr is a terminal (`warpforge daemon` run by hand), or the
-/// dev app handed over its own stdio with `WARPFORGE_DAEMON_STDIO=inherit`.
+/// cannot break: stderr is a terminal (`orchestrai daemon` run by hand), or the
+/// dev app handed over its own stdio with `ORCHESTRAI_DAEMON_STDIO=inherit`.
 pub(super) fn detach_output() {
     let inherit = std::env::var_os(STDIO_ENV).is_some_and(|value| value == "inherit");
     // A daemon started from one of this daemon's terminals must not inherit it.
@@ -41,7 +41,7 @@ pub(super) fn detach_output() {
     if inherit || unsafe { libc::isatty(libc::STDERR_FILENO) } == 1 {
         return;
     }
-    let logs = dirs::home_dir().map(|home| home.join(".warpforge").join("logs"));
+    let logs = Some(crate::registry::data_dir().join("logs"));
     redirect_output(logs.as_deref());
     if let Some(dir) = logs {
         let _ = std::thread::Builder::new()
@@ -79,7 +79,7 @@ fn redirect_output(logs: Option<&Path>) {
     let null = match OpenOptions::new().write(true).open("/dev/null") {
         Ok(null) => null,
         Err(error) => {
-            eprintln!("warpforge daemon: could not open /dev/null ({error})");
+            eprintln!("orchestrai daemon: could not open /dev/null ({error})");
             return;
         }
     };
@@ -92,10 +92,10 @@ fn redirect_output(logs: Option<&Path>) {
             | (libc::dup2(stderr.as_raw_fd(), libc::STDERR_FILENO) < 0)
     };
     if failed {
-        eprintln!("warpforge daemon: could not redirect stdout/stderr");
+        eprintln!("orchestrai daemon: could not redirect stdout/stderr");
     }
     eprintln!(
-        "--- warpforge daemon {} started, pid {}, {}",
+        "--- orchestrai daemon {} started, pid {}, {}",
         env!("CARGO_PKG_VERSION"),
         std::process::id(),
         chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
@@ -126,14 +126,14 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::process::{Command, Stdio};
 
-    const MODE: &str = "WARPFORGE_STDIO_TEST_CHILD";
-    const LOGS: &str = "WARPFORGE_STDIO_TEST_LOGS";
+    const MODE: &str = "ORCHESTRAI_STDIO_TEST_CHILD";
+    const LOGS: &str = "ORCHESTRAI_STDIO_TEST_LOGS";
     const PANICKED: i32 = 3;
     const LINE: &str = "[acp t_1 <<?] non-JSON line: banner";
     const BEFORE_ROTATION: &str = "written before the rotation";
 
     /// A copy of this test binary that runs only [`child`] in `mode`, clear of
-    /// the `WARPFORGE_DAEMON_STDIO` a dev daemon's terminals inherit.
+    /// the `ORCHESTRAI_DAEMON_STDIO` a dev daemon's terminals inherit.
     fn child_command(mode: &str) -> Command {
         let test = format!("{}::child", module_path!().split_once("::").unwrap().1);
         let mut command = Command::new(std::env::current_exe().unwrap());
@@ -166,7 +166,11 @@ mod tests {
     fn detach_in_child(stdio: Option<&str>) -> (String, tempfile::TempDir) {
         let home = tempfile::tempdir().unwrap();
         let mut command = child_command("detach");
-        command.env("HOME", home.path()).stdin(Stdio::null());
+        // Other tests in this binary set the data-folder override process-wide.
+        command
+            .env("HOME", home.path())
+            .env_remove(warpforge_protocol::identity::HOME_ENV)
+            .stdin(Stdio::null());
         if let Some(value) = stdio {
             command.env(STDIO_ENV, value);
         }
@@ -242,14 +246,18 @@ mod tests {
     fn the_dev_apps_inherit_request_keeps_stderr_and_is_not_passed_on() {
         let (stderr, home) = detach_in_child(Some("inherit"));
         assert!(stderr.contains(LINE), "{stderr}");
-        assert!(!home.path().join(".warpforge").exists());
+        assert!(!home.path().join(warpforge_protocol::identity::DIR).exists());
     }
 
     #[test]
     fn otherwise_a_piped_stderr_moves_into_the_home_log() {
         let (stderr, home) = detach_in_child(None);
         assert!(!stderr.contains(LINE), "{stderr}");
-        let log = home.path().join(".warpforge").join("logs").join(LOG_NAME);
+        let log = home
+            .path()
+            .join(warpforge_protocol::identity::DIR)
+            .join("logs")
+            .join(LOG_NAME);
         assert!(fs::read_to_string(log).unwrap().contains(LINE));
     }
 

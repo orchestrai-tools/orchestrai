@@ -77,10 +77,10 @@ async fn delivery_commits_pushes_and_opens_a_draft_on_the_task_branch() {
     let clean = deliver(job(&work), opener(Arc::clone(&calls))).await;
     assert_eq!(clean, Delivery::NoChanges);
 
-    std::fs::create_dir_all(work.join(".warpforge")).unwrap();
+    std::fs::create_dir_all(work.join(warpforge_protocol::identity::DIR)).unwrap();
     std::fs::write(
-        work.join(".warpforge/workspace.yaml"),
-        "name: t\nworktree:\n  copy: [\".env\", \".warpforge/*.yaml\"]\n",
+        work.join(".orchestrai/workspace.yaml"),
+        "name: t\nworktree:\n  copy: [\".env\", \".orchestrai/*.yaml\"]\n",
     )
     .unwrap();
     std::fs::write(work.join(".env"), "SECRET=1\n").unwrap();

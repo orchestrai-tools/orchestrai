@@ -141,8 +141,8 @@ mod tests {
     fn worktrees_paths_are_ignored() {
         assert!(is_ignored_path(".worktrees/t_a/src/main.rs"));
         assert!(is_ignored_path(".worktrees/t_a/"));
-        assert!(is_ignored_path(".warpforge/worktrees/t_a/src/main.rs"));
-        assert!(is_ignored_path(".warpforge/worktrees/t_a/"));
+        assert!(is_ignored_path(".orchestrai/worktrees/t_a/src/main.rs"));
+        assert!(is_ignored_path(".orchestrai/worktrees/t_a/"));
         // A bare `worktrees` folder elsewhere is not Warpforge's, and must stay.
         assert!(!is_ignored_path("src/worktrees/mod.rs"));
     }
@@ -179,7 +179,10 @@ mod tests {
         git(&dir, &["add", "."]).await;
         git(&dir, &["commit", "-q", "-m", "init"]).await;
 
-        let nested = dir.join(".warpforge").join("worktrees").join("t_abc");
+        let nested = dir
+            .join(warpforge_protocol::identity::DIR)
+            .join("worktrees")
+            .join("t_abc");
         init_repo(&nested).await;
         std::fs::write(nested.join("secret.txt"), "x\n").unwrap();
 

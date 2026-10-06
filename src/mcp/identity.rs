@@ -1,12 +1,12 @@
-//! Which session a bridge serves. The daemon's `WARPFORGE_SESSION_*` variables
+//! Which session a bridge serves. The daemon's `ORCHESTRAI_SESSION_*` variables
 //! outrank an entry's `WF_*`: the agent may have started a same-named entry
 //! from its own config (ADR 0018).
 
 use anyhow::{anyhow, Result};
 
-pub(crate) const SESSION_TASK: &str = "WARPFORGE_SESSION_TASK";
-pub(crate) const SESSION_PROJECT: &str = "WARPFORGE_SESSION_PROJECT";
-pub(crate) const SESSION_MODE: &str = "WARPFORGE_SESSION_MODE";
+pub(crate) const SESSION_TASK: &str = "ORCHESTRAI_SESSION_TASK";
+pub(crate) const SESSION_PROJECT: &str = "ORCHESTRAI_SESSION_PROJECT";
+pub(crate) const SESSION_MODE: &str = "ORCHESTRAI_SESSION_MODE";
 
 /// Set when Claude Code's Remote Control spawner starts a child. A Claude
 /// Code that inherits it drops every stdio server passed over ACP.

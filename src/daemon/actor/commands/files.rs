@@ -35,16 +35,20 @@ impl Daemon {
             Command::GetDiff {
                 task_id,
                 include_ignored,
+                project,
                 reply,
             } => {
                 // Resolve the repo path from actor state, then run git off the
                 // loop. The diff panel polls this, so awaiting it here put a
                 // pair of git processes between every poll and the next
                 // command — a tool approval included (ADR 0002).
-                let repo = self
-                    .tasks
-                    .get(&task_id)
-                    .and_then(|_| self.task_repo_path(&task_id));
+                let repo = if task_id.is_empty() {
+                    project.as_deref().and_then(|name| self.project_path(name))
+                } else {
+                    self.tasks
+                        .get(&task_id)
+                        .and_then(|_| self.task_repo_path(&task_id))
+                };
                 tokio::spawn(async move {
                     let diff = match repo {
                         Some(path) => {
@@ -250,14 +254,14 @@ impl Daemon {
                 });
             }
             Command::ResolveHunk {
-                task_id,
+                scope,
                 file,
                 hunk_index,
                 resolution,
             } => {
                 // accept keeps the change (no-op); only reject touches the tree.
                 if resolution == wire::HunkResolution::Reject {
-                    let repo = self.task_repo_path(&task_id);
+                    let repo = self.scope_repo_path(&scope);
                     let cmd_tx = self.cmd_tx.clone();
                     tokio::spawn(async move {
                         let Some(path) = repo else { return };
@@ -265,12 +269,7 @@ impl Daemon {
                             .await
                             .is_ok()
                         {
-                            let _ = cmd_tx
-                                .send(Command::GitOpFinished {
-                                    task_id,
-                                    effect: GitEffect::HunkRejected,
-                                })
-                                .await;
+                            scope.finished(&cmd_tx, GitEffect::HunkRejected).await;
                         }
                     });
                 }

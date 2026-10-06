@@ -25,7 +25,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "warpforge",
+    name = "orchestrai",
     about = "Workspace orchestrator with embedded agent terminals"
 )]
 struct Cli {
@@ -48,7 +48,7 @@ enum Commands {
     Remove { name: String },
     /// List registered projects
     List,
-    /// Generate .warpforge/workspace.yaml in the current (or given) directory
+    /// Generate .orchestrai/workspace.yaml in the current (or given) directory
     Init {
         /// Directory to init (defaults to current directory)
         path: Option<String>,
@@ -66,7 +66,7 @@ enum Commands {
     /// Start the TUI (default)
     Ui,
     /// Run the daemon: owns all state, serves the local WebSocket API for
-    /// clients (desktop app, TUI). Publishes ~/.warpforge/daemon.json.
+    /// clients (desktop app, TUI). Publishes ~/.orchestrai/daemon.json.
     Daemon {
         /// Bind a fixed local port with no auth token, so a browser (vite dev,
         /// no Tauri) can connect. For development only.
@@ -127,9 +127,9 @@ async fn main() -> Result<()> {
             if !config_file.exists() {
                 match config::generate_workspace_yaml(std::path::Path::new(&entry.path)) {
                     Ok(_) => println!(
-                        "Created .warpforge/workspace.yaml — edit it to configure services"
+                        "Created .orchestrai/workspace.yaml — edit it to configure services"
                     ),
-                    Err(e) => println!("Note: could not create .warpforge/workspace.yaml: {}", e),
+                    Err(e) => println!("Note: could not create .orchestrai/workspace.yaml: {}", e),
                 }
             }
         }
@@ -140,7 +140,7 @@ async fn main() -> Result<()> {
         Commands::List => {
             let projects = registry::list_projects()?;
             if projects.is_empty() {
-                println!("No projects registered. Use `warpforge add <path>` to add one.");
+                println!("No projects registered. Use `orchestrai add <path>` to add one.");
             } else {
                 for p in projects.iter() {
                     let range = match p.port_range_override.or(p.port_range) {

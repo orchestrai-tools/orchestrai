@@ -2,6 +2,7 @@ mod accounts;
 mod agent;
 mod automation;
 mod backlog;
+mod branch;
 mod files;
 mod git;
 mod memory;
@@ -14,3 +15,5 @@ mod textgen;
 mod tracker;
 mod workflow;
 mod worktree;
+
+pub(crate) use session::combine_prompt;

@@ -6,7 +6,7 @@ async fn workflow_plan_question_reply_flow() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!("name: Q flow\nplan: {{}}\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
     )
     .unwrap();
@@ -64,7 +64,7 @@ async fn stale_barrier_id_is_refused() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!("name: Q flow\nplan: {{}}\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
     )
     .unwrap();
@@ -137,7 +137,7 @@ async fn workflow_limit_asks_and_finishes_on_decision() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "reject");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!(
             "name: Limit flow\nreview:\n  max_rounds: 1\n  on_limit: ask\n  reviewers:\n    - agent: {reviewer}\n"
         ),
@@ -210,7 +210,7 @@ async fn workflow_pause_takes_effect_at_barrier_and_resumes() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!("name: Pause flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
     )
     .unwrap();
@@ -328,7 +328,7 @@ async fn workflow_restart_converts_midstage_to_paused_and_resumes() {
     let (dir, projects) = workflow_project("name: placeholder\n");
     let reviewer = wf_agent(&dir, "rev.state", "approve");
     std::fs::write(
-        dir.path().join(".warpforge/workflows/test.yaml"),
+        dir.path().join(".orchestrai/workflows/test.yaml"),
         format!("name: Restart flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n"),
     )
     .unwrap();

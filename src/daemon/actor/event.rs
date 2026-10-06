@@ -40,6 +40,7 @@ pub enum Event {
     ServiceLog {
         project: String,
         service: String,
+        seq: u64,
         line: String,
     },
     PortForwardStatus {
@@ -50,6 +51,7 @@ pub enum Event {
     PortForwardLog {
         project: String,
         name: String,
+        seq: u64,
         line: String,
     },
     ProjectAdded(wire::ProjectInfo),
@@ -57,6 +59,10 @@ pub enum Event {
         name: String,
     },
     ProjectConfigChanged(wire::ProjectConfigState),
+    ProjectConfigError {
+        project: String,
+        error: String,
+    },
     AgentsSetupNeeded {
         detected: Vec<wire::DetectedAgent>,
     },

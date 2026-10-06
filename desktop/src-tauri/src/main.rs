@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use tauri::Emitter;
 use tauri::Manager;
 
+mod app_icon;
 mod browser;
 mod browser_agent;
 mod browser_capture;
@@ -95,7 +96,6 @@ fn quit_ui_ready() {
 fn main() {
     env_logger::init();
     tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
@@ -104,7 +104,7 @@ fn main() {
             let sidecar_log = match SidecarLog::open() {
                 Ok(log) => log,
                 Err(error) => {
-                    eprintln!("warpforge: could not initialize sidecar log ({error}) — degrading to stderr");
+                    eprintln!("orchestrai: could not initialize sidecar log ({error}) — degrading to stderr");
                     SidecarLog::disabled()
                 }
             };
@@ -133,6 +133,7 @@ fn main() {
             window::set_window_background_blur,
             window::enable_window_glass,
             window::disable_window_glass,
+            app_icon::set_app_icon,
             notifications::notify_attention,
             notifications::withdraw_attention,
             context_menu::show_context_menu,

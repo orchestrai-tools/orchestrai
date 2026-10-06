@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use warpforge_protocol as wire;
 
 use crate::daemon::actor::PendingResume;
@@ -12,12 +14,18 @@ impl Daemon {
             Command::ListSessions { project, reply } => {
                 let path = self.project_path(&project);
                 let agents = self.configured_agents.clone();
+                let owned: HashSet<String> = self
+                    .tasks
+                    .values()
+                    .filter(|task| task.project == project)
+                    .filter_map(|task| task.session_id.clone())
+                    .collect();
                 tokio::task::spawn_blocking(move || {
                     let sessions = match path {
                         Some(p) => crate::daemon::sessions::external_sessions(&p, &agents),
                         None => Vec::new(),
                     };
-                    let _ = reply.send(sessions);
+                    let _ = reply.send(outside_sessions(sessions, &owned));
                 });
             }
             Command::ResumeTask {
@@ -189,6 +197,8 @@ impl Daemon {
                             );
                             self.request_resume_replay_guard(&task_id);
                             let _ = reply.send(Ok(()));
+                        } else if self.start_chat_session(&task_id, &text, attachments.clone()) {
+                            let _ = reply.send(Ok(()));
                         } else if let Some(task) = self
                             .tasks
                             .get(&task_id)
@@ -358,12 +368,49 @@ impl Daemon {
 
 /// The original task prompt, then the user's message, so a retried session has
 /// the task it never started with.
-fn combine_prompt(prompt: &str, message: &str) -> String {
+pub(crate) fn combine_prompt(prompt: &str, message: &str) -> String {
     let prompt = prompt.trim();
     let message = message.trim();
     match (prompt.is_empty(), message.is_empty()) {
         (true, _) => message.to_string(),
         (_, true) => prompt.to_string(),
         _ => format!("{prompt}\n\n{message}"),
+    }
+}
+
+/// A session a task already runs is listed as that task, not again as one
+/// to continue from outside the app.
+fn outside_sessions(
+    mut sessions: Vec<wire::ExternalSession>,
+    owned: &HashSet<String>,
+) -> Vec<wire::ExternalSession> {
+    sessions.retain(|session| !owned.contains(&session.session_id));
+    sessions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session(id: &str) -> wire::ExternalSession {
+        wire::ExternalSession {
+            agent: "codex".into(),
+            session_id: id.into(),
+            title: String::new(),
+            updated_at: 0,
+            message_count: 0,
+        }
+    }
+
+    #[test]
+    fn a_task_session_is_not_listed_as_outside() {
+        let owned = HashSet::from(["mine".to_string()]);
+        let left = outside_sessions(vec![session("mine"), session("theirs")], &owned);
+        assert_eq!(
+            left.iter()
+                .map(|s| s.session_id.as_str())
+                .collect::<Vec<_>>(),
+            ["theirs"]
+        );
     }
 }

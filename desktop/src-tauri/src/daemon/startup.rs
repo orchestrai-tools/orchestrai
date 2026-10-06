@@ -49,14 +49,14 @@ pub(crate) fn start(app: &AppHandle, sidecar_log: &SidecarLog) -> DaemonProcess 
     let pid_alive = stop::is_daemon_process(found.pid, Some(&found));
     match found_daemon_action(probed, found.owner, pid_alive) {
         FoundDaemon::Reuse => {
-            eprintln!("warpforge: daemon already running — reusing");
+            eprintln!("orchestrai: daemon already running — reusing");
             sidecar_log.lifecycle("reusing an already-running daemon");
             DaemonProcess::new(None)
         }
         FoundDaemon::Spawn => spawn::spawn(app, sidecar_log),
         FoundDaemon::AwaitExit => {
             let note = format!("daemon pid {} is shutting down; waiting for it", found.pid);
-            eprintln!("warpforge: {note}");
+            eprintln!("orchestrai: {note}");
             sidecar_log.lifecycle(&note);
             if !stop::await_exit(found.pid, Some(&found), SHUTDOWN_EXIT_TIMEOUT) {
                 sidecar_log.error(&format!(
@@ -71,17 +71,17 @@ pub(crate) fn start(app: &AppHandle, sidecar_log: &SidecarLog) -> DaemonProcess 
                 "daemon pid {} is not responding; stopping it and starting a new one",
                 found.pid
             );
-            eprintln!("warpforge: {note}");
+            eprintln!("orchestrai: {note}");
             sidecar_log.error(&note);
             stop::stop_unresponsive(&found, UNRESPONSIVE_EXIT_TIMEOUT);
             spawn::spawn(app, sidecar_log)
         }
         FoundDaemon::Report => {
             let reason = format!(
-                "The running daemon (pid {}) is not responding. It was started outside Warpforge, so it was left running: stop it, then relaunch Warpforge.",
+                "The running daemon (pid {}) is not responding. It was started outside OrchestrAI, so it was left running: stop it, then relaunch OrchestrAI.",
                 found.pid
             );
-            eprintln!("warpforge: {reason}");
+            eprintln!("orchestrai: {reason}");
             sidecar_log.error(&reason);
             DaemonProcess {
                 unusable: Some(reason),

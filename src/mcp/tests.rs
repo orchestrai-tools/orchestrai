@@ -27,7 +27,7 @@ fn cwd_resolves_to_the_deepest_registered_project() {
     // A task worktree lives under its project root, at either location.
     assert_eq!(pick("/w/outer/.worktrees/t_1").as_deref(), Some("outer"));
     assert_eq!(
-        pick("/w/outer/.warpforge/worktrees/t_1/src").as_deref(),
+        pick("/w/outer/.orchestrai/worktrees/t_1/src").as_deref(),
         Some("outer")
     );
     // A sibling sharing a name prefix is not a parent directory.
@@ -341,7 +341,7 @@ fn agents_listing_handles_blocked_and_truncates_long_prompts() {
     assert!(render_agents_listing(&[]).contains("No sub-agent sessions"));
 }
 
-const STDERR_CHILD: &str = "WARPFORGE_MCP_STDERR_CHILD";
+const STDERR_CHILD: &str = "ORCHESTRAI_MCP_STDERR_CHILD";
 const PANICKED: i32 = 3;
 
 /// Re-runs [`stderr_child`] with the read end of its stderr pipe closed, as an

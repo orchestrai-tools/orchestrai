@@ -108,11 +108,11 @@ pub(super) fn migrate_fts_tags(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Collect `<root>/<pid>/.warpforge/memory.db` for every existing project DB.
+/// Collect `<root>/<pid>/.orchestrai/memory.db` for every existing project DB.
 pub(super) fn collect_project_dbs(root: &Path, out: &mut Vec<PathBuf>) {
     if let Ok(entries) = std::fs::read_dir(root) {
         for e in entries.flatten() {
-            let db = e.path().join(".warpforge/memory.db");
+            let db = e.path().join(".orchestrai/memory.db");
             if db.exists() {
                 out.push(db);
             }

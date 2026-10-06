@@ -25,7 +25,7 @@ async fn a_successful_run_opens_a_draft_pr_and_its_outcome_closes_the_item() {
     let repo = factory_repo("name: placeholder\n").await;
     let reviewer = wf_agent(&repo.dir, "rev.state", "approve");
     let workflow = format!("name: Factory flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n");
-    std::fs::write(repo.work.join(".warpforge/workflows/test.yaml"), workflow).unwrap();
+    std::fs::write(repo.work.join(".orchestrai/workflows/test.yaml"), workflow).unwrap();
     let daemon = Daemon::spawn(
         repo.projects.clone(),
         Store::open_at(std::path::Path::new(":memory:")).ok(),
@@ -122,7 +122,7 @@ async fn failed_and_empty_runs_send_the_item_back_without_a_retry() {
     // with no verdict, which fails the second pipeline.
     let reviewer = wf_agent(&repo.dir, "rev.state", "approve garbage");
     let workflow = format!("name: Empty flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n");
-    std::fs::write(repo.work.join(".warpforge/workflows/test.yaml"), workflow).unwrap();
+    std::fs::write(repo.work.join(".orchestrai/workflows/test.yaml"), workflow).unwrap();
     let lead = wf_agent(&repo.dir, "lead.state", "impl");
     let daemon = Daemon::spawn(
         repo.projects.clone(),
@@ -177,7 +177,7 @@ async fn a_task_without_a_pull_request_leaves_the_change_uncommitted() {
     let repo = factory_repo("name: placeholder\n").await;
     let reviewer = wf_agent(&repo.dir, "rev.state", "approve");
     let workflow = format!("name: Plain flow\nreview:\n  reviewers:\n    - agent: {reviewer}\n");
-    std::fs::write(repo.work.join(".warpforge/workflows/test.yaml"), workflow).unwrap();
+    std::fs::write(repo.work.join(".orchestrai/workflows/test.yaml"), workflow).unwrap();
     let daemon = Daemon::spawn(
         repo.projects.clone(),
         Store::open_at(std::path::Path::new(":memory:")).ok(),
