@@ -8,6 +8,7 @@ import {
 } from "@warpforge/ui/components/dropdown-menu";
 import { Switch } from "@warpforge/ui/components/switch";
 import { MoreHorizontalIcon } from "lucide-react";
+
 import { VersionPill, versionState } from "../../components/common/version-pill";
 import { useShell } from "../../lib/shell-store";
 import { useDaemon } from "../../lib/use-daemon";
@@ -159,8 +160,11 @@ function AgentRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem disabled={!saved || probing} onSelect={() => probe(agent.id)}>
-              Reload model list
+            <DropdownMenuItem
+              disabled={!installed || !saved?.enabled || probing}
+              onSelect={() => probe(agent.id)}
+            >
+              {saved?.enabled ? "Reload model list" : "Enable agent to reload models"}
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => copyText(saved?.acpCommand ?? agent.defaultAcpCommand)}
