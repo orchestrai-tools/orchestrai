@@ -13,7 +13,9 @@ import {
   XIcon,
 } from "lucide-react";
 import { useRef } from "react";
+
 import { browserTabLabel, canGoBack, canGoForward, isStartUrl } from "../../lib/browser-page";
+import { isExternalLink, openExternalLink } from "../../lib/external-link";
 import { useDaemon } from "../../lib/use-daemon";
 import { useBrowserTabs } from "./use-browser-tabs";
 
@@ -121,6 +123,7 @@ export function BrowserPane({
           variant="ghost"
           size="icon-sm"
           aria-label={browser.nav.loading ? "Stop" : "Reload"}
+          disabled={!browser.native}
           onClick={browser.reloadOrStop}
         >
           {browser.nav.loading ? <XIcon /> : <RotateCwIcon />}
@@ -138,6 +141,8 @@ export function BrowserPane({
           variant={browser.picking ? "secondary" : "outline"}
           size="sm"
           aria-pressed={browser.picking}
+          disabled={!browser.native}
+          title={browser.native ? undefined : "Element picking requires the desktop app"}
           onClick={browser.togglePick}
         >
           <MousePointerClickIcon />
@@ -148,6 +153,24 @@ export function BrowserPane({
         ref={host}
         className="relative min-h-64 flex-1 overflow-hidden rounded-md border bg-muted/30"
       >
+        {!browser.native && !browser.onStart && (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm">
+            <GlobeIcon aria-hidden className="size-5 text-muted-foreground" />
+            <p className="font-medium">Open this page in your browser</p>
+            <p className="max-w-sm text-muted-foreground">
+              Embedded browsing and element picking are available in the desktop app.
+            </p>
+            {!isExternalLink(browser.url) && <p>Enter a full http:// or https:// address above.</p>}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!isExternalLink(browser.url)}
+              onClick={() => void openExternalLink(browser.url)}
+            >
+              Open {browser.url}
+            </Button>
+          </div>
+        )}
         {browser.onStart && (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-sm">
             <p>Nothing open in this tab.</p>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+
 import { annotationLabel, formatAnnotation, type BrowserAnnotation } from "../../lib/annotation";
 import {
   browserNavOnState,
@@ -87,6 +88,7 @@ export function useBrowserTabs({
   const url = urls[active] ?? "";
   const nav = navs[active] ?? emptyBrowserNav(url);
   const onStart = isStartUrl(url);
+  const native = inTauri();
 
   function setNav(tabId: string, next: BrowserNav) {
     rememberBrowserNav(taskId, tabId, next);
@@ -231,7 +233,10 @@ export function useBrowserTabs({
   }, [active, onStart, stalled, url, host]);
 
   function go(next: string) {
-    setNav(active, browserNavOnState(navs[active] ?? emptyBrowserNav(), next, true));
+    setNav(active, {
+      ...browserNavOnState(navs[active] ?? emptyBrowserNav(), next, true),
+      loading: native,
+    });
     setUrls((current) => ({ ...current, [active]: next }));
     setDraft(next);
     setStalled(false);
@@ -304,6 +309,7 @@ export function useBrowserTabs({
     picking,
     stalled,
     onStart,
+    native,
     openTab,
     closeTab,
     go,
