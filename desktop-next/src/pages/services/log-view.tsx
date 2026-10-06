@@ -123,8 +123,8 @@ export function LogView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 px-4">
-        <label className="flex h-7 w-56 items-center gap-1.5 rounded-md border bg-background px-2 text-xs focus-within:ring-2 focus-within:ring-ring/50">
+      <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 px-4 py-1.5">
+        <label className="flex h-7 w-56 max-w-full items-center gap-1.5 rounded-md border bg-background px-2 text-xs focus-within:ring-2 focus-within:ring-ring/50">
           <SearchIcon className="size-3.5 text-muted-foreground" />
           <input
             value={filter}
@@ -148,7 +148,7 @@ export function LogView({
             ? `${shown.length} of ${plural(lines.length, "line")}`
             : plural(lines.length, "line")}
         </span>
-        <span className="ml-auto flex items-center gap-1">
+        <span className="ml-auto flex max-w-full flex-wrap items-center gap-1">
           {range ? (
             <span className="text-xs text-muted-foreground tabular-nums">
               {range.from === range.to ? `Line ${range.from}` : `Lines ${range.from}–${range.to}`}
