@@ -1,4 +1,5 @@
 import type { ClientRequestBody, DaemonEvent } from "@warpforge/protocol";
+
 import type { ConnectionState } from "./types";
 
 /** Does the work of one request; rejects with a message for the agent. */
@@ -39,6 +40,11 @@ export function serveClientRequests(
   handler: ClientRequestHandler,
 ): () => void {
   const running = new Map<string, AbortController>();
+  let disposed = false;
+  const abortRunning = () => {
+    for (const controller of running.values()) controller.abort();
+    running.clear();
+  };
   const register = () => {
     if (channel.getState().connection !== "connected") return;
     channel.request("client.register", { capabilities: [capability] }).catch(() => {
@@ -46,19 +52,32 @@ export function serveClientRequests(
     });
   };
 
-  const answer = async (requestId: string, body: ClientRequestBody) => {
+  const answer = async (requestId: string, body: ClientRequestBody, timeoutMs: number) => {
+    if (disposed || channel.getState().connection !== "connected") return;
+    running.get(requestId)?.abort();
     const controller = new AbortController();
     running.set(requestId, controller);
+    const timer = setTimeout(() => controller.abort(), Math.max(0, timeoutMs));
+    controller.signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        if (running.get(requestId) === controller) running.delete(requestId);
+      },
+      { once: true },
+    );
     let reply: Record<string, unknown>;
     try {
       reply = { request_id: requestId, result: await handler(body, controller.signal) };
     } catch (error) {
       reply = { request_id: requestId, error: message(error) };
     } finally {
-      running.delete(requestId);
+      clearTimeout(timer);
+      if (running.get(requestId) === controller) running.delete(requestId);
     }
     // The daemon gave up on it and would refuse the reply.
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted || disposed || channel.getState().connection !== "connected")
+      return;
     channel.request("client.reply", reply).catch(() => {
       // A reply lost with the connection times out on the daemon side.
     });
@@ -67,13 +86,14 @@ export function serveClientRequests(
   let connected = channel.getState().connection === "connected";
   const offState = channel.subscribe(() => {
     const now = channel.getState().connection === "connected";
+    if (!now && connected) abortRunning();
     if (now && !connected) register();
     connected = now;
   });
   const offEvents = channel.subscribeEvents((event) => {
     if (event.event === "client.request") {
       if (capabilityOf(event.data.body) === capability) {
-        void answer(event.data.request_id, event.data.body);
+        void answer(event.data.request_id, event.data.body, event.data.timeout_ms);
       }
     } else if (event.event === "client.requestCancelled") {
       running.get(event.data.request_id)?.abort();
@@ -82,9 +102,10 @@ export function serveClientRequests(
   register();
 
   return () => {
+    disposed = true;
     offState();
     offEvents();
-    for (const controller of running.values()) controller.abort();
+    abortRunning();
     if (channel.getState().connection === "connected") {
       channel.request("client.register", { capabilities: [] }).catch(() => {});
     }

@@ -5,10 +5,32 @@ export interface AgentBrowserTab {
   title?: string;
 }
 const tabs = new Map<string, AgentBrowserTab>();
+const generations = new Map<string, number>();
 const listeners = new Map<string, Set<(tab: AgentBrowserTab) => void>>();
 
+export function agentTabId(project: string): string | undefined {
+  return tabs.get(project)?.id;
+}
+
+export function agentTabGeneration(project: string): number {
+  return generations.get(project) ?? 0;
+}
+
+/** Closing an agent tab prevents another task's pane from resurrecting it. */
+export function forgetAgentTab(id: string): void {
+  for (const [project, tab] of tabs) {
+    if (tab.id === id) clearAgentTabs(project);
+  }
+}
+
+export function resetAllAgentTabs(): void {
+  tabs.clear();
+  generations.clear();
+}
+
 export function showAgentTab(project: string, tab: AgentBrowserTab): void {
-  tabs.set(project, { ...tabs.get(project), ...tab });
+  const previous = tabs.get(project);
+  tabs.set(project, { ...(previous?.id === tab.id ? previous : {}), ...tab });
   for (const listener of listeners.get(project) ?? []) listener(tabs.get(project)!);
 }
 
@@ -32,4 +54,5 @@ export function recordTabPage(id: string, page: { url?: string; title?: string }
 
 export function clearAgentTabs(project: string): void {
   tabs.delete(project);
+  generations.set(project, agentTabGeneration(project) + 1);
 }

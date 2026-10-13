@@ -26,8 +26,28 @@ function toLogEntries(result: unknown): LogEntry[] {
   }));
 }
 
+/** A fetched snapshot may finish after newer live lines have arrived. */
+function mergeLogs(current: LogEntry[], fetched: LogEntry[], limit: number): LogEntry[] {
+  const bySeq = new Map(current.map((entry) => [entry.seq, entry]));
+  for (const entry of fetched) bySeq.set(entry.seq, entry);
+  return [...bySeq.values()].sort((a, b) => a.seq - b.seq).slice(-limit);
+}
+
 export function RuntimeMethods<TBase extends Constructor<CoreClient>>(Base: TBase) {
   return class extends Base {
+    private logFetches = new Map<string, number>();
+    private nextLogFetch = 0;
+
+    private beginLogFetch(key: string): number {
+      const generation = ++this.nextLogFetch;
+      this.logFetches.set(key, generation);
+      return generation;
+    }
+
+    protected resetRuntimeLogs(): void {
+      this.logFetches.clear();
+      super.resetRuntimeLogs();
+    }
     async stopRuntime() {
       await this.request("runtime.stopAll", {});
     }
@@ -47,6 +67,9 @@ export function RuntimeMethods<TBase extends Constructor<CoreClient>>(Base: TBas
       service: string,
       options: { after?: number; limit?: number } = {},
     ): Promise<LogEntry[]> {
+      const key = `${project}/${service}`;
+      const fetchKey = `service:${key}`;
+      const generation = this.beginLogFetch(fetchKey);
       const result = await this.request("service.logs", {
         after: options.after ?? 0,
         limit: options.limit ?? 300,
@@ -54,11 +77,11 @@ export function RuntimeMethods<TBase extends Constructor<CoreClient>>(Base: TBas
         service,
       });
       const lines = toLogEntries(result);
-      const key = `${project}/${service}`;
+      if (this.logFetches.get(fetchKey) !== generation) return lines;
       this.setState({
         serviceLogs: {
           ...this.state.serviceLogs,
-          [key]: lines.slice(-MAX_SERVICE_LOGS),
+          [key]: mergeLogs(this.state.serviceLogs[key] ?? [], lines, MAX_SERVICE_LOGS),
         },
       });
       return lines;
@@ -69,6 +92,9 @@ export function RuntimeMethods<TBase extends Constructor<CoreClient>>(Base: TBas
       name: string,
       options: { after?: number; limit?: number } = {},
     ): Promise<LogEntry[]> {
+      const key = `${project}/${name}`;
+      const fetchKey = `forward:${key}`;
+      const generation = this.beginLogFetch(fetchKey);
       const result = await this.request("portforward.logs", {
         after: options.after ?? 0,
         limit: options.limit ?? 300,
@@ -76,11 +102,11 @@ export function RuntimeMethods<TBase extends Constructor<CoreClient>>(Base: TBas
         name,
       });
       const lines = toLogEntries(result);
-      const key = `${project}/${name}`;
+      if (this.logFetches.get(fetchKey) !== generation) return lines;
       this.setState({
         portforwardLogs: {
           ...this.state.portforwardLogs,
-          [key]: lines.slice(-MAX_PORTFORWARD_LOGS),
+          [key]: mergeLogs(this.state.portforwardLogs[key] ?? [], lines, MAX_PORTFORWARD_LOGS),
         },
       });
       return lines;

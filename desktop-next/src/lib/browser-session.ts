@@ -1,3 +1,5 @@
+import { agentTabId, clearAgentTabs } from "./browser-agent-tabs";
+import { browser } from "./browser-client";
 import type { BrowserNav } from "./browser-page";
 
 export interface BrowserTabSession {
@@ -28,14 +30,21 @@ export function browserTabSeq(taskId: string, tabs: readonly string[]): number {
 }
 
 /** Tabs last opened for this task, or null when nothing was saved. */
-export function readBrowserSession(taskId: string): BrowserTabSession | null {
+export function readBrowserSession(taskId: string, project?: string): BrowserTabSession | null {
   if (typeof localStorage === "undefined") return null;
   try {
     const parsed = JSON.parse(localStorage.getItem(PREFIX + taskId) ?? "null") as unknown;
     if (!parsed || typeof parsed !== "object") return null;
     const row = parsed as { active?: unknown; tabs?: unknown; urls?: unknown };
     if (!Array.isArray(row.tabs)) return null;
-    const tabs = row.tabs.filter((tab) => typeof tab === "string" && tab.length > 0);
+    const base = `task-${taskId}`;
+    const agent = project ? agentTabId(project) : undefined;
+    const tabs = row.tabs.filter(
+      (tab) =>
+        typeof tab === "string" &&
+        tab.length > 0 &&
+        (project === undefined || tab === base || tab.startsWith(`${base}-`) || tab === agent),
+    );
     if (tabs.length === 0) return null;
     const active =
       typeof row.active === "string" && tabs.includes(row.active) ? row.active : tabs[0];
@@ -90,8 +99,24 @@ export function forgetBrowserNav(taskId: string, tabId: string): void {
 }
 
 export function clearBrowserSession(taskId: string): void {
+  void browser.closeTask(taskId).catch((error: unknown) => {
+    console.warn("Could not close the removed task's browser tabs", error);
+  });
   navs.delete(taskId);
   titles.delete(taskId);
   if (typeof localStorage === "undefined") return;
-  localStorage.removeItem(PREFIX + taskId);
+  try {
+    localStorage.removeItem(PREFIX + taskId);
+  } catch {
+    // Native tabs still close when storage is unavailable.
+  }
+}
+
+/** Project removal closes every known task view and its shared agent view. */
+export function clearProjectBrowserSessions(project: string, taskIds: readonly string[]): void {
+  for (const id of taskIds) clearBrowserSession(id);
+  clearAgentTabs(project);
+  void browser.closeProject(project).catch((error: unknown) => {
+    console.warn("Could not close the removed project's browser tabs", error);
+  });
 }

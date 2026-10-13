@@ -107,6 +107,7 @@ export class CoreClient extends DaemonDemo {
   private scheduleReconnect() {
     this.ws = null;
     this.handshake = null;
+    this.resetRuntimeLogs();
     this.setState({
       connection: "disconnected",
       ...(!this.state.connectionError && !this.reconnectSuspended
@@ -131,6 +132,11 @@ export class CoreClient extends DaemonDemo {
         // failures flow through onclose and do the same.
       });
     }, delay);
+  }
+
+  /** Runtime subclasses also invalidate pending log snapshots on disconnect. */
+  protected resetRuntimeLogs(): void {
+    this.setState({ serviceLogs: {}, portforwardLogs: {} });
   }
 
   // ── RPC ──

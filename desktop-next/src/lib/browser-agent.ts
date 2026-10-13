@@ -12,7 +12,14 @@ import {
   type ClientRequestBody,
 } from "@warpforge/protocol";
 
-import { recordTabPage, showAgentTab } from "./browser-agent-tabs";
+import {
+  agentTabId,
+  agentTabGeneration,
+  clearAgentTabs,
+  recordTabPage,
+  resetAllAgentTabs,
+  showAgentTab,
+} from "./browser-agent-tabs";
 import { IS_TAURI } from "./browser-client";
 import {
   browser,
@@ -34,11 +41,12 @@ const NO_PAGE =
 const CLOSED =
   "The agent's browser tab was closed. Open a page with browser_navigate to get a new one.";
 
-/** The agent's tab per project, for this app run. */
-const agentTabs = new Map<string, string>();
-
 function isNoTab(error: unknown): boolean {
   return String(error instanceof Error ? error.message : error) === NO_TAB;
+}
+
+function checkCancelled(signal: AbortSignal): void {
+  if (signal.aborted) throw new Error("The browser request was cancelled.");
 }
 
 /** Whether the tab finished a load it started, watched from before it starts. */
@@ -67,6 +75,7 @@ async function watchLoad(
   ];
   const abort = () => finish("loading");
   signal.addEventListener("abort", abort);
+  if (signal.aborted) abort();
   const stop = () => {
     for (const timer of timers) window.clearTimeout(timer);
     signal.removeEventListener("abort", abort);
@@ -87,19 +96,31 @@ interface PageReport {
  * when the new one never loaded.
  */
 async function navigate(project: string, url: string, signal: AbortSignal): Promise<unknown> {
-  const tabId = agentTabs.get(project) ?? `${project}:${crypto.randomUUID()}`;
+  checkCancelled(signal);
+  const generation = agentTabGeneration(project);
+  const checkCurrent = () => {
+    checkCancelled(signal);
+    if (agentTabGeneration(project) !== generation) {
+      throw new Error("The browser tab or project was closed during navigation.");
+    }
+  };
+  const tabId = agentTabId(project) ?? `${project}:${crypto.randomUUID()}`;
   const watch = await watchLoad(tabId, signal);
   try {
+    checkCurrent();
     try {
       await browser.navigate(tabId, url);
     } catch (error) {
       if (!isNoTab(error)) throw error;
+      checkCurrent();
       await browser.open(tabId, url, BACKGROUND_BOUNDS, false, true);
     }
-    agentTabs.set(project, tabId);
+    checkCurrent();
     showAgentTab(project, { id: tabId, url });
     const outcome = await watch.done;
+    checkCurrent();
     const page = (await browser.agentCall(tabId, { action: "origin" }, [])) as PageReport;
+    checkCurrent();
     const arrived = page.url?.split("#")[0] === url.split("#")[0];
     recordTabPage(tabId, {
       ...(page.url ? { url: page.url } : {}),
@@ -126,9 +147,10 @@ export async function runBrowserRequest(
   body: ClientRequestBody,
   signal: AbortSignal,
 ): Promise<unknown> {
+  checkCancelled(signal);
   const { action, allowed_origins: allowed, project } = body;
   if (action.action === "navigate") return navigate(project, action.url, signal);
-  const tabId = agentTabs.get(project);
+  const tabId = agentTabId(project);
   if (!tabId) throw new Error(NO_PAGE);
   const call: Exclude<BrowserAction, { action: "navigate" }> = action;
   const run =
@@ -137,14 +159,14 @@ export async function runBrowserRequest(
       : browser.agentCall(tabId, call, allowed);
   return run.catch((error: unknown) => {
     if (!isNoTab(error)) throw error;
-    agentTabs.delete(project);
+    clearAgentTabs(project);
     return Promise.reject(new Error(CLOSED));
   });
 }
 
 /** Forget every agent tab, for tests. */
 export function resetAgentTabs(): void {
-  agentTabs.clear();
+  resetAllAgentTabs();
 }
 
 /**

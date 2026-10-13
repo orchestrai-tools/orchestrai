@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-
 import type { ClientRequestBody, DaemonEvent } from "@warpforge/protocol";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { serveClientRequests, type ClientRequestChannel } from "./clientRequests";
 import type { ConnectionState } from "./types";
 
@@ -48,6 +48,7 @@ function flush() {
 }
 
 describe("serveClientRequests", () => {
+  afterEach(() => vi.useRealTimers());
   it("registers now and again after every reconnect", () => {
     const fake = fakeChannel();
     serveClientRequests(fake.channel, "browser", () => Promise.resolve(null));
@@ -112,5 +113,59 @@ describe("serveClientRequests", () => {
     expect(fake.request).not.toHaveBeenCalled();
     fake.setConnection("connected");
     expect(fake.request).toHaveBeenCalledWith("client.register", { capabilities: ["browser"] });
+  });
+
+  it("aborts work on disconnect and never replies on a replacement connection", async () => {
+    const fake = fakeChannel();
+    let signal: AbortSignal | undefined;
+    let finish: (result: unknown) => void = () => {};
+    const stop = serveClientRequests(fake.channel, "browser", (_body, runningSignal) => {
+      signal = runningSignal;
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    });
+    fake.emit({ event: "client.request", data: { request_id: "r1", timeout_ms: 1000, body } });
+    fake.setConnection("disconnected");
+    expect(signal?.aborted).toBe(true);
+    fake.setConnection("connected");
+    finish("from the old connection");
+    await flush();
+    expect(fake.request.mock.calls.some(([method]) => method === "client.reply")).toBe(false);
+    stop();
+  });
+
+  it("uses the daemon deadline even when the cancellation event is lost", async () => {
+    vi.useFakeTimers();
+    const fake = fakeChannel();
+    let signal: AbortSignal | undefined;
+    let finish: (result: unknown) => void = () => {};
+    const stop = serveClientRequests(fake.channel, "browser", (_body, runningSignal) => {
+      signal = runningSignal;
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    });
+    fake.emit({ event: "client.request", data: { request_id: "r1", timeout_ms: 250, body } });
+    await vi.advanceTimersByTimeAsync(249);
+    expect(signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signal?.aborted).toBe(true);
+    finish("late");
+    await Promise.resolve();
+    expect(fake.request.mock.calls.some(([method]) => method === "client.reply")).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    stop();
+  });
+
+  it("removes the deadline after a completed reply", async () => {
+    vi.useFakeTimers();
+    const fake = fakeChannel();
+    const stop = serveClientRequests(fake.channel, "browser", async () => "done");
+    fake.emit({ event: "client.request", data: { request_id: "r1", timeout_ms: 250, body } });
+    await Promise.resolve();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(fake.request).toHaveBeenCalledWith("client.reply", { request_id: "r1", result: "done" });
+    stop();
   });
 });

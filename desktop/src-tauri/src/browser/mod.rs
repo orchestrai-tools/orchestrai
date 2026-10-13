@@ -13,11 +13,14 @@ use serde::Serialize;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Webview, WebviewUrl};
 
+mod reload;
+mod visibility;
+
 const HOST_WINDOW: &str = "main";
 const STATE_EVENT: &str = "browser:state";
 
 /// Injected before page scripts; dormant until `browser_pick` starts it.
-const PICKER_SCRIPT: &str = include_str!("browser_picker.js");
+const PICKER_SCRIPT: &str = include_str!("../browser_picker.js");
 
 /// The picker sends a chosen element back by navigating here; the navigation is
 /// intercepted and blocked rather than followed.
@@ -73,13 +76,13 @@ pub fn browser_open(
     let label = label_for(&tab_id);
 
     if let Some(webview) = app.get_webview(&label) {
-        if reuse == Some(true) {
-            return set_bounds(&app, &tab_id, x, y, width, height);
-        }
-        webview.navigate(target).map_err(|e| e.to_string())?;
-        set_bounds(&app, &tab_id, x, y, width, height)?;
-        webview.show().map_err(|e| e.to_string())?;
-        return Ok(());
+        return visibility::restore(
+            &webview,
+            target,
+            (x, y, width, height),
+            reuse == Some(true),
+            hidden == Some(true),
+        );
     }
 
     let window = app
@@ -216,10 +219,14 @@ pub fn browser_forward(app: AppHandle, tab_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn browser_reload(app: AppHandle, tab_id: String) -> Result<(), String> {
+pub fn browser_reload(app: AppHandle, tab_id: String, url: Option<String>) -> Result<(), String> {
     let webview = app
         .get_webview(&label_for(&tab_id))
         .ok_or_else(|| "no such browser tab".to_string())?;
+    let current = webview.url().ok();
+    if let Some(target) = reload::recovery_target(current.as_ref(), url.as_deref())? {
+        return webview.navigate(target).map_err(|e| e.to_string());
+    }
     reload_from_origin(&webview)
 }
 
@@ -258,6 +265,26 @@ pub fn browser_close(app: AppHandle, tab_id: String) -> Result<(), String> {
         webview.close().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Close task-owned views even when their pane and saved session are gone.
+/// Project-owned agent views are shared between tasks and remain open.
+#[tauri::command]
+pub fn browser_close_task(app: AppHandle, task_id: String) -> Result<(), String> {
+    let Some(window) = app.get_window(HOST_WINDOW) else {
+        return Ok(());
+    };
+    for webview in window.webviews() {
+        if owns_task_tab(webview.label(), &task_id) {
+            webview.close().map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn owns_task_tab(label: &str, task_id: &str) -> bool {
+    let base = format!("browser:task-{task_id}");
+    label == base || label.starts_with(&format!("{base}-"))
 }
 
 /// Close every tab belonging to a project, called when the project is removed so
@@ -338,5 +365,20 @@ pub(crate) fn adopt_wk_webview(
         ));
         drop(Retained::<AnyObject>::from_raw(platform.ns_window().cast()));
         Retained::from_raw(platform.inner().cast())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::owns_task_tab;
+
+    #[test]
+    fn task_cleanup_closes_only_its_own_views_and_preserves_project_agent_views() {
+        assert!(owns_task_tab("browser:task-t_one", "t_one"));
+        assert!(owns_task_tab("browser:task-t_one-2", "t_one"));
+        assert!(!owns_task_tab("browser:task-t_oneness", "t_one"));
+        assert!(!owns_task_tab("browser:task-t_other-2", "t_one"));
+        assert!(!owns_task_tab("browser:demo:agent", "t_one"));
+        assert!(!owns_task_tab("main", "t_one"));
     }
 }

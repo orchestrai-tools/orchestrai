@@ -96,11 +96,30 @@ export const browser = {
     return pending.then(() => call("browser_set_visible", { tabId, visible }));
   },
   close(tabId: string): Promise<void> {
+    const pending = opening.get(tabId) ?? Promise.resolve();
     opening.delete(tabId);
-    return call("browser_close", { tabId });
+    return pending.then(() => call("browser_close", { tabId }));
+  },
+  closeTask(taskId: string): Promise<void> {
+    const base = `task-${taskId}`;
+    const pending: Promise<unknown>[] = [];
+    for (const [id, done] of opening) {
+      if (id === base || id.startsWith(`${base}-`)) {
+        pending.push(done);
+        opening.delete(id);
+      }
+    }
+    return Promise.all(pending).then(() => call("browser_close_task", { taskId }));
   },
   closeProject(project: string): Promise<void> {
-    return call("browser_close_project", { project });
+    const pending: Promise<unknown>[] = [];
+    for (const [id, done] of opening) {
+      if (id.startsWith(`${project}:`)) {
+        pending.push(done);
+        opening.delete(id);
+      }
+    }
+    return Promise.all(pending).then(() => call("browser_close_project", { project }));
   },
   pick(tabId: string): Promise<void> {
     return call("browser_pick", { tabId });

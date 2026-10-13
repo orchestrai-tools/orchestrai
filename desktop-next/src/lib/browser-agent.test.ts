@@ -20,7 +20,7 @@ vi.mock("./browser-client", () => ({
   onBrowserTitle: () => Promise.resolve(() => {}),
 }));
 import { installBrowserAgent, resetAgentTabs, runBrowserRequest } from "./browser-agent";
-import { clearAgentTabs, onAgentTab, recordTabPage } from "./browser-agent-tabs";
+import { clearAgentTabs, forgetAgentTab, onAgentTab, recordTabPage } from "./browser-agent-tabs";
 
 const url = "http://localhost:4901/";
 const request = (action: ClientRequestBody["action"]): ClientRequestBody => ({
@@ -96,5 +96,76 @@ describe("native agent browser parity", () => {
     mocks.browser.agentCall.mockRejectedValue("no such browser tab");
     await expect(run({ action: "snapshot" })).rejects.toThrow("browser tab was closed");
     await expect(run({ action: "snapshot" })).rejects.toThrow("no browser tab yet");
+  });
+  it("keeps a user-closed agent tab closed until the next explicit navigation", async () => {
+    await run({ action: "navigate", url });
+    const closed = mocks.browser.open.mock.calls[0][0] as string;
+    forgetAgentTab(closed);
+    const adopted = vi.fn();
+    const off = onAgentTab("demo", adopted);
+    expect(adopted).not.toHaveBeenCalled();
+    await expect(run({ action: "snapshot" })).rejects.toThrow("no browser tab yet");
+    await run({ action: "navigate", url });
+    expect(mocks.browser.open.mock.calls[1][0]).not.toBe(closed);
+    off();
+  });
+  it("does not start an action after it was cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      runBrowserRequest(request({ action: "navigate", url }), controller.signal),
+    ).rejects.toThrow("cancelled");
+    expect(mocks.browser.navigate).not.toHaveBeenCalled();
+    expect(mocks.browser.open).not.toHaveBeenCalled();
+    expect(mocks.browser.agentCall).not.toHaveBeenCalled();
+  });
+  it("stops navigation follow-up work after cancellation during the native open", async () => {
+    const controller = new AbortController();
+    mocks.browser.navigate.mockImplementation(async () => {
+      controller.abort();
+      throw new Error("no such browser tab");
+    });
+    await expect(
+      runBrowserRequest(request({ action: "navigate", url }), controller.signal),
+    ).rejects.toThrow("cancelled");
+    expect(mocks.browser.open).not.toHaveBeenCalled();
+    expect(mocks.browser.agentCall).not.toHaveBeenCalled();
+    expect(mocks.handlers.size).toBe(0);
+  });
+  it("does not inspect the page when a loading request was cancelled", async () => {
+    const controller = new AbortController();
+    mocks.browser.navigate.mockImplementation(async (id: string) => {
+      for (const handler of mocks.handlers) handler({ tabId: id, url, loading: true });
+    });
+    const running = runBrowserRequest(request({ action: "navigate", url }), controller.signal);
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.abort();
+    await expect(running).rejects.toThrow("cancelled");
+    expect(mocks.browser.agentCall).not.toHaveBeenCalled();
+    expect(mocks.handlers.size).toBe(0);
+  });
+
+  it("does not resurrect a project browser removed while its native view opened", async () => {
+    let finish: () => void = () => {};
+    mocks.browser.open.mockImplementation(
+      (id: string) =>
+        new Promise<void>((resolve) => {
+          finish = () => {
+            loaded(id);
+            resolve();
+          };
+        }),
+    );
+    const navigating = run({ action: "navigate", url });
+    await vi.waitFor(() => expect(mocks.browser.open).toHaveBeenCalled());
+    clearAgentTabs("demo");
+    finish();
+    await expect(navigating).rejects.toThrow("closed during navigation");
+    const adopted = vi.fn();
+    const off = onAgentTab("demo", adopted);
+    expect(adopted).not.toHaveBeenCalled();
+    expect(mocks.browser.agentCall).not.toHaveBeenCalled();
+    off();
   });
 });
