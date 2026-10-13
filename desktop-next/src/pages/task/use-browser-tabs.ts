@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { annotationLabel, formatAnnotation, type BrowserAnnotation } from "../../lib/annotation";
-import { onAgentTab } from "../../lib/browser-agent-tabs";
+import { forgetAgentTab, onAgentTab } from "../../lib/browser-agent-tabs";
+import { requestContextCapture } from "../../lib/browser-captures";
+import { browser as nativeBrowser } from "../../lib/browser-client";
 import {
   browserNavOnState,
   canGoBack,
@@ -22,7 +24,6 @@ import {
   rememberBrowserTitle,
   writeBrowserSession,
 } from "../../lib/browser-session";
-import { setContextImage } from "../../lib/composer-chips";
 
 const STALL_MS = 15_000;
 
@@ -74,7 +75,9 @@ export function useBrowserTabs({
   onPick: (text: string, label: string) => string | null;
 }) {
   const base = `task-${taskId}`;
-  const [restored] = useState(() => readBrowserSession(taskId) ?? emptyBrowserSession(taskId));
+  const [restored] = useState(
+    () => readBrowserSession(taskId, project) ?? emptyBrowserSession(taskId),
+  );
   const seq = useRef(browserTabSeq(taskId, restored.tabs));
   const [tabs, setTabs] = useState<string[]>(restored.tabs);
   const [active, setActive] = useState(restored.active);
@@ -186,25 +189,11 @@ export function useBrowserTabs({
       const id = onPickRef.current(formatAnnotation(annotation), annotationLabel(annotation));
       const rect = annotation.rect;
       if (id && rect && rect.width > 0 && rect.height > 0) {
-        void browserCall("browser_capture_element", {
-          tabId,
-          captureId: id,
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-        });
+        void requestContextCapture(taskId, id, tabId, rect);
       }
       setPicking(false);
     },
-    [active],
-  );
-
-  useBrowserEvent<{ captureId: string; pngBase64: string }>(
-    "browser:shot",
-    ({ captureId, pngBase64 }) =>
-      setContextImage(captureId, { name: `element-${Date.now()}.png`, data: pngBase64 }),
-    [],
+    [active, taskId],
   );
 
   useEffect(() => {
@@ -212,7 +201,7 @@ export function useBrowserTabs({
     const timer = window.setTimeout(() => {
       if (loadStalled(loadingSince, Date.now(), STALL_MS)) {
         setStalled(true);
-        void browserCall("browser_set_visible", { tabId: active, visible: false });
+        void nativeBrowser.setVisible(active, false);
       }
     }, STALL_MS);
     return () => window.clearTimeout(timer);
@@ -221,28 +210,30 @@ export function useBrowserTabs({
   useEffect(() => {
     const node = host.current;
     if (!node || onStart || stalled) {
-      void browserCall("browser_set_visible", { tabId: active, visible: false });
+      void nativeBrowser.setVisible(active, false);
       return;
     }
     const place = () => {
       const rect = node.getBoundingClientRect();
-      void browserCall("browser_open", {
-        tabId: active,
+      void nativeBrowser.open(
+        active,
         url,
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-        reuse: true,
-        hidden: false,
-      });
+        {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        },
+        true,
+        false,
+      );
     };
     place();
     const observer = new ResizeObserver(() => place());
     observer.observe(node);
     return () => {
       observer.disconnect();
-      void browserCall("browser_set_visible", { tabId: active, visible: false });
+      void nativeBrowser.setVisible(active, false);
     };
   }, [active, onStart, stalled, url, host]);
 
@@ -280,14 +271,14 @@ export function useBrowserTabs({
       return;
     }
     setLoadingSince(Date.now());
-    void browserCall("browser_reload", { tabId: active });
+    void browserCall("browser_reload", { tabId: active, url });
   }
 
   function retry() {
     setStalled(false);
     setLoadingSince(Date.now());
-    void browserCall("browser_set_visible", { tabId: active, visible: true });
-    void browserCall("browser_reload", { tabId: active });
+    void nativeBrowser.setVisible(active, true);
+    void browserCall("browser_reload", { tabId: active, url });
   }
 
   function togglePick() {
@@ -297,13 +288,24 @@ export function useBrowserTabs({
   }
 
   function closeTab(id: string) {
+    forgetAgentTab(id);
     forgetBrowserNav(taskId, id);
+    setUrls((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    setTitles((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
     setNavs((current) => {
       const next = { ...current };
       delete next[id];
       return next;
     });
-    void browserCall("browser_close", { tabId: id });
+    void nativeBrowser.close(id);
     const rest = tabs.filter((tab) => tab !== id);
     const next = rest.length > 0 ? rest : [base];
     setTabs(next);

@@ -3,69 +3,121 @@ import {
   revokeAttachmentPreviews,
   type AttachmentDraft,
 } from "@warpforge/core/fileAttachments";
-import { useEffect, useRef, useState } from "react";
+import type { PromptAttachment } from "@warpforge/protocol";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
-/** Both composers use the original batch validation, limits, and image capability checks. */
-export function usePromptAttachments(imageSupported: boolean) {
-  const [drafts, setDrafts] = useState<AttachmentDraft[]>([]);
-  const current = useRef(drafts);
-  const pending = useRef(Promise.resolve());
-  const generation = useRef(0);
-  const [reading, setReading] = useState(false);
+interface UploadState {
+  snapshot: { drafts: AttachmentDraft[]; reading: boolean };
+  generation: number;
+  pending: Promise<void>;
+}
+const empty = { drafts: [] as AttachmentDraft[], reading: false };
+const savedUploads = new Map<string, UploadState>();
+const listeners = new Set<() => void>();
+function makeState(): UploadState {
+  return { snapshot: empty, generation: 0, pending: Promise.resolve() };
+}
+function taskState(taskId: string) {
+  let state = savedUploads.get(taskId);
+  if (!state) {
+    state = makeState();
+    savedUploads.set(taskId, state);
+  }
+  return state;
+}
+function notify() {
+  for (const listener of listeners) listener();
+}
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+function update(state: UploadState, drafts: AttachmentDraft[], reading = state.snapshot.reading) {
+  // No composer displays object-URL previews. Release them before retaining bytes.
+  revokeAttachmentPreviews(drafts);
+  state.snapshot = {
+    drafts: drafts.map((draft) => (draft.kind === "image" ? { ...draft, previewUrl: "" } : draft)),
+    reading,
+  };
+  notify();
+}
+function clearState(state: UploadState) {
+  state.generation += 1;
+  state.pending = Promise.resolve();
+  revokeAttachmentPreviews(state.snapshot.drafts);
+  update(state, [], false);
+}
+export function forgetPromptUploads(taskId: string) {
+  const state = savedUploads.get(taskId);
+  if (state) clearState(state);
+  savedUploads.delete(taskId);
+  notify();
+}
 
-  const update = (next: AttachmentDraft[]) => {
-    current.current = next;
-    setDrafts(next);
-  };
-  const clear = () => {
-    generation.current += 1;
-    revokeAttachmentPreviews(current.current);
-    update([]);
-  };
+/** Task uploads and pending reads belong to the task, independent of page mounts. */
+export function usePromptAttachments(imageSupported: boolean, taskId?: string) {
+  const [local] = useState(makeState);
+  const state = taskId ? taskState(taskId) : local;
+  const { drafts, reading } = useSyncExternalStore(
+    subscribe,
+    () => state.snapshot,
+    () => empty,
+  );
   useEffect(
     () => () => {
-      generation.current += 1;
-      revokeAttachmentPreviews(current.current);
+      if (!taskId) clearState(local);
     },
-    [],
+    [taskId, local],
   );
 
   function add(files: File[]) {
     if (!files.length) return;
-    const asked = generation.current;
-    setReading(true);
-    // Serialize picks so two quick drops cannot each bypass the aggregate limits.
-    pending.current = pending.current
+    const asked = state.generation;
+    update(state, state.snapshot.drafts, true);
+    // Serialize picks against the latest task snapshot and aggregate limits.
+    const work = state.pending
       .then(async () => {
-        if (asked !== generation.current) return;
+        if (asked !== state.generation) return;
         try {
-          const result = await buildAttachments(files, current.current, { imageSupported });
-          if (asked !== generation.current) {
+          const result = await buildAttachments(files, state.snapshot.drafts, { imageSupported });
+          if (asked !== state.generation) {
             revokeAttachmentPreviews(result.drafts);
             return;
           }
           if (result.error) toast.error(result.error);
-          else update([...current.current, ...result.drafts]);
+          else update(state, [...state.snapshot.drafts, ...result.drafts]);
         } catch {
-          toast.error("Could not read the selected files");
+          if (asked === state.generation) toast.error("Could not read the selected files");
         }
       })
       .finally(() => {
-        if (pending.current === work) setReading(false);
+        if (state.pending === work && asked === state.generation)
+          update(state, state.snapshot.drafts, false);
       });
-    const work = pending.current;
+    state.pending = work;
   }
 
   return {
     attachments: drafts.map((draft) => draft.attachment),
     reading,
     add,
-    clear,
+    clear: () => clearState(state),
+    acknowledge(submitted: PromptAttachment[]) {
+      update(
+        state,
+        state.snapshot.drafts.filter((draft) => !submitted.includes(draft.attachment)),
+      );
+    },
     remove(index: number) {
-      const item = current.current[index];
+      const item = state.snapshot.drafts[index];
       if (item) revokeAttachmentPreviews([item]);
-      update(current.current.filter((_, at) => at !== index));
+      update(
+        state,
+        state.snapshot.drafts.filter((_, at) => at !== index),
+      );
     },
   };
 }

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { carryChecks } from "../../lib/carry-checks";
 import { useDiffView, usePruneDiff } from "../../lib/diff-session";
 import { useFolderStage } from "../../lib/folder-palette";
+import { useRequestGate } from "../../lib/request-gate";
 import { useAsideAsk, useChangesRefresh, useDiffLayout } from "../../lib/shelf-palette";
 import { useDaemon } from "../../lib/use-daemon";
 import { changedFile, type ChangedFile } from "./tree";
@@ -38,16 +39,21 @@ export function useChanges(taskId: string, project: string | null, worktree: str
   );
 
   const subject = taskId ? { task_id: taskId } : project ? { project } : null;
+  const scope = JSON.stringify([project, taskId, worktree]);
+  const diffGate = useRequestGate(scope);
+  const rootsGate = useRequestGate(scope);
 
   const shownPaths = useRef<string[] | null>(null);
 
   /** `quiet` re-reads in the background: no spinner, and the user's unchecks survive. */
   function reload(quiet = false) {
     if (!subject) return;
+    const current = diffGate.begin();
     if (!quiet) setLoading(true);
     daemon
       .request("diff.get", subject)
       .then((result) => {
+        if (!current()) return;
         const next = result as TaskDiff;
         const paths = next.files.map((file) => file.path);
         const previous = quiet ? shownPaths.current : null;
@@ -57,10 +63,11 @@ export function useChanges(taskId: string, project: string | null, worktree: str
         setError(null);
       })
       .catch((err: unknown) => {
+        if (!current()) return;
         if (!quiet) setError(err instanceof Error ? err.message : "Could not load the diff");
       })
       .finally(() => {
-        if (!quiet) setLoading(false);
+        if (current()) setLoading(false);
       });
   }
 
@@ -87,15 +94,25 @@ export function useChanges(taskId: string, project: string | null, worktree: str
   const tick = useChangesRefresh((state) => state.tick);
   useEffect(() => {
     setDiff(null);
+    setChecked([]);
+    shownPaths.current = null;
+    setRoots([]);
+    setError(null);
     reload();
     if (!subject) {
       setRoots([]);
+      setLoading(false);
       return;
     }
+    const current = rootsGate.begin();
     void daemon
       .request("git.roots", subject)
-      .then((result) => setRoots((result as GitRoots).roots ?? []))
-      .catch(() => setRoots([]));
+      .then((result) => {
+        if (current()) setRoots((result as GitRoots).roots ?? []);
+      })
+      .catch(() => {
+        if (current()) setRoots([]);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId, project, tick]);
 
@@ -169,8 +186,8 @@ export function useChanges(taskId: string, project: string | null, worktree: str
   }
 
   async function commit(message: string, amend: boolean) {
-    const all = diff != null && checked.length === diff.files.length;
-    await daemon.request("git.commit", { files: all ? null : checked, message, amend, ...subject });
+    if (!subject || checked.length === 0) throw new Error("Check a file first");
+    await daemon.request("git.commit", { files: checked, message, amend, ...subject });
     toast.success(amend ? "Amended" : "Committed");
     reload();
   }

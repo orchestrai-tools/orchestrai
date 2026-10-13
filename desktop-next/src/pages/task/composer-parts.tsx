@@ -33,9 +33,9 @@ function PopupRow({
       type="button"
       role="option"
       aria-selected={active}
+      onClick={onPick}
       onMouseDown={(event) => {
         event.preventDefault();
-        onPick();
       }}
       className={cn(
         "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left",
@@ -150,14 +150,18 @@ function Chip({
 
 /** Diffs, notes, and files waiting to go out with the next message. */
 export function ComposerChips({
+  taskId,
   attachments,
   onRemoveAttachment,
 }: {
+  taskId: string;
   attachments: PromptAttachment[];
   onRemoveAttachment: (index: number) => void;
 }) {
-  const diffs = useComposerChips((state) => state.diffs);
-  const contexts = useComposerChips((state) => state.contexts);
+  const allDiffs = useComposerChips((state) => state.diffs);
+  const allContexts = useComposerChips((state) => state.contexts);
+  const diffs = allDiffs.filter((chip) => chip.taskId === taskId);
+  const contexts = allContexts.filter((chip) => chip.taskId === taskId);
   const remove = useComposerChips((state) => state.remove);
   if (diffs.length === 0 && contexts.length === 0 && attachments.length === 0) return null;
   const icon = "size-3.5 shrink-0 text-muted-foreground";

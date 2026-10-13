@@ -1,5 +1,6 @@
 import { daemon } from "@warpforge/daemon";
 import type { PromptAttachment, TaskInfo } from "@warpforge/protocol";
+
 import { isFactoryTask } from "../model/factory";
 
 export type WorkflowDelivery =
@@ -14,12 +15,15 @@ export type WorkflowDelivery =
 export function workflowDelivery(task: TaskInfo | undefined): WorkflowDelivery {
   if (!task) return { kind: "prompt" };
   const run = task.workflowRun ?? null;
-  if (!run && isFactoryTask(task)) return { kind: "blocked", reason: "This Factory task has not started yet" };
+  if (!run && isFactoryTask(task))
+    return { kind: "blocked", reason: "This Factory task has not started yet" };
   if (!run) return { kind: "prompt" };
   const waiting = run.waiting ?? null;
-  if (waiting?.kind === "question") return { kind: "reply", barrierId: waiting.barrierId ?? undefined };
+  if (waiting?.kind === "question")
+    return { kind: "reply", barrierId: waiting.barrierId ?? undefined };
   if (waiting?.kind === "paused") return { kind: "resume" };
-  if (waiting?.kind === "limit") return { kind: "extend", barrierId: waiting.barrierId ?? undefined };
+  if (waiting?.kind === "limit")
+    return { kind: "extend", barrierId: waiting.barrierId ?? undefined };
   const handoff = workflowHandoff(task);
   if (handoff) return { kind: "handoff", taskId: handoff };
   const finished = run.stage === "done" || run.stage === "failed";
@@ -37,7 +41,8 @@ export function workflowPlaceholder(task: TaskInfo | undefined): string | null {
   if (delivery.kind === "reply") return "Answer the stage's question…";
   if (delivery.kind === "resume") return "Add guidance for the next stage, then send to resume…";
   if (delivery.kind === "extend") return "Add guidance for another round, or pick an option above…";
-  if (delivery.kind === "handoff") return "This pipeline has finished. Send to continue with the stage that changed the code.";
+  if (delivery.kind === "handoff")
+    return "This pipeline has finished. Send to continue with the stage that changed the code.";
   return null;
 }
 
@@ -50,6 +55,11 @@ export async function deliverComposerMessage(
 ): Promise<void> {
   const delivery = workflowDelivery(task);
   if (delivery.kind === "blocked") throw new Error(delivery.reason);
+  if (attachments.length && delivery.kind !== "prompt" && delivery.kind !== "handoff") {
+    throw new Error(
+      "This workflow reply supports text only. Remove attachments or open a stage to send files.",
+    );
+  }
   if (delivery.kind === "reply") {
     await daemon.workflowReply(taskId, text, delivery.barrierId);
     return;
@@ -59,7 +69,11 @@ export async function deliverComposerMessage(
     return;
   }
   if (delivery.kind === "extend") {
-    await daemon.workflowDecide(taskId, "extend", { barrierId: delivery.barrierId, note: text || undefined, rounds: 1 });
+    await daemon.workflowDecide(taskId, "extend", {
+      barrierId: delivery.barrierId,
+      note: text || undefined,
+      rounds: 1,
+    });
     return;
   }
   const target = delivery.kind === "handoff" ? delivery.taskId : taskId;

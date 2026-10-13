@@ -8,25 +8,16 @@ import { ArrowUpIcon, AtSignIcon, PaperclipIcon, SquareIcon } from "lucide-react
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 
-import { contextImages, messageWithChips, useComposerChips } from "../../lib/composer-chips";
 import { bindComposerCommands } from "../../lib/composer-commands";
 import { useComposerInsert } from "../../lib/composer-insert";
 import { latestContextUsage } from "../../lib/context-usage";
 import { rankFiles } from "../../lib/file-rank";
 import { stepMatch } from "../../lib/file-search";
-import {
-  FILE_REF_MIME,
-  extractFileReferences,
-  insertFileRef,
-  replaceMention,
-  splitFileReference,
-} from "../../lib/mention-path";
+import { FILE_REF_MIME, insertFileRef, replaceMention } from "../../lib/mention-path";
+import { usePromptDrafts } from "../../lib/prompt-drafts";
+import { useComposerSend } from "../../lib/use-composer-send";
 import { usePromptAttachments } from "../../lib/use-prompt-attachments";
-import {
-  deliverComposerMessage,
-  workflowDelivery,
-  workflowPlaceholder,
-} from "../../lib/workflow-send";
+import { workflowDelivery, workflowPlaceholder } from "../../lib/workflow-send";
 import { AgentOptions } from "./agent-options";
 import { CommandMenu, ComposerChips, MentionMenu } from "./composer-parts";
 import { ContextRing } from "./context-ring";
@@ -54,16 +45,21 @@ export function Composer({
   files: TaskFiles;
   insert?: { id: number; text: string } | null;
 }) {
-  const [draft, setDraft] = useState("");
+  const draft = usePromptDrafts((state) => state.texts[task.id] ?? "");
+  const setDraft = (next: string | ((current: string) => string)) => {
+    const store = usePromptDrafts.getState();
+    store.set(task.id, typeof next === "function" ? next(store.texts[task.id] ?? "") : next);
+  };
   const capability = [...updates].reverse().find((update) => update.kind === "prompt_capabilities");
   const uploads = usePromptAttachments(
     capability?.kind === "prompt_capabilities" && capability.image,
+    task.id,
   );
   const attachments = uploads.attachments;
   const [dragging, setDragging] = useState(false);
   const [pathDrag, setPathDrag] = useState(false);
   const [menuIndex, setMenuIndex] = useState(0);
-  const [sending, setSending] = useState(false);
+  const { sending, capturing, send } = useComposerSend(task, files.known, uploads);
   const fileInput = useRef<HTMLInputElement>(null);
   const textArea = useRef<HTMLTextAreaElement>(null);
   const pending = useComposerInsert((state) => state.pending);
@@ -100,7 +96,7 @@ export function Composer({
   useEffect(() => {
     if (!pending?.text) return;
     const text = pending.text;
-    if (!useComposerInsert.getState().claim(pending.id)) return;
+    if (!useComposerInsert.getState().claim(pending.id, task.id)) return;
     setDraft((current) => (current.trim() ? `${current}\n\n${text}` : text));
   }, [pending]);
 
@@ -120,6 +116,7 @@ export function Composer({
 
   function acceptDrop(event: DragEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (sending || blocked) return;
     setDragging(false);
     const mimePath = event.dataTransfer.getData(FILE_REF_MIME);
     const plain = event.dataTransfer.getData("text/plain");
@@ -130,37 +127,6 @@ export function Composer({
       return;
     }
     uploads.add([...event.dataTransfer.files]);
-  }
-
-  async function send() {
-    if (sending || blocked || uploads.reading) return;
-    const text = draft.trim();
-    const mentioned = extractFileReferences(draft)
-      .map(splitFileReference)
-      .filter((file) => files.known.has(file.path))
-      .map((file) =>
-        file.range
-          ? { type: "file" as const, path: file.path, range: file.range }
-          : { type: "file" as const, path: file.path },
-      );
-    const chips = useComposerChips.getState().take();
-    const body = messageWithChips(text, chips.diffs, chips.contexts);
-    const shots = contextImages(chips.contexts);
-    if (!body && attachments.length === 0 && mentioned.length === 0 && shots.length === 0) {
-      useComposerChips.setState(chips);
-      return;
-    }
-    setSending(true);
-    try {
-      await deliverComposerMessage(task, task.id, body, [...mentioned, ...attachments, ...shots]);
-      setDraft("");
-      uploads.clear();
-    } catch (error) {
-      useComposerChips.setState(chips);
-      toast.error(error instanceof Error ? error.message : "Could not send");
-    } finally {
-      setSending(false);
-    }
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -256,7 +222,11 @@ export function Composer({
             {pathDrag ? "Drop to attach the file as context" : "Drop files to attach"}
           </p>
         )}
-        <ComposerChips attachments={attachments} onRemoveAttachment={uploads.remove} />
+        <ComposerChips
+          taskId={task.id}
+          attachments={attachments}
+          onRemoveAttachment={uploads.remove}
+        />
         <Textarea
           ref={textArea}
           rows={2}
@@ -266,7 +236,7 @@ export function Composer({
           disabled={blocked || sending}
           onChange={(event) => setDraft(event.target.value)}
           onPaste={(event) => {
-            if (event.clipboardData.files.length) {
+            if (!sending && !blocked && event.clipboardData.files.length) {
               event.preventDefault();
               uploads.add([...event.clipboardData.files]);
             }
@@ -312,6 +282,7 @@ export function Composer({
             <AgentOptions taskId={task.id} options={task.configOptions ?? []} />
           </span>
           <span className="ml-auto flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            {capturing && <span role="status">Capturing context…</span>}
             <ContextRing usage={latestContextUsage(updates)} />
             <Kbd>⌘↵</Kbd>
             {running && (
@@ -335,7 +306,7 @@ export function Composer({
               type="submit"
               size="icon-xs"
               aria-label="Send"
-              disabled={blocked || sending || uploads.reading}
+              disabled={blocked || sending || uploads.reading || capturing}
             >
               <ArrowUpIcon />
             </Button>

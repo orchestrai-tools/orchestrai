@@ -1,21 +1,23 @@
 import { toast } from "sonner";
 import { create } from "zustand";
+
 import { useTaskDraft } from "./new-task";
 import { useShell } from "./shell-store";
 
 /** Text waiting to be appended to the open task's composer. */
 export const useComposerInsert = create<{
-  pending: { id: number; text: string } | null;
+  pending: { id: number; text: string; taskId?: string | null } | null;
   append: (text: string) => void;
   /** Clears a pending insert and reports whether this caller won it. */
-  claim: (id: number) => boolean;
+  claim: (id: number, taskId?: string) => boolean;
 }>((set) => ({
   pending: null,
-  append: (text) => set({ pending: { id: Date.now(), text } }),
-  claim: (id) => {
+  append: (text) => set({ pending: { id: Date.now(), text, taskId: useShell.getState().taskId } }),
+  claim: (id, taskId) => {
     let won = false;
     set((state) => {
       if (state.pending?.id !== id) return state;
+      if (taskId && state.pending.taskId !== taskId) return state;
       won = true;
       return { pending: null };
     });

@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { ConfirmRequestDialog, type ConfirmRequest } from "../components/common/confirm-dialog";
 import { PageBody, PageToolbar } from "../components/common/page-toolbar";
 import { useDocsSave } from "../lib/docs-palette";
 import { useShell } from "../lib/shell-store";
@@ -41,7 +40,6 @@ function ProjectDocs({ project }: { project: string }) {
     "README.md";
   const file = useDocFile(project, path);
   const [note, setNote] = useState("");
-  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const known = useMemo(() => new Set(list.docs.map((doc) => doc.path)), [list.docs]);
   const tasks = useMemo(
     () => allTasks.filter((task) => task.project === project),
@@ -51,18 +49,8 @@ function ProjectDocs({ project }: { project: string }) {
   const open = list.docs.find((doc) => doc.path === path);
   const navigate = (next: string) => {
     if (next === path) return;
-    const go = () => {
-      setNote("");
-      setChosen(next);
-    };
-    if (!file.dirty) return go();
-    setConfirm({
-      title: "Discard your edits?",
-      description: `${path} has changes that are not saved. Opening ${next} loses them.`,
-      confirmLabel: "Discard",
-      destructive: true,
-      onConfirm: go,
-    });
+    setNote("");
+    setChosen(next);
   };
 
   const { write, draft } = file;
@@ -122,7 +110,6 @@ function ProjectDocs({ project }: { project: string }) {
           onOpenTask={(id) => openTask(id, project)}
         />
       </div>
-      <ConfirmRequestDialog request={confirm} onClose={() => setConfirm(null)} />
     </div>
   );
 }

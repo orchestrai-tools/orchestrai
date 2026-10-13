@@ -3,6 +3,7 @@ import { ToggleGroup, ToggleGroupItem } from "@warpforge/ui/components/toggle-gr
 import { cn } from "@warpforge/ui/lib/utils";
 import { FileTextIcon } from "lucide-react";
 import { useState } from "react";
+
 import { CodeEditor } from "../../components/code-editor";
 import { Markdown } from "../../components/markdown";
 import { activeTheme, useAppearance } from "../../lib/appearance";
@@ -86,12 +87,19 @@ export function DocPage({
           </>
         )}
         {wroteIt && (
-          <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => onOpenTask(wroteIt)}>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            onClick={() => onOpenTask(wroteIt)}
+          >
             Open the task that wrote it
           </Button>
         )}
         <span className="ml-auto flex items-center gap-2">
-          {note && <span className={cn(note !== "Saved" && "text-red-600 dark:text-red-400")}>{note}</span>}
+          {note && (
+            <span className={cn(note !== "Saved" && "text-red-600 dark:text-red-400")}>{note}</span>
+          )}
           {dirty && !note && <span>Unsaved changes</span>}
           <ToggleGroup
             type="single"
@@ -114,7 +122,7 @@ export function DocPage({
           </ToggleGroup>
           <Button
             size="sm"
-            disabled={loading || (!dirty && target === path)}
+            disabled={loading || Boolean(error) || (!dirty && target === path)}
             onClick={() => onSave(target)}
             title={target !== path ? `Writes ${target}` : "Save (⌘S)"}
           >
@@ -125,7 +133,7 @@ export function DocPage({
 
       {error && (
         <p className="text-xs text-muted-foreground">
-          {error}. Write below and save to create it.
+          {error}. Your unsaved draft is retained. Reopen this page to retry.
         </p>
       )}
 

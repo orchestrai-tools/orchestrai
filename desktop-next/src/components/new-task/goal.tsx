@@ -106,7 +106,13 @@ export function TaskGoal({
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" size="xs" onClick={() => input.current?.click()}>
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          disabled={disabled}
+          onClick={() => input.current?.click()}
+        >
           <PaperclipIcon /> Attach files
         </Button>
         <input
@@ -134,6 +140,7 @@ export function TaskGoal({
                 size="icon-xs"
                 variant="ghost"
                 aria-label={`Remove ${name}`}
+                disabled={disabled}
                 onClick={() => onRemove(index)}
               >
                 <XIcon />

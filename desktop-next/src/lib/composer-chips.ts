@@ -1,11 +1,13 @@
 import type { FileDiff, PromptAttachment } from "@warpforge/protocol";
-import { create } from "zustand";
 import { toast } from "sonner";
+import { create } from "zustand";
+
+import { deliverToConversation } from "./composer-insert";
 import { formatFileDiff } from "./file-patch";
 import { useShell } from "./shell-store";
-import { deliverToConversation } from "./composer-insert";
 
 export interface DiffChip {
+  taskId?: string;
   id: string;
   path: string;
   status: string;
@@ -15,10 +17,12 @@ export interface DiffChip {
 }
 
 export interface ContextChip {
+  taskId?: string;
   id: string;
   label: string;
   body: string;
   image?: { name: string; data: string };
+  pendingImage?: boolean;
 }
 
 interface ComposerChips {
@@ -26,30 +30,79 @@ interface ComposerChips {
   contexts: ContextChip[];
   add: (chip: DiffChip) => void;
   addContext: (chip: ContextChip) => void;
-  setImage: (id: string, image: { name: string; data: string }) => void;
+  setImage: (id: string, image: { name: string; data: string }, taskId?: string) => void;
+  setPendingImage: (id: string, pending: boolean, taskId?: string) => void;
   remove: (id: string) => void;
-  take: () => { diffs: DiffChip[]; contexts: ContextChip[] };
+  take: (taskId: string) => { diffs: DiffChip[]; contexts: ContextChip[] };
+  restore: (chips: { diffs: DiffChip[]; contexts: ContextChip[] }) => void;
+  forget: (taskId: string) => void;
 }
 
 export const useComposerChips = create<ComposerChips>((set, get) => ({
   diffs: [],
   contexts: [],
-  add: (chip) => set((state) => ({ diffs: [...state.diffs, chip] })),
-  addContext: (chip) => set((state) => ({ contexts: [...state.contexts, chip] })),
-  setImage: (id, image) =>
+  add: (chip) =>
     set((state) => ({
-      contexts: state.contexts.map((chip) => (chip.id === id ? { ...chip, image } : chip)),
+      diffs: [
+        ...state.diffs,
+        { ...chip, taskId: chip.taskId ?? useShell.getState().taskId ?? undefined },
+      ],
+    })),
+  addContext: (chip) =>
+    set((state) => ({
+      contexts: [
+        ...state.contexts,
+        { ...chip, taskId: chip.taskId ?? useShell.getState().taskId ?? undefined },
+      ],
+    })),
+  setImage: (id, image, taskId) =>
+    set((state) => ({
+      contexts: state.contexts.map((chip) =>
+        chip.id === id && (taskId === undefined || chip.taskId === taskId)
+          ? { ...chip, image, pendingImage: false }
+          : chip,
+      ),
+    })),
+  setPendingImage: (id, pendingImage, taskId) =>
+    set((state) => ({
+      contexts: state.contexts.map((chip) =>
+        chip.id === id && (taskId === undefined || chip.taskId === taskId)
+          ? { ...chip, pendingImage }
+          : chip,
+      ),
     })),
   remove: (id) =>
     set((state) => ({
       diffs: state.diffs.filter((chip) => chip.id !== id),
       contexts: state.contexts.filter((chip) => chip.id !== id),
     })),
-  take: () => {
-    const pending = { diffs: get().diffs, contexts: get().contexts };
-    set({ diffs: [], contexts: [] });
+  take: (taskId) => {
+    const pending = {
+      diffs: get().diffs.filter((chip) => chip.taskId === taskId),
+      contexts: get().contexts.filter((chip) => chip.taskId === taskId),
+    };
+    set((state) => ({
+      diffs: state.diffs.filter((chip) => chip.taskId !== taskId),
+      contexts: state.contexts.filter((chip) => chip.taskId !== taskId),
+    }));
     return pending;
   },
+  restore: (chips) =>
+    set((state) => ({
+      diffs: [
+        ...chips.diffs,
+        ...state.diffs.filter((chip) => !chips.diffs.some((saved) => saved.id === chip.id)),
+      ],
+      contexts: [
+        ...chips.contexts,
+        ...state.contexts.filter((chip) => !chips.contexts.some((saved) => saved.id === chip.id)),
+      ],
+    })),
+  forget: (taskId) =>
+    set((state) => ({
+      diffs: state.diffs.filter((chip) => chip.taskId !== taskId),
+      contexts: state.contexts.filter((chip) => chip.taskId !== taskId),
+    })),
 }));
 
 export function diffCounts(file: FileDiff): { added: number; removed: number } {
