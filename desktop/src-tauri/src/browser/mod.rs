@@ -14,7 +14,9 @@ use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Webview, WebviewUrl};
 
 mod reload;
+mod url;
 mod visibility;
+pub(crate) use url::current_url;
 
 const HOST_WINDOW: &str = "main";
 const STATE_EVENT: &str = "browser:state";
@@ -219,15 +221,25 @@ pub fn browser_forward(app: AppHandle, tab_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn browser_reload(app: AppHandle, tab_id: String, url: Option<String>) -> Result<(), String> {
-    let webview = app
-        .get_webview(&label_for(&tab_id))
-        .ok_or_else(|| "no such browser tab".to_string())?;
-    let current = webview.url().ok();
-    if let Some(target) = reload::recovery_target(current.as_ref(), url.as_deref())? {
-        return webview.navigate(target).map_err(|e| e.to_string());
-    }
-    reload_from_origin(&webview)
+pub async fn browser_reload(
+    app: AppHandle,
+    tab_id: String,
+    url: Option<String>,
+) -> Result<(), String> {
+    // Reading the URL waits for the UI thread; a synchronous command runs on
+    // that same thread and would prevent its own reply from being processed.
+    tauri::async_runtime::spawn_blocking(move || {
+        let webview = app
+            .get_webview(&label_for(&tab_id))
+            .ok_or_else(|| "no such browser tab".to_string())?;
+        let current = current_url(&webview)?;
+        if let Some(target) = reload::recovery_target(current.as_ref(), url.as_deref())? {
+            return webview.navigate(target).map_err(|e| e.to_string());
+        }
+        reload_from_origin(&webview)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

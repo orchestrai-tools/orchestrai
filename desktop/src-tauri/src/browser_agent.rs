@@ -31,8 +31,14 @@ fn webview_for(app: &AppHandle, tab_id: &str) -> Result<Webview, String> {
 /// the daemon asks the user about. The native URL moves to a new address as
 /// soon as a load starts, so this alone does not say which document a script
 /// runs in; the script checks that document itself.
+fn loaded_url(webview: &Webview) -> Result<Url, String> {
+    crate::browser::current_url(webview)?.ok_or_else(|| {
+        "no web page is open in the browser tab; open one with browser_navigate".to_string()
+    })
+}
+
 fn gate(webview: &Webview, allowed: &[String]) -> Result<Result<Url, Value>, String> {
-    let url = webview.url().map_err(|e| e.to_string())?;
+    let url = loaded_url(webview)?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err(format!(
             "no web page is open in the browser tab (it shows {url}); open one with browser_navigate"
@@ -117,7 +123,7 @@ pub async fn browser_agent_call(
     let webview = webview_for(&app, &tab_id)?;
     let reporting = call.get("action").and_then(Value::as_str) == Some("origin");
     let native = if reporting {
-        webview.url().map_err(|e| e.to_string())?
+        loaded_url(&webview)?
     } else {
         match gate(&webview, &allowed_origins)? {
             Ok(url) => url,
