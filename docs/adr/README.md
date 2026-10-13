@@ -37,3 +37,6 @@ stale and then misleads.
 | [0022](0022-advisor-mode.md) | An advisor is a hidden, read-only child session the executor consults |
 | [0024](0024-workflow-verify-stage.md) | Workflows verify a change in the running app before review |
 | [0030](0030-fork-identity.md) | OrchestrAI has its own identity, separate from stock Warpforge |
+| [0031](0031-unsaved-file-drafts.md) | File drafts survive navigation and acknowledge only submitted text |
+| [0032](0032-safe-file-and-git-mutations.md) | Selected commits and guarded file/document mutations |
+| [0033](0033-scoped-pages-and-persistent-drafts.md) | Scoped pages, task-owned drafts, and on-demand loading |

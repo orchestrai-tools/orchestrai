@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { BranchDialog } from "./components/branch-dialog";
 import { MergeWorktreeDialog } from "./components/merge-worktree-dialog";
 import { NewTaskDialog } from "./components/new-task";
+import { PageContent } from "./components/page-content";
 import { PushDialog } from "./components/push-dialog";
 import { QuitDialog } from "./components/quit-dialog";
 import { AddProjectDialog, SetupDialog } from "./components/setup";
@@ -17,7 +18,6 @@ import {
 import { attentionDelta, noticesFor } from "./lib/attention-notice";
 import { useHistoryNotices } from "./lib/history-notices";
 import { useNotificationActions } from "./lib/notification-action";
-import { currentPage, useShell } from "./lib/shell-store";
 import { Shortcuts } from "./lib/shortcuts";
 import { useTaskPullSync } from "./lib/task-pull";
 import { useTaskSurface } from "./lib/task-surface";
@@ -26,26 +26,11 @@ import { updater } from "./lib/updater";
 import { useDaemon } from "./lib/use-daemon";
 import { useTauriClose } from "./lib/use-quit";
 import { needsPerson, visibleTasks } from "./model/tasks";
-import { Board } from "./pages/board";
-import { Changes } from "./pages/changes";
-import { Channel } from "./pages/channel";
-import { Docs } from "./pages/docs";
-import { Files } from "./pages/files";
-import { GitHub } from "./pages/github";
-import { Home } from "./pages/home";
-import { Inbox } from "./pages/inbox";
-import { Automations, Backlog, Workflows } from "./pages/lists";
-import { Agents, Memory, Services } from "./pages/runtime";
-import { Sessions } from "./pages/sessions";
-import { Settings } from "./pages/settings";
-import { TaskPage } from "./pages/task-page";
 import { AppConfirms } from "./shell/app-confirms";
 import { AppShell } from "./shell/app-shell";
 
 export function App() {
-  const shell = useShell();
   const appearance = useAppearance();
-  const page = currentPage(shell);
 
   const quit = useTauriClose();
   const daemonState = useDaemon();
@@ -136,28 +121,8 @@ export function App() {
 
   useEffect(() => applyAppIcon(appearance.appIcon), [appearance.appIcon]);
 
-  let body = shell.homePage === "settings" ? <Settings /> : <Home />;
-  if (!shell.home) {
-    if (page === "board") body = <Board />;
-    else if (page === "inbox") body = <Inbox />;
-    else if (page === "task") body = <TaskPage />;
-    else if (page === "changes") body = <Changes />;
-    else if (page === "files") body = <Files />;
-    else if (page === "github") body = <GitHub />;
-    else if (page === "backlog") body = <Backlog />;
-    else if (page === "workflows") body = <Workflows />;
-    else if (page === "automations") body = <Automations />;
-    else if (page === "memory") body = <Memory />;
-    else if (page === "docs") body = <Docs />;
-    else if (page === "sessions") body = <Sessions />;
-    else if (page === "channel") body = <Channel />;
-    else if (page === "services") body = <Services />;
-    else if (page === "agents") body = <Agents />;
-    else if (page === "settings") body = <Settings />;
-  }
-
   return (
-    <AppShell page={body}>
+    <AppShell page={<PageContent />}>
       <Shortcuts />
       <NewTaskDialog />
       <PushDialog />

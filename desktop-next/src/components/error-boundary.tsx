@@ -3,6 +3,7 @@ import { Component, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
+  contained?: boolean;
 }
 
 interface State {
@@ -19,11 +20,24 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-          <h1 className="text-base font-semibold">The window hit an error</h1>
+        <div
+          role="alert"
+          className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center"
+        >
+          <h1 className="text-base font-semibold">
+            {this.props.contained ? "This page hit an error" : "The window hit an error"}
+          </h1>
+          {this.props.contained && (
+            <p className="text-sm text-muted-foreground">
+              Your workspace is still available. Retry or open another page from the sidebar.
+            </p>
+          )}
           <p className="max-w-md text-sm text-destructive">{this.state.error}</p>
           <Button size="sm" variant="outline" onClick={() => this.setState({ error: null })}>
             Try again
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => window.location.reload()}>
+            Reload app
           </Button>
         </div>
       );

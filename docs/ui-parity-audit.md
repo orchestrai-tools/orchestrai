@@ -152,3 +152,12 @@ interrupted shell tool’s failed status with failure of the queued turn.
 - This is a parity audit, not a production security, performance, exhaustive
   input, responsiveness, or empirical agent-reliability assessment.
 - Future upstream changes after the pinned commit require a new comparison.
+
+## 2026-10-12 hardening follow-up
+
+[Application hardening](application-hardening.md) records backend and UI reliability
+repairs, deferred-response tests, checked-file commit verification in Chrome, and
+a live native WKWebView/agent-browser smoke run. The native browser limitation
+above describes the original audit; Navigate/Snapshot/Type/Click/Console and
+visible adoption have since been exercised. Chrome file uploads remain blocked
+by the extension permission. Other external-account/platform limits still apply.
