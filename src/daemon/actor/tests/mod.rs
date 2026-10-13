@@ -1,8 +1,10 @@
+mod archive_tasks;
 mod automation;
 mod delete_settled;
 mod file_scope;
 mod lifecycle_action;
 mod merge_worktree;
+mod orchestration_read;
 mod pending_permissions;
 mod ports;
 mod project_git;

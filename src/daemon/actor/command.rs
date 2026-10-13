@@ -883,6 +883,12 @@ pub enum Command {
         goal: String,
         reply: oneshot::Sender<(String, String)>,
     },
+    /// Deterministic orchestration callback gates for actor liveness tests.
+    #[cfg(test)]
+    SetOrchestratorSender {
+        sender: tokio::sync::mpsc::Sender<crate::orchestration::OrchCommand>,
+        reply: oneshot::Sender<()>,
+    },
     /// List active orchestration graphs.
     ListOrchestrations {
         reply: oneshot::Sender<Vec<crate::orchestration::GraphInfo>>,

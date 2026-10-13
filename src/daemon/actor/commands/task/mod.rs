@@ -1,3 +1,5 @@
+mod archive;
+
 use crate::daemon::actor::PendingSessionStart;
 use crate::daemon::actor::ResumeReplayGuard;
 use crate::daemon::actor::{Command, Daemon, Event};
@@ -141,24 +143,41 @@ impl Daemon {
                 task_id,
                 mut replay,
             } => {
-                // The pending entry is the token: cancelling or deleting the
-                // task removes it, so a guard that lands afterwards must not
-                // resurrect a cancelled task's session (ADR 0002 invariant 5).
-                if let Some(pending) = self.pending_resume.remove(&task_id) {
+                // Retain the start through the handshake so prompts arriving
+                // during replay or initialization join the same ordered queue.
+                if let Some(pending) = self
+                    .pending_resume
+                    .get_mut(&task_id)
+                    .filter(|p| !p.starting)
+                {
+                    pending.starting = true;
+                    let (project, agent, text, session_id, attachments, default_model) = (
+                        pending.project.clone(),
+                        pending.agent.clone(),
+                        pending.text.clone(),
+                        pending.session_id.clone(),
+                        pending.attachments.clone(),
+                        pending.default_model.clone(),
+                    );
                     if let Some(guard) = ResumeReplayGuard::from_updates(replay.make_contiguous()) {
                         self.resume_replay.insert(task_id.clone(), guard);
                     }
                     self.start_session(
                         &task_id,
-                        &pending.project,
-                        &pending.agent,
-                        &pending.text,
+                        &project,
+                        &agent,
+                        &text,
                         false,
-                        Some(pending.session_id),
-                        pending.attachments,
-                        pending.default_model,
+                        Some(session_id),
+                        attachments,
+                        default_model,
                         std::collections::HashMap::new(),
                     );
+                    if !self.sessions.contains_key(&task_id) {
+                        if let Some(pending) = self.pending_resume.remove(&task_id) {
+                            pending.reject_followups("could not restart the agent session");
+                        }
+                    }
                 }
             }
             Command::TaskOutputReady {
@@ -210,7 +229,9 @@ impl Daemon {
                     self.pending_session_starts.remove(&id);
                     self.blocked_starts.remove(&id);
                     self.pending_workflow_starts.remove(&id);
-                    self.pending_resume.remove(&id);
+                    if let Some(pending) = self.pending_resume.remove(&id) {
+                        pending.reject_followups("task stopped while reconnecting");
+                    }
                     self.resume_replay.remove(&id);
                     self.drop_pending_permissions(&id);
                     // A finished pipeline's parent keeps its terminal status:
@@ -231,46 +252,7 @@ impl Daemon {
                 };
                 let _ = reply.send(result);
             }
-            Command::ArchiveTask { id } => {
-                // Archiving a live workflow parent stops the pipeline first so
-                // no orphaned stage sessions keep running behind a Done task.
-                if self.workflow_is_active(&id) {
-                    let _ = self.workflow_finalize(&id, WorkflowOutcome::Stopped).await;
-                }
-                // Collect children that reference this task as parent so we
-                // can archive them together with the leader.
-                let child_ids: Vec<String> = self
-                    .tasks
-                    .values()
-                    .filter(|t| t.parent_task_id.as_deref() == Some(&id))
-                    .map(|t| t.id.clone())
-                    .collect();
-
-                // Archive the leader itself.
-                if let Some(task) = self.tasks.get_mut(&id) {
-                    task.set_status(TaskStatus::Done);
-                    let updated = task.clone();
-                    self.persist(&updated);
-                    self.emit(Event::TaskUpdated(updated));
-                }
-
-                // Archive every direct child so the whole group moves to history.
-                // A child can itself be a live workflow pipeline (spawned via
-                // spawn_workflow) — stop it the same way as a directly
-                // archived one, or its stage session keeps running and
-                // eventually flips this "archived" task back out of Done.
-                for cid in child_ids {
-                    if self.workflow_is_active(&cid) {
-                        let _ = self.workflow_finalize(&cid, WorkflowOutcome::Stopped).await;
-                    }
-                    if let Some(child) = self.tasks.get_mut(&cid) {
-                        child.set_status(TaskStatus::Done);
-                        let updated = child.clone();
-                        self.persist(&updated);
-                        self.emit(Event::TaskUpdated(updated));
-                    }
-                }
-            }
+            Command::ArchiveTask { id } => self.archive_task_tree(&id).await,
             Command::DeleteTask { id, reply } => {
                 let stop_result = if self.workflow_is_active(&id) {
                     self.workflow_finalize(&id, WorkflowOutcome::Stopped).await
@@ -323,7 +305,9 @@ impl Daemon {
                     self.last_session_update.remove(&id);
                     self.turn_updates.remove(&id);
                     self.resume_replay.remove(&id);
-                    self.pending_resume.remove(&id);
+                    if let Some(pending) = self.pending_resume.remove(&id) {
+                        pending.reject_followups("task deleted while reconnecting");
+                    }
                     self.pending_session_starts.remove(&id);
                     self.blocked_starts.remove(&id);
                     self.pending_workflow_starts.remove(&id);

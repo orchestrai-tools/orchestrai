@@ -17,6 +17,16 @@ impl Daemon {
                 if !self.sessions.contains_key(&task_id) {
                     return;
                 }
+                if let Some(pending) = self.pending_resume.remove(&task_id) {
+                    if let Some(handle) = self.sessions.get(&task_id) {
+                        for followup in pending.followups {
+                            let result = handle.prompt(followup.prompt, followup.initiator);
+                            let _ = followup.reply.send(result);
+                        }
+                    } else {
+                        pending.reject_followups("agent session stopped while reconnecting");
+                    }
+                }
                 let agent_id = self.session_health_agent(&task_id);
                 if let Some(task) = self.tasks.get_mut(&task_id) {
                     task.attach_session(session_id);
@@ -291,6 +301,9 @@ impl Daemon {
                 }
                 // Remove dead ACP handle so subsequent prompts trigger resume.
                 self.sessions.remove(&task_id);
+                if let Some(pending) = self.pending_resume.remove(&task_id) {
+                    pending.reject_followups(&message);
+                }
                 self.drop_pending_permissions(&task_id);
                 if let Some(task) = self.tasks.get_mut(&task_id) {
                     task.blocked_reason = Some(message);

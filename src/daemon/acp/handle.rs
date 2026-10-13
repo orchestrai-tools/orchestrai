@@ -18,10 +18,15 @@ pub struct AcpHandle {
 }
 
 impl AcpHandle {
+    /// Images are accepted only after the agent advertises support.
+    pub fn supports_images(&self) -> bool {
+        self.image_capability.load(Ordering::Acquire) == 2
+    }
+
     /// Submit a turn. It goes out immediately when the session is idle and
     /// waits its place in line when a turn is already running.
     pub fn prompt(&self, prompt: PreparedPrompt, initiator: TurnInitiator) -> Result<(), String> {
-        if prompt.has_images && self.image_capability.load(Ordering::Acquire) != 2 {
+        if prompt.has_images && !self.supports_images() {
             return Err("this agent does not support image prompts".into());
         }
         self.cmd_tx

@@ -67,8 +67,13 @@ pub(super) async fn orchestrate_list(
 }
 
 pub(super) async fn orchestrate_cancel() -> Result<serde_json::Value, wire::RpcError> {
-    // TODO: wire through to orchestrator
-    Ok(json!(null))
+    // The legacy graph actor's Cancel only forgets its graph; wiring it up
+    // would still leave the agents running. Refuse explicitly until graph
+    // cancellation has a supported, acknowledged stop boundary.
+    Err(wire::RpcError {
+        code: wire::ErrorCode::InvalidRequest,
+        message: "legacy orchestration cancellation is unavailable; no tasks were stopped. Use task.cancel to stop an individual task".into(),
+    })
 }
 
 pub(super) async fn orchestrate_get_config(

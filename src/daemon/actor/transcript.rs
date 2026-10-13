@@ -97,6 +97,12 @@ pub(crate) struct PendingSessionStart {
 
 /// A session that cannot start until its resume replay guard has been loaded
 /// from the store. Carries everything `start_session` needs to resume.
+pub(crate) struct PendingResumePrompt {
+    pub(crate) prompt: crate::daemon::prompt::PreparedPrompt,
+    pub(crate) initiator: crate::daemon::acp::TurnInitiator,
+    pub(crate) reply: tokio::sync::oneshot::Sender<Result<(), String>>,
+}
+
 pub(crate) struct PendingResume {
     pub(crate) project: String,
     pub(crate) agent: String,
@@ -106,6 +112,16 @@ pub(crate) struct PendingResume {
     /// The task's model intent, re-applied to the loaded session. `None`
     /// keeps the resumed session's own model state, as before.
     pub(crate) default_model: Option<String>,
+    pub(crate) starting: bool,
+    pub(crate) followups: Vec<PendingResumePrompt>,
+}
+
+impl PendingResume {
+    pub(crate) fn reject_followups(self, message: &str) {
+        for followup in self.followups {
+            let _ = followup.reply.send(Err(message.to_string()));
+        }
+    }
 }
 
 /// De-duplicates the ACP updates an agent replays on `session/load` against the

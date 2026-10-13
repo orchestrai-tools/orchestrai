@@ -102,14 +102,25 @@ impl Daemon {
                     let _ = reply.send((String::new(), String::new()));
                 }
             }
+            #[cfg(test)]
+            Command::SetOrchestratorSender { sender, reply } => {
+                self.orch_tx = Some(sender);
+                let _ = reply.send(());
+            }
             Command::ListOrchestrations { reply } => {
                 if let Some(orch_tx) = &self.orch_tx {
-                    let (rtx, rrx) = oneshot::channel();
-                    let _ = orch_tx
-                        .send(crate::orchestration::OrchCommand::List(rtx))
-                        .await;
-                    let infos = rrx.await.unwrap_or_default();
-                    let _ = reply.send(infos);
+                    // The orchestrator may be waiting for this actor to create
+                    // its next task. Forward the read without blocking its
+                    // callback, just as StartOrchestration does above.
+                    let orch_tx = orch_tx.clone();
+                    tokio::spawn(async move {
+                        let (rtx, rrx) = oneshot::channel();
+                        let _ = orch_tx
+                            .send(crate::orchestration::OrchCommand::List(rtx))
+                            .await;
+                        let infos = rrx.await.unwrap_or_default();
+                        let _ = reply.send(infos);
+                    });
                 } else {
                     let _ = reply.send(vec![]);
                 }
