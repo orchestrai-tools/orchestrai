@@ -21,9 +21,14 @@ pub(super) async fn docs_list(
     project: String,
 ) -> Result<Value, wire::RpcError> {
     let root = project_path(handle, &project).await?;
-    let mut docs = Vec::new();
-    walk_docs(Path::new(&root), Path::new(&root), &mut docs);
-    docs.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
+    let docs = tokio::task::spawn_blocking(move || {
+        let mut docs = Vec::new();
+        walk_docs(Path::new(&root), Path::new(&root), &mut docs);
+        docs.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
+        docs
+    })
+    .await
+    .map_err(rpc_err)?;
     Ok(json!({ "docs": docs }))
 }
 
@@ -34,11 +39,12 @@ pub(super) async fn docs_write(
     content: String,
 ) -> Result<Value, wire::RpcError> {
     let root = project_path(handle, &project).await?;
-    let full = markdown_path(Path::new(&root), &path)?;
-    if let Some(parent) = full.parent() {
-        std::fs::create_dir_all(parent).map_err(rpc_err)?;
-    }
-    std::fs::write(&full, content).map_err(rpc_err)?;
+    markdown_path(Path::new(&root), &path)?;
+    let target = path.clone();
+    tokio::task::spawn_blocking(move || crate::daemon::diff::save_file(&root, &target, &content))
+        .await
+        .map_err(rpc_err)?
+        .map_err(rpc_err)?;
     Ok(json!({ "path": path }))
 }
 
@@ -130,9 +136,17 @@ fn walk_docs(root: &Path, dir: &Path, out: &mut Vec<Value>) {
             return;
         }
         let path = entry.path();
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        // Following links can leave the project or recurse forever through a
+        // directory cycle. Non-regular files can block a text read indefinitely.
+        if kind.is_symlink() || (!kind.is_dir() && !kind.is_file()) {
+            continue;
+        }
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if path.is_dir() {
+        if kind.is_dir() {
             if SKIP.contains(&name.as_ref()) || (name.starts_with('.') && name != ".github") {
                 continue;
             }

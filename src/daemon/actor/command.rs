@@ -404,7 +404,7 @@ pub enum Command {
         task_id: String,
         path: String,
         project: Option<String>,
-        reply: oneshot::Sender<Option<wire::FileDoc>>,
+        reply: oneshot::Sender<Result<wire::FileDoc, String>>,
     },
     /// List files in a task's project working tree.
     ListFiles {
@@ -455,6 +455,7 @@ pub enum Command {
         file: String,
         hunk_index: u32,
         resolution: wire::HunkResolution,
+        reply: oneshot::Sender<Result<(), String>>,
     },
     /// Stage (optionally a subset of) files and commit them in the task's repo.
     GitCommit {

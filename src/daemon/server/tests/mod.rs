@@ -3,6 +3,7 @@ use super::*;
 mod archive_worktree;
 mod config;
 mod connection;
+mod file_mutations;
 mod origin;
 mod quit;
 mod requests;

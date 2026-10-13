@@ -27,7 +27,7 @@ with a token loses nothing by it, since a page still cannot authenticate
 without reading `daemon.json`. `WARPFORGE_DEV_ORIGINS` (comma-separated)
 replaces the Vite list. Anything else gets a 403 before the upgrade.
 
-**Client paths are relative and resolved inside the root** (`diff/files.rs`).
+**Client paths are relative and resolved inside the root** (`diff/files/`).
 Every `Path::components()` entry must be a plain name (or a leading `.`), so
 no root, drive prefix or `..` gets through; on Windows `\` and `:` are refused
 too, because resolution splits on `/` only. Reads and writes that go through

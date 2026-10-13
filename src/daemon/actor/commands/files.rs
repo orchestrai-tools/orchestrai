@@ -103,11 +103,13 @@ impl Daemon {
                 project,
                 reply,
             } => {
-                let repo = self.file_op_root(&task_id, project.as_deref()).ok();
+                let repo = self.file_op_root(&task_id, project.as_deref());
                 tokio::spawn(async move {
                     let doc = match repo {
-                        Some(p) => crate::daemon::diff::file_doc(&p, &path).await.ok(),
-                        None => None,
+                        Ok(p) => crate::daemon::diff::file_doc(&p, &path)
+                            .await
+                            .map_err(|err| err.to_string()),
+                        Err(err) => Err(err),
                     };
                     let _ = reply.send(doc);
                 });
@@ -233,20 +235,28 @@ impl Daemon {
                 file,
                 hunk_index,
                 resolution,
+                reply,
             } => {
                 // accept keeps the change (no-op); only reject touches the tree.
                 if resolution == wire::HunkResolution::Reject {
                     let repo = self.scope_repo_path(&scope);
                     let cmd_tx = self.cmd_tx.clone();
                     tokio::spawn(async move {
-                        let Some(path) = repo else { return };
-                        if crate::daemon::diff::reject_hunk(&path, &file, hunk_index)
-                            .await
-                            .is_ok()
-                        {
+                        let result = match repo {
+                            Some(path) => {
+                                crate::daemon::diff::reject_hunk(&path, &file, hunk_index)
+                                    .await
+                                    .map_err(|err| err.to_string())
+                            }
+                            None => Err(scope.missing()),
+                        };
+                        if result.is_ok() {
                             scope.finished(&cmd_tx, GitEffect::HunkRejected).await;
                         }
+                        let _ = reply.send(result);
                     });
+                } else {
+                    let _ = reply.send(Ok(()));
                 }
             }
 

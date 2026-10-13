@@ -24,15 +24,26 @@ pub(super) async fn diff_resolve_hunk(
     hunk_index: u32,
     resolution: wire::HunkResolution,
 ) -> Result<serde_json::Value, wire::RpcError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
     handle
         .send(Command::ResolveHunk {
             scope,
             file,
             hunk_index,
             resolution,
+            reply: tx,
         })
         .await;
-    Ok(json!(null))
+    rx.await
+        .map_err(|_| wire::RpcError {
+            code: wire::ErrorCode::Internal,
+            message: "daemon dropped hunk resolution request".into(),
+        })?
+        .map(|_| json!(null))
+        .map_err(|message| wire::RpcError {
+            code: wire::ErrorCode::Internal,
+            message,
+        })
 }
 
 pub(super) async fn file_contents(
@@ -42,13 +53,13 @@ pub(super) async fn file_contents(
     project: Option<String>,
 ) -> Result<serde_json::Value, wire::RpcError> {
     match handle.file_contents(&task_id, &path, project).await {
-        Some(doc) => serde_json::to_value(doc).map_err(|e| wire::RpcError {
+        Ok(doc) => serde_json::to_value(doc).map_err(|e| wire::RpcError {
             code: wire::ErrorCode::Internal,
             message: e.to_string(),
         }),
-        None => Err(wire::RpcError {
-            code: wire::ErrorCode::NotFound,
-            message: format!("cannot read {path}"),
+        Err(message) => Err(wire::RpcError {
+            code: wire::ErrorCode::Internal,
+            message,
         }),
     }
 }

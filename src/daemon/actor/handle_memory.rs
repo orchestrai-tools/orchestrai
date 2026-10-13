@@ -185,7 +185,7 @@ impl DaemonHandle {
         task_id: &str,
         path: &str,
         project: Option<String>,
-    ) -> Option<wire::FileDoc> {
+    ) -> Result<wire::FileDoc, String> {
         let (tx, rx) = oneshot::channel();
         self.send(Command::GetFileContents {
             task_id: task_id.to_string(),
@@ -194,7 +194,8 @@ impl DaemonHandle {
             reply: tx,
         })
         .await;
-        rx.await.ok().flatten()
+        rx.await
+            .map_err(|_| "daemon dropped file read request".to_string())?
     }
 
     pub async fn list_files(
